@@ -1,4 +1,3 @@
-// Copyright © 2024 Niantic, Inc. All rights reserved.
 #pragma once
 #include <array>
 #include <string>

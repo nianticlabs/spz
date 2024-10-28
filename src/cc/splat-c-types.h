@@ -1,5 +1,3 @@
-// Copyright © 2024 Niantic, Inc. All rights reserved.
-
 #ifndef SPZ_SPLAT_C_TYPES_H_
 #define SPZ_SPLAT_C_TYPES_H_
 
