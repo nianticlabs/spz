@@ -251,7 +251,7 @@ PackedGaussians packGaussians(const GaussianCloud &g) {
     // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
     // NOTE: These are already in xyzw order.
     Quat4f q = normalized(quat4f(&g.rotations[i * 4]));
-    q = times(q, (q[0] < 0 ? -127.5f : 127.5f));
+    q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
     q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
     packed.rotations[i * 3 + 0] = toUint8(q[0]);
     packed.rotations[i * 3 + 1] = toUint8(q[1]);
@@ -416,8 +416,8 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed) {
     const uint8_t *r = &packed.rotations[i * 3];
     Vec3f xyz = plus(
       times(
-        Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])}, 
-        1.0f / 127.5f), 
+        Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
+        1.0f / 127.5f),
       Vec3f{-1, -1, -1});
     std::copy(xyz.data(), xyz.data() + 3, &result.rotations[i * 4]);
     // Compute the real component - we know the quaternion is normalized and w is non-negative
