@@ -1,6 +1,6 @@
 # spz
 
-`.spz` is a file format for compresed 3D gaussian splats. This directory contains a C++ library
+`.spz` is a file format for compressed 3D gaussian splats. This directory contains a C++ library
 for saving and loading data in the .spz format.
 
 spz encoded splats are typically around 10x smaller than the corresponding .ply files,
