@@ -62,7 +62,7 @@ Loads a cloud of Gaussians from a file in `.spz` format.
 
 The .spz format is a gzipped stream of data consisting of a 16-byte header followed by the
 gaussian data. This data is organized by attribute in the following order: positions,
-scales, rotations, alphas, colors, spherical harmonics.
+alphas, colors, scales, rotations, spherical harmonics.
 
 ### Header
 
