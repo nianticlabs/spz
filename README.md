@@ -6,6 +6,9 @@ for saving and loading data in the .spz format.
 spz encoded splats are typically around 10x smaller than the corresponding .ply files,
 with minimal visual differences between the two.
 
+### Discord
+Join the [Scaniverse Discord](https://discord.gg/bBq9Wysd) to discuss SPZ-related topics with Niantic developers and community contributors. 
+
 ## Implementations
 
 ### C++
