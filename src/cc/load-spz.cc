@@ -221,12 +221,11 @@ PackedGaussians packGaussians(const GaussianCloud &g) {
 
   // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
   // we can use different values on a per-splat basis and still be compatible with the decoder.
-  PackedGaussians packed = {
-    .numPoints = g.numPoints,
-    .shDegree = g.shDegree,
-    .fractionalBits = 12,
-    .antialiased = g.antialiased,
-  };
+  PackedGaussians packed;
+  packed.numPoints = g.numPoints;
+  packed.shDegree = g.shDegree;
+  packed.fractionalBits = 12;
+  packed.antialiased = g.antialiased;
   packed.positions.resize(numPoints * 3 * 3);
   packed.scales.resize(numPoints * 3);
   packed.rotations.resize(numPoints * 3);
@@ -378,11 +377,10 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed) {
     return {};
   }
 
-  GaussianCloud result = {
-    .numPoints = packed.numPoints,
-    .shDegree = packed.shDegree,
-    .antialiased = packed.antialiased,
-  };
+  GaussianCloud result;
+  result.numPoints = packed.numPoints;
+  result.shDegree = packed.shDegree;
+  result.antialiased = packed.antialiased;
   result.positions.resize(numPoints * 3);
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 4);
@@ -440,12 +438,11 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed) {
 }
 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream &out) {
-  PackedGaussiansHeader header = {
-    .numPoints = static_cast<uint32_t>(packed.numPoints),
-    .shDegree = static_cast<uint8_t>(packed.shDegree),
-    .fractionalBits = static_cast<uint8_t>(packed.fractionalBits),
-    .flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0),
-  };
+  PackedGaussiansHeader header;
+  header.numPoints = static_cast<uint32_t>(packed.numPoints);
+  header.shDegree = static_cast<uint8_t>(packed.shDegree);
+  header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
+  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0);
   out.write(reinterpret_cast<const char *>(&header), sizeof(header));
   out.write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out.write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
@@ -479,11 +476,11 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int numPoints = header.numPoints;
   const int shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
-  PackedGaussians result = {
-    .numPoints = numPoints,
-    .shDegree = header.shDegree,
-    .fractionalBits = header.fractionalBits,
-    .antialiased = (header.flags & FlagAntialiased) != 0};
+  PackedGaussians result;
+  result.numPoints = numPoints;
+  result.shDegree = header.shDegree;
+  result.fractionalBits = header.fractionalBits;
+  result.antialiased = (header.flags & FlagAntialiased) != 0;
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 3);
