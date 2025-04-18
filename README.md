@@ -7,7 +7,7 @@ spz encoded splats are typically around 10x smaller than the corresponding .ply 
 with minimal visual differences between the two.
 
 ### Discord
-Join the [Scaniverse Discord](https://discord.gg/bBq9Wysd) to discuss SPZ-related topics with Niantic developers and community contributors. 
+Join the [Scaniverse Discord](https://discord.gg/xKtCxvEmxa) to discuss SPZ-related topics with Niantic developers and community contributors. 
 
 ## Internals
 
