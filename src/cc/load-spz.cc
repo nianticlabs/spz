@@ -355,9 +355,9 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
   int32_t start3 = i * 3;
   const auto *p = &positions[i * positionBits];
   std::copy(p, p + positionBits, result.position.data());
-  std::copy(&scales[start3], &scales[start3 + 3], result.scale.data());
-  std::copy(&rotations[start3], &rotations[start3 + 3], result.rotation.data());
-  std::copy(&colors[start3], &colors[start3 + 3], result.color.data());
+  std::copy(&scales[start3], &scales[start3] + 3, result.scale.data());
+  std::copy(&rotations[start3], &rotations[start3] + 3, result.rotation.data());
+  std::copy(&colors[start3], &colors[start3] + 3, result.color.data());
   result.alpha = alphas[i];
 
   int32_t shDim = dimForDegree(shDegree);
