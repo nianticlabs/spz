@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+include(${CMAKE_CURRENT_LIST_DIR}/spzConfigVersion.cmake)
+message(STATUS "Found spz ${PACKAGE_VERSION}")
+
+include(${CMAKE_CURRENT_LIST_DIR}/spzTargets.cmake)
+
+check_required_components(spz)
