@@ -70,3 +70,20 @@ install(EXPORT spzTargets
   NAMESPACE spz::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/spz"
 )
+
+# CLI Tools
+add_executable(ply_to_spz cli_tools/src/ply_to_spz.cpp)
+target_link_libraries(ply_to_spz PRIVATE spz)
+target_include_directories(ply_to_spz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+add_executable(spz_to_ply cli_tools/src/spz_to_ply.cpp)
+target_link_libraries(spz_to_ply PRIVATE spz)
+target_include_directories(spz_to_ply PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+add_executable(spz_info cli_tools/src/spz_info.cpp)
+target_link_libraries(spz_info PRIVATE spz)
+target_include_directories(spz_info PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+install(TARGETS ply_to_spz spz_to_ply spz_info
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
