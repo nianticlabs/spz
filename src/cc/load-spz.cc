@@ -256,11 +256,55 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     q[0] *= c.flipQ[0];
     q[1] *= c.flipQ[1];
     q[2] *= c.flipQ[2];
-    q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
-    q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
-    packed.rotations[i * 3 + 0] = toUint8(q[0]);
-    packed.rotations[i * 3 + 1] = toUint8(q[1]);
-    packed.rotations[i * 3 + 2] = toUint8(q[2]);
+    Quat4f qq = times(q, (q[3] < 0 ? -127.5f : 127.5f));
+    if (o.fast_rot_quantization) {
+      qq = plus(qq, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
+      packed.rotations[i * 3 + 0] = toUint8(qq[0]);
+      packed.rotations[i * 3 + 1] = toUint8(qq[1]);
+      packed.rotations[i * 3 + 2] = toUint8(qq[2]);
+    } else {
+      // test the 8 nearest neighbors in quantized space to check which one has smallest reconstruction error.
+      qq = plus(qq, Quat4f{127.f, 127.f, 127.f, 127.f});
+      uint8_t r0[3];
+      r0[0] = toUint8(qq[0]);
+      r0[1] = toUint8(qq[1]);
+      r0[2] = toUint8(qq[2]);
+      float dot_max = -1.f;
+      for (int dx = 0; dx < 2; ++dx) {
+        for (int dy = 0; dy < 2; ++dy) {
+          for (int dz = 0; dz < 2; ++dz) {
+            uint8_t r[3];
+            r[0] = r0[0] + dx;
+            r[1] = r0[1] + dy;
+            r[2] = r0[2] + dz;
+            // unpack
+            const Vec3f xyz = plus(
+                times(
+                    Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
+                    1.0f / 127.5f),
+                Vec3f{-1, -1, -1});
+            Quat4f s;
+            std::copy(xyz.data(), xyz.data() + 3, &s[0]);
+            // Compute the real component - we know the quaternion is normalized and w is non-negative
+            float xyz_squaredNorm = squaredNorm(xyz);
+            if (xyz_squaredNorm <= 1) {
+              s[3] = std::sqrt(1.0f - squaredNorm(xyz));
+            } else {
+              s[3] = 0.f;
+              s = times(s, 1.f / std::sqrt(xyz_squaredNorm));
+            }
+
+            float dot = q[0] * s[0] + q[1] * s[1] + q[2] * s[2] + q[3] * s[3];
+            if (std::abs(dot) > dot_max) {
+              dot_max = dot;
+              packed.rotations[i * 3 + 0] = r[0];
+              packed.rotations[i * 3 + 1] = r[1];
+              packed.rotations[i * 3 + 2] = r[2];
+            }
+          }
+        }
+      }
+    }
   }
 
   for (size_t i = 0; i < numPoints; i++) {
