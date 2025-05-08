@@ -4,6 +4,7 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <stddef.h>
+#include <stdint.h>
 
 // These types are used to bridge between the C++ API and C (to interop with Swift and C#).
 
@@ -13,8 +14,8 @@ typedef struct {
 } SpzFloatBuffer;
 
 typedef struct {
-  int numPoints;
-  int shDegree;
+  int32_t numPoints;
+  int32_t shDegree;
   bool antialiased;
   SpzFloatBuffer positions;
   SpzFloatBuffer scales;
