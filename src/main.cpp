@@ -49,17 +49,20 @@ int main(int argc, char* argv[]) {
     std::transform(input_extension.begin(), input_extension.end(), input_extension.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
+    // TODO: add options for coordinate changes and set po.from and upo.to accordingly.
+    spz::PackOptions po;
+    po.fast_rot_quantization = fast_rot_quantization;
+    spz::UnpackOptions upo;
+           
     if (input_extension == ".ply") {
         // Convert PLY to SPZ
-        spz::GaussianCloud cloud = spz::loadSplatFromPly(input_file, spz::UnpackOptions());
+        spz::GaussianCloud cloud = spz::loadSplatFromPly(input_file, upo);
         if (cloud.numPoints == 0) {
             std::cerr << "Failed to load GaussianCloud from " << input_file << "\n";
             return 1;
         }
         cloud.antialiased = antialiased;
 
-        spz::PackOptions po;
-        po.fast_rot_quantization = fast_rot_quantization;
         bool success = spz::saveSpz(cloud, po, output_file);
         if (!success) {
             std::cerr << "Failed to save GaussianCloud to " << output_file << "\n";
@@ -70,13 +73,13 @@ int main(int argc, char* argv[]) {
     }
     else if (input_extension == ".spz") {
         // Convert SPZ to PLY
-        spz::GaussianCloud cloud = spz::loadSpz(input_file, spz::UnpackOptions());
+        spz::GaussianCloud cloud = spz::loadSpz(input_file, upo);
         if (cloud.numPoints == 0) {
             std::cerr << "Failed to load GaussianCloud from " << input_file << "\n";
             return 1;
         }
 
-        bool success = spz::saveSplatToPly(cloud, spz::PackOptions(), output_file);
+        bool success = spz::saveSplatToPly(cloud, po, output_file);
         if (!success) {
             std::cerr << "Failed to save GaussianCloud to " << output_file << "\n";
             return 1;

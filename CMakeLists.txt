@@ -75,6 +75,7 @@ install(EXPORT spzTargets
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/spz"
 )
 
+# Add executable for converting .ply to .spz
 add_executable(spz_convert src/main.cpp)
   
 # Link the spz library
