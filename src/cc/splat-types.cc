@@ -67,11 +67,6 @@ Vec3f normalized(const Vec3f &v) {
   return {v[0] / n, v[1] / n, v[2] / n};
 }
 
-Quat4f normalized(const Quat4f &v) {
-  float norm = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
-  return {v[0] / norm, v[1] / norm, v[2] / norm, v[3] / norm};
-}
-
 float norm(const Quat4f &q) {
   return std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
 }
