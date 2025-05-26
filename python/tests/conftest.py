@@ -14,6 +14,18 @@ def sample_ply_path():
     return os.path.join(project_root, "samples", "splat.ply")
 
 
+@pytest.fixture
+def sample_spz_paths():
+    """Get paths to the sample SPZ files."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(current_dir))
+    samples_dir = os.path.join(project_root, "samples")
+    return {
+        "hornedlizard": os.path.join(samples_dir, "hornedlizard.spz"),
+        "racoonfamily": os.path.join(samples_dir, "racoonfamily.spz")
+    }
+
+
 def create_simple_ply(ply_path):
     """Create a simple PLY file with correct format for testing (degree 0 SH - no extra coefficients)."""
     # Create a minimal PLY file with 2 gaussians in degree 0 format (no spherical harmonics beyond DC)

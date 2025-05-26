@@ -81,10 +81,24 @@ pip install -e .
 
 ```bash
 # Basic conversion example
-python example.py input.ply output.spz
+python python/examples/example.py input.ply output.spz
 
 # Bidirectional conversion with integrity checking
-python example_bidirectional.py input.ply
+python python/examples/example_bidirectional.py input.ply
+```
+
+#### Testing
+
+Run the comprehensive test suite:
+
+```bash
+# Run all tests
+pytest python/tests/
+
+# Run specific test categories
+pytest python/tests/test_ply_to_spz.py      # PLY to SPZ conversion tests
+pytest python/tests/test_spz_to_ply.py      # SPZ to PLY conversion tests
+pytest python/tests/test_roundtrip.py       # Roundtrip integrity tests
 ```
 
 ### C++

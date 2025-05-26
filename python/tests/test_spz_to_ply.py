@@ -120,4 +120,34 @@ def test_spz_to_ply_simple_conversion():
         print(f"  Output PLY: {output_size:,} bytes")
         print(f"  Compression ratio: {ply_size/spz_size:.2f}x")
         
-        assert spz_size < ply_size, "SPZ should be smaller than original PLY" 
+        assert spz_size < ply_size, "SPZ should be smaller than original PLY"
+
+
+def test_spz_to_ply_real_samples(sample_spz_paths):
+    """Test SPZ to PLY conversion using real SPZ sample files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for sample_name, spz_path in sample_spz_paths.items():
+            if not os.path.exists(spz_path):
+                pytest.skip(f"Sample SPZ file {sample_name} not found")
+                continue
+            
+            output_ply_path = os.path.join(tmpdir, f"{sample_name}_converted.ply")
+            
+            # Convert SPZ to PLY
+            result = spz.spz_to_ply(spz_path, output_ply_path, coordinate_system="RDF")
+            assert result, f"SPZ to PLY conversion should succeed for {sample_name}"
+            
+            # Verify output
+            assert os.path.exists(output_ply_path), f"Output PLY file should be created for {sample_name}"
+            assert os.path.getsize(output_ply_path) > 0, f"Output PLY file should not be empty for {sample_name}"
+            
+            # Check file sizes
+            spz_size = os.path.getsize(spz_path)
+            ply_size = os.path.getsize(output_ply_path)
+            
+            print(f"Real sample {sample_name} conversion:")
+            print(f"  SPZ size: {spz_size:,} bytes ({spz_size/1024/1024:.1f} MB)")
+            print(f"  PLY size: {ply_size:,} bytes ({ply_size/1024/1024:.1f} MB)")
+            
+            # PLY should be larger than SPZ (decompression)
+            assert ply_size > spz_size, f"Decompressed PLY should be larger than SPZ for {sample_name}" 
