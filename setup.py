@@ -11,7 +11,7 @@ ext_modules = [
             "src/cc/load-spz.cc",
             "src/cc/splat-c-types.cc", 
             "src/cc/splat-types.cc",
-            "python/spz_bindings.cpp"
+            "python/spz/bindings/spz_bindings.cpp"
         ],
         include_dirs=[
             pybind11.get_cmake_dir() + "/../../../include",

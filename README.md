@@ -33,21 +33,34 @@ pip install spz
 
 #### Usage
 
+The SPZ Python package provides bidirectional conversion between PLY and SPZ formats:
+
 ```python
 import spz
 
-# Convert a PLY file to SPZ format
+# Convert a PLY file to SPZ format (compression)
 success = spz.ply_to_spz("input.ply", "output.spz", coordinate_system="RDF")
 if success:
-    print("Conversion successful!")
+    print("Compression successful!")
+
+# Convert an SPZ file back to PLY format (decompression)
+success = spz.spz_to_ply("input.spz", "output.ply", coordinate_system="RDF")
+if success:
+    print("Decompression successful!")
+
+# Roundtrip example: PLY → SPZ → PLY
+spz.ply_to_spz("original.ply", "compressed.spz", coordinate_system="RDF")
+spz.spz_to_ply("compressed.spz", "restored.ply", coordinate_system="RDF")
 ```
 
-The `coordinate_system` parameter specifies the coordinate system of the input PLY file:
-- `"RDF"` - Right Down Front (typical PLY format, default)
+**Coordinate Systems**: The `coordinate_system` parameter specifies the coordinate system:
+- `"RDF"` - Right Down Front (typical PLY format, **default**)
 - `"RUB"` - Right Up Back (Three.js/OpenGL format)
 - `"LUF"` - Left Up Front (GLB format)
 - `"RUF"` - Right Up Front (Unity format)
 - `"UNSPECIFIED"` - No coordinate conversion
+
+**Compression Performance**: SPZ typically achieves 10-15x compression ratios with minimal quality loss.
 
 #### Development Installation
 
@@ -64,11 +77,14 @@ pip install -r requirements-dev.txt
 pip install -e .
 ```
 
-#### Example
+#### Examples
 
 ```bash
-# Run the example script
+# Basic conversion example
 python example.py input.ply output.spz
+
+# Bidirectional conversion with integrity checking
+python example_bidirectional.py input.ply
 ```
 
 ### C++

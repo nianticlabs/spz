@@ -23,7 +23,7 @@ spz::CoordinateSystem stringToCoordinateSystem(const std::string& cs) {
     throw std::invalid_argument("Invalid coordinate system: " + cs);
 }
 
-// Main conversion function
+// PLY to SPZ conversion function
 bool ply_to_spz_impl(const std::string& ply_path, const std::string& spz_path, const std::string& coordinate_system) {
     // Validate coordinate system first (let invalid_argument exceptions propagate)
     spz::CoordinateSystem coord_sys = stringToCoordinateSystem(coordinate_system);
@@ -57,10 +57,48 @@ bool ply_to_spz_impl(const std::string& ply_path, const std::string& spz_path, c
     }
 }
 
+// SPZ to PLY conversion function
+bool spz_to_ply_impl(const std::string& spz_path, const std::string& ply_path, const std::string& coordinate_system) {
+    // Validate coordinate system first (let invalid_argument exceptions propagate)
+    spz::CoordinateSystem coord_sys = stringToCoordinateSystem(coordinate_system);
+    
+    try {
+        // Set up unpacking options (for loading SPZ)
+        spz::UnpackOptions unpack_options;
+        unpack_options.to = coord_sys;
+        
+        // Load the SPZ file
+        spz::GaussianCloud gaussians = spz::loadSpz(spz_path, unpack_options);
+        
+        if (gaussians.numPoints == 0) {
+            return false;  // Failed to load SPZ file
+        }
+        
+        // Set up packing options (for saving PLY)
+        spz::PackOptions pack_options;
+        pack_options.from = coord_sys;
+        
+        // Save as PLY
+        bool success = spz::saveSplatToPly(gaussians, pack_options, ply_path);
+        
+        return success;
+    } catch (const std::invalid_argument& e) {
+        // Re-throw coordinate system errors
+        throw;
+    } catch (const std::exception& e) {
+        // Other errors return false
+        return false;
+    }
+}
+
 PYBIND11_MODULE(_core, m) {
     m.doc() = "SPZ Python bindings for compressed 3D Gaussian splats";
     
     m.def("_ply_to_spz_impl", &ply_to_spz_impl, 
           "Convert PLY file to SPZ format",
           py::arg("ply_path"), py::arg("spz_path"), py::arg("coordinate_system"));
+    
+    m.def("_spz_to_ply_impl", &spz_to_ply_impl,
+          "Convert SPZ file to PLY format", 
+          py::arg("spz_path"), py::arg("ply_path"), py::arg("coordinate_system"));
 } 
