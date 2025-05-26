@@ -605,7 +605,12 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     in.close();
     return {};
   }
-  std::getline(in, line);
+  
+  // Skip comment lines until we find the element vertex line
+  do {
+    std::getline(in, line);
+  } while (line.find("comment ") == 0 && !in.eof());
+  
   if (line.find("element vertex ") != 0) {
     SpzLog("[SPZ ERROR] %s: missing vertex count", filename.c_str());
     in.close();
