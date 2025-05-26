@@ -23,6 +23,54 @@ be saved and loaded without conversion, which may harm interoperability.
 
 ## Implementations
 
+### Python
+
+Install via pip:
+
+```bash
+pip install spz
+```
+
+#### Usage
+
+```python
+import spz
+
+# Convert a PLY file to SPZ format
+success = spz.ply_to_spz("input.ply", "output.spz", coordinate_system="RDF")
+if success:
+    print("Conversion successful!")
+```
+
+The `coordinate_system` parameter specifies the coordinate system of the input PLY file:
+- `"RDF"` - Right Down Front (typical PLY format, default)
+- `"RUB"` - Right Up Back (Three.js/OpenGL format)
+- `"LUF"` - Left Up Front (GLB format)
+- `"RUF"` - Right Up Front (Unity format)
+- `"UNSPECIFIED"` - No coordinate conversion
+
+#### Development Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/niantic-labs/spz.git
+cd spz
+
+# Install in development mode
+pip install -e .
+
+# Or install development dependencies
+pip install -r requirements-dev.txt
+pip install -e .
+```
+
+#### Example
+
+```bash
+# Run the example script
+python example.py input.ply output.spz
+```
+
 ### C++
 
 Requires `libz` as the only dependent library, otherwise the code is completely self-contained.
