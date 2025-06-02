@@ -17,7 +17,7 @@ float halfToFloat(Half h) {
 
   if (exponent == 31) {
     // Infinity or NaN.
-    return mantissa != 0 ? std::numeric_limits<float>::quiet_NaN() : signMul * std::numeric_limits<float>::infinity();
+    return mantissa != 0 ? 0.0f / 0.0f : signMul * 1.0f / 0.0f;
   }
 
   // non-zero exponent implies 1 in the mantissa decimal.
