@@ -81,7 +81,7 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
         x,          // 12
         z,          // 13
         x,          // 14
-        // TODO: These are incorrect, need to be computed.
+        // TODO: These are incorrect, need to be computed for SH4 coeffs.
         1.0f,       // 15
         1.0f,       // 16
         1.0f,       // 17
