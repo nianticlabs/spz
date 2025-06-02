@@ -54,6 +54,9 @@ int32_t degreeForDim(int32_t dim) {
   if (dim < 25)
     return 3;
   return 4;
+  if (dim < 25)
+    return 3;
+  return 4;
 }
 
 int32_t dimForDegree(int32_t degree) {
@@ -66,6 +69,8 @@ int32_t dimForDegree(int32_t degree) {
       return 8;
     case 3:
       return 15;
+    case 4:
+      return 25;
     case 4:
       return 25;
     default:
