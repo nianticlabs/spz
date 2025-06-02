@@ -6,6 +6,17 @@
 
 namespace spz {
 
+// Number of SH coefficients for each degree
+constexpr int SH_COEFFS_DEGREE_0 = 0;
+constexpr int SH_COEFFS_DEGREE_1 = 3;
+constexpr int SH_COEFFS_DEGREE_2 = 8;
+constexpr int SH_COEFFS_DEGREE_3 = 15;
+constexpr int SH_COEFFS_DEGREE_4 = 25;
+
+// Maximum degree supported
+constexpr int SH_MAX_DEGREE = 4;
+constexpr int SH_MAX_COEFFS = 25;
+
 // Represents a single inflated gaussian. Each gaussian has 236 bytes. Although the data is easier
 // to intepret in this format, it is not more precise than the packed format, since it was inflated.
 struct UnpackedGaussian {
@@ -14,9 +25,9 @@ struct UnpackedGaussian {
   std::array<float, 3> scale;     // std::log(scale)
   std::array<float, 3> color;     // rgb sh0 encoding
   float alpha;                    // inverse logistic
-  std::array<float, 15> shR;
-  std::array<float, 15> shG;
-  std::array<float, 15> shB;
+  std::array<float, SH_MAX_COEFFS> shR;
+  std::array<float, SH_MAX_COEFFS> shG;
+  std::array<float, SH_MAX_COEFFS> shB;
 };
 
 // Represents a single low precision gaussian. Each gaussian has exactly 64 bytes, even if it does
@@ -27,9 +38,9 @@ struct PackedGaussian {
   std::array<uint8_t, 3> scale{};
   std::array<uint8_t, 3> color{};
   uint8_t alpha = 0;
-  std::array<uint8_t, 15> shR{};
-  std::array<uint8_t, 15> shG{};
-  std::array<uint8_t, 15> shB{};
+  std::array<uint8_t, SH_MAX_COEFFS> shR{};
+  std::array<uint8_t, SH_MAX_COEFFS> shG{};
+  std::array<uint8_t, SH_MAX_COEFFS> shB{};
 
   UnpackedGaussian unpack(bool usesFloat16, int fractionalBits) const;
 };

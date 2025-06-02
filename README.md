@@ -83,7 +83,7 @@ All values are little-endian.
 1. **magic**: This is always 0x5053474e
 2. **version**: Currently, the only valid version is 2
 3. **numPoints**: The number of gaussians
-4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 3 (inclusive).
+4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 4 (inclusive).
 5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
    the fixed-point encoding.
 6. **flags**: A bit field containing flags.
@@ -118,7 +118,7 @@ unsigned 8-bit integer.
 ### Spherical Harmonics
 
 Depending on the degree of spherical harmonics for the splat, this can contain 0 (for degree 0),
-9 (for degree 1), 24 (for degree 2), or 45 (for degree 3) coefficients per gaussian.
+9 (for degree 1), 24 (for degree 2), 45 (for degree 3), or 75 (for degree 4) coefficients per gaussian.
 
 The coefficients for a gaussian are organized such that the color channel is the inner (faster
 varying) axis, and the coefficient is the outer (slower varying) axis, i.e. for degree 1,
@@ -129,5 +129,5 @@ sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
 
 Each coefficient is represented as an 8-bit signed integer. Additional quantization can be performed
 to attain a higher compression ratio. This library currently uses 5 bits of precision for degree 0
-and 4 bits of precision for degrees 1 and 2, but this may be changed in the future without breaking
+and 4 bits of precision for degrees 1, 2 and 3, but this may be changed in the future without breaking
 backwards compatibility.

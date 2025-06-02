@@ -25,7 +25,7 @@ inline SpzFloatBuffer copyFloatBuffer(const std::vector<float> &vector) {
 //   - xyzw quaternion
 //   - alpha (before sigmoid activation, compute sigmoid(a) to get alpha value between 0 and 1)
 //   - rgb color (as SH DC component, compute 0.5 + 0.282095 * x to get color value between 0 and 1)
-//   - 0 to 45 spherical harmonics coefficients (see comment below)
+//   - 0 to 75 spherical harmonics coefficients (see comment below)
 struct GaussianCloud {
   // Total number of points (gaussians) in this splat.
   int numPoints = 0;
@@ -48,6 +48,7 @@ struct GaussianCloud {
   //   1 -> 9   (3 coeffs x 3 channels)
   //   2 -> 24  (8 coeffs x 3 channels)
   //   3 -> 45  (15 coeffs x 3 channels)
+  //   4 -> 75  (25 coeffs x 3 channels)
   // The color channel is the inner (fastest varying) axis, and the coefficient is the outer
   // (slower varying) axis, i.e. for degree 1, the order of the 9 values is:
   //   sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
