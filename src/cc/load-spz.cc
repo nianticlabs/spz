@@ -459,7 +459,6 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   return result;
 }
 
-
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) {
   PackedGaussiansHeader header = {
     .numPoints = static_cast<uint32_t>(packed.numPoints),
