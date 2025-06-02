@@ -36,8 +36,12 @@ enum class CoordinateSystem {
 struct CoordinateConverter {
   std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};  // x, y, z flips.
   std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};  // x, y, z flips, w is never flipped.
-  std::array<float, 15> flipSh =  // Flips for the 15 spherical harmonics coefficients.
-    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  std::array<float, 25> flipSh =  // Flips for the 25 spherical harmonics coefficients.
+    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 constexpr std::array<bool, 3> axesMatch(CoordinateSystem a, CoordinateSystem b) {
@@ -77,6 +81,17 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
         x,          // 12
         z,          // 13
         x,          // 14
+        // TODO: These are incorrect, need to be computed.
+        1.0f,       // 15
+        1.0f,       // 16
+        1.0f,       // 17
+        1.0f,       // 18
+        1.0f,       // 19
+        1.0f,       // 20
+        1.0f,       // 21
+        1.0f,       // 22
+        1.0f,       // 23
+        1.0f,       // 24
       },
   };
 }
