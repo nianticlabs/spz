@@ -143,7 +143,7 @@ unsigned 8-bit integer.
 ### Spherical Harmonics
 
 Depending on the degree of spherical harmonics for the splat, this can contain 0 (for degree 0),
-9 (for degree 1), 24 (for degree 2), 45 (for degree 3), or 75 (for degree 4) coefficients per gaussian.
+9 (for degree 1), 24 (for degree 2), 45 (for degree 3), or 72 (for degree 4) coefficients per gaussian.
 
 The coefficients for a gaussian are organized such that the color channel is the inner (faster
 varying) axis, and the coefficient is the outer (slower varying) axis, i.e. for degree 1,

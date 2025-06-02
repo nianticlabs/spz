@@ -51,7 +51,7 @@ int32_t degreeForDim(int32_t dim) {
     return 1;
   if (dim < 15)
     return 2;
-  if (dim < 25)
+  if (dim < 24)
     return 3;
   return 4;
 }
@@ -67,7 +67,7 @@ int32_t dimForDegree(int32_t degree) {
     case 3:
       return 15;
     case 4:
-      return 25;
+      return 24;
     default:
       SpzLog("[SPZ: ERROR] Unsupported SH degree: %d\n", degree);
       return 0;

@@ -10,7 +10,7 @@ namespace spz {
 
 // Maximum degree supported
 constexpr int SH_MAX_DEGREE = 4;
-constexpr int SH_MAX_COEFFS = 25;
+constexpr int SH_MAX_COEFFS = 24;
 
 // Represents a single inflated gaussian. Each gaussian has 236 bytes. Although the data is easier
 // to intepret in this format, it is not more precise than the packed format, since it was inflated.

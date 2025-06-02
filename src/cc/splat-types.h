@@ -36,12 +36,12 @@ enum class CoordinateSystem {
 struct CoordinateConverter {
   std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};  // x, y, z flips.
   std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};  // x, y, z flips, w is never flipped.
-  std::array<float, 25> flipSh =  // Flips for the 25 spherical harmonics coefficients.
+  std::array<float, 24> flipSh =  // Flips for the 24 spherical harmonics coefficients.
     {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
-    1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 constexpr std::array<bool, 3> axesMatch(CoordinateSystem a, CoordinateSystem b) {
@@ -91,7 +91,6 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
         1.0f,       // 21
         1.0f,       // 22
         1.0f,       // 23
-        1.0f,       // 24
       },
   };
 }
@@ -125,7 +124,7 @@ struct GaussianCloud {
   //   1 -> 9   (3 coeffs x 3 channels)
   //   2 -> 24  (8 coeffs x 3 channels)
   //   3 -> 45  (15 coeffs x 3 channels)
-  //   4 -> 75  (25 coeffs x 3 channels)
+  //   4 -> 72  (24 coeffs x 3 channels)
   // The color channel is the inner (fastest varying) axis, and the coefficient is the outer
   // (slower varying) axis, i.e. for degree 1, the order of the 9 values is:
   //   sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
