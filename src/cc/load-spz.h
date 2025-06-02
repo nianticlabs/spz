@@ -6,13 +6,6 @@
 
 namespace spz {
 
-// Number of SH coefficients for each degree
-constexpr int SH_COEFFS_DEGREE_0 = 0;
-constexpr int SH_COEFFS_DEGREE_1 = 3;
-constexpr int SH_COEFFS_DEGREE_2 = 8;
-constexpr int SH_COEFFS_DEGREE_3 = 15;
-constexpr int SH_COEFFS_DEGREE_4 = 25;
-
 // Maximum degree supported
 constexpr int SH_MAX_DEGREE = 4;
 constexpr int SH_MAX_COEFFS = 25;
