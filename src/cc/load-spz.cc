@@ -476,7 +476,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
     return {};
   }
-  if (header.shDegree > 4) {
+  if (header.shDegree > SH_MAX_DEGREE) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Unsupported SH degree: %d", header.shDegree);
     return {};
   }
