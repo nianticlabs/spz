@@ -1,7 +1,6 @@
 #include "splat-types.h"
 
 #include <cmath>
-#include <limits>
 
 namespace spz {
 
