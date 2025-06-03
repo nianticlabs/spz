@@ -23,6 +23,84 @@ be saved and loaded without conversion, which may harm interoperability.
 
 ## Implementations
 
+### Python
+
+Install via pip:
+
+```bash
+pip install spz
+```
+
+#### Usage
+
+The SPZ Python package provides bidirectional conversion between PLY and SPZ formats:
+
+```python
+import spz
+
+# Convert a PLY file to SPZ format (compression)
+success = spz.ply_to_spz("input.ply", "output.spz", coordinate_system="RDF")
+if success:
+    print("Compression successful!")
+
+# Convert an SPZ file back to PLY format (decompression)
+success = spz.spz_to_ply("input.spz", "output.ply", coordinate_system="RDF")
+if success:
+    print("Decompression successful!")
+
+# Roundtrip example: PLY → SPZ → PLY
+spz.ply_to_spz("original.ply", "compressed.spz", coordinate_system="RDF")
+spz.spz_to_ply("compressed.spz", "restored.ply", coordinate_system="RDF")
+```
+
+**Coordinate Systems**: The `coordinate_system` parameter specifies the coordinate system:
+- `"RDF"` - Right Down Front (typical PLY format, **default**)
+- `"RUB"` - Right Up Back (Three.js/OpenGL format)
+- `"LUF"` - Left Up Front (GLB format)
+- `"RUF"` - Right Up Front (Unity format)
+- `"UNSPECIFIED"` - No coordinate conversion
+
+**Compression Performance**: SPZ typically achieves 10-15x compression ratios with minimal quality loss.
+
+#### Development Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/niantic-labs/spz.git
+cd spz
+
+# Install in development mode
+pip install -e .
+
+# Or install development dependencies
+pip install -r requirements-dev.txt
+pip install -e .
+```
+
+#### Examples
+
+```bash
+# Basic conversion example
+python python/examples/example.py input.ply output.spz
+
+# Bidirectional conversion with integrity checking
+python python/examples/example_bidirectional.py input.ply
+```
+
+#### Testing
+
+Run the comprehensive test suite:
+
+```bash
+# Run all tests
+pytest python/tests/
+
+# Run specific test categories
+pytest python/tests/test_ply_to_spz.py      # PLY to SPZ conversion tests
+pytest python/tests/test_spz_to_ply.py      # SPZ to PLY conversion tests
+pytest python/tests/test_roundtrip.py       # Roundtrip integrity tests
+```
+
 ### C++
 
 Requires `libz` as the only dependent library, otherwise the code is completely self-contained.

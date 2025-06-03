@@ -1,0 +1,8 @@
+pybind11>=2.6.0
+numpy>=1.19.0
+pytest>=6.0
+black
+isort
+mypy
+build
+twine 
