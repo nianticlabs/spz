@@ -76,14 +76,35 @@ int32_t dimForDegree(int32_t degree) {
 
 uint8_t toUint8(float x) { return static_cast<uint8_t>(std::clamp(std::round(x), 0.0f, 255.0f)); }
 
-// Quantizes to 8 bits, the round to nearest bucket center. 0 always maps to a bucket center.
-uint8_t quantizeSH(float x, int32_t bucketSize) {
+// Quantizes to 8 bits using min/max scaling, then round to nearest bucket center. 0 always maps to a bucket center.
+uint8_t quantizeSH(float x, int32_t bucketSize, float minVal, float maxVal) {
+  if (maxVal <= minVal) {
+    return 128;  // Default to middle value if range is invalid
+  }
+  // Scale from [minVal, maxVal] to [0, 255]
+  float normalized = (x - minVal) / (maxVal - minVal);
+  int32_t q = static_cast<int>(std::round(normalized * 255.0f));
+  q = (q + bucketSize / 2) / bucketSize * bucketSize;
+  return static_cast<uint8_t>(std::clamp(q, 0, 255));
+}
+
+float unquantizeSH(uint8_t x, float minVal, float maxVal) {
+  if (maxVal <= minVal) {
+    return 0.0f;  // Default to 0 if range is invalid
+  }
+  // Scale from [0, 255] to [minVal, maxVal]
+  float normalized = static_cast<float>(x) / 255.0f;
+  return minVal + normalized * (maxVal - minVal);
+}
+
+// Legacy quantization functions for backward compatibility with older formats
+uint8_t quantizeSHLegacy(float x, int32_t bucketSize) {
   int32_t q = static_cast<int>(std::round(x * 128.0f) + 128.0f);
   q = (q + bucketSize / 2) / bucketSize * bucketSize;
   return static_cast<uint8_t>(std::clamp(q, 0, 255));
 }
 
-float unquantizeSH(uint8_t x) { return (static_cast<float>(x) - 128.0f) / 128.0f; }
+float unquantizeSHLegacy(uint8_t x) { return (static_cast<float>(x) - 128.0f) / 128.0f; }
 
 float sigmoid(float x) { return 1 / (1 + std::exp(-x)); }
 
@@ -133,12 +154,16 @@ constexpr uint8_t FlagAntialiased = 0x1;
 
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
-  uint32_t version = 2;
+  uint32_t version = 3;
   uint32_t numPoints = 0;
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
   uint8_t flags = 0;
+  uint8_t sh1Bits = 5;        // Bits for SH degree 1 coefficients
+  uint8_t shRestBits = 4;     // Bits for SH degree 2+ coefficients
   uint8_t reserved = 0;
+  float shMin = -1.0f;        // Minimum SH coefficient value for quantization
+  float shMax = 1.0f;         // Maximum SH coefficient value for quantization
 };
 
 bool decompressGzippedImpl(
@@ -220,6 +245,14 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (!checkSizes(g)) {
     return {};
   }
+  
+  // Validate SH quantization bit parameters
+  if (o.sh1Bits > 8 || o.shRestBits > 8) {
+    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)", 
+           o.sh1Bits, o.shRestBits);
+    return {};
+  }
+  
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
@@ -231,7 +264,25 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     .shDegree = g.shDegree,
     .fractionalBits = 12,
     .antialiased = g.antialiased,
+    .sh1Bits = o.sh1Bits,
+    .shRestBits = o.shRestBits,
   };
+
+  // Compute min/max of SH coefficients for optimal quantization
+  if (g.shDegree > 0 && !g.sh.empty()) {
+    float minSH = *std::min_element(g.sh.begin(), g.sh.end());
+    float maxSH = *std::max_element(g.sh.begin(), g.sh.end());
+    
+    // Ensure we have a valid range
+    if (maxSH <= minSH) {
+      minSH = -1.0f;
+      maxSH = 1.0f;
+    }
+    
+    packed.shMin = minSH;
+    packed.shMax = maxSH;
+  }
+
   packed.positions.resize(numPoints * 3 * 3);
   packed.scales.resize(numPoints * 3);
   packed.rotations.resize(numPoints * 3);
@@ -278,22 +329,19 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
 
   if (g.shDegree > 0) {
-    // Spherical harmonics quantization parameters. The data format uses 8 bits per coefficient, but
-    // when packing, we can quantize to fewer bits for better compression.
-    constexpr int32_t sh1Bits = 5;
-    constexpr int32_t shRestBits = 4;
+    // Use configurable spherical harmonics quantization parameters
     const int32_t shPerPoint = dimForDegree(g.shDegree) * 3;
     for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
       size_t j = 0, k = 0;
       for (; j < 9; j += 3, k++) {  // There are 9 (3 * 3) coefficients for degree 1
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - sh1Bits));
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - sh1Bits));
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - sh1Bits));
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - packed.sh1Bits), packed.shMin, packed.shMax);
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - packed.sh1Bits), packed.shMin, packed.shMax);
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - packed.sh1Bits), packed.shMin, packed.shMax);
       }
       for (; j < shPerPoint; j += 3, k++) {
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - shRestBits));
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - shRestBits));
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - shRestBits));
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - packed.shRestBits), packed.shMin, packed.shMax);
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - packed.shRestBits), packed.shMin, packed.shMax);
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - packed.shRestBits), packed.shMin, packed.shMax);
       }
     }
   }
@@ -302,7 +350,8 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 }
 
 UnpackedGaussian PackedGaussian::unpack(
-  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c) const {
+  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c, 
+  float shMin, float shMax) const {
   UnpackedGaussian result;
   if (usesFloat16) {
     // Decode legacy float16 format. We can remove this at some point as it was never released.
@@ -345,9 +394,17 @@ UnpackedGaussian PackedGaussian::unpack(
   }
 
   for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
-    result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i]);
-    result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i]);
-    result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i]);
+    if (shMin == -1.0f && shMax == 1.0f) {
+      // Use legacy unquantization for backward compatibility
+      result.shR[i] = c.flipSh[i] * unquantizeSHLegacy(shR[i]);
+      result.shG[i] = c.flipSh[i] * unquantizeSHLegacy(shG[i]);
+      result.shB[i] = c.flipSh[i] * unquantizeSHLegacy(shB[i]);
+    } else {
+      // Use new min/max scaled unquantization
+      result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i], shMin, shMax);
+      result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i], shMin, shMax);
+      result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i], shMin, shMax);
+    }
   }
 
   return result;
@@ -381,7 +438,7 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
 }
 
 UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c) const {
-  return at(i).unpack(usesFloat16(), fractionalBits, c);
+  return at(i).unpack(usesFloat16(), fractionalBits, c, shMin, shMax);
 }
 
 bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }
@@ -449,7 +506,13 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   }
 
   for (size_t i = 0; i < packed.sh.size(); i++) {
-    result.sh[i] = unquantizeSH(packed.sh[i]);
+    if (packed.shMin == -1.0f && packed.shMax == 1.0f) {
+      // Use legacy unquantization for backward compatibility
+      result.sh[i] = unquantizeSHLegacy(packed.sh[i]);
+    } else {
+      // Use new min/max scaled unquantization
+      result.sh[i] = unquantizeSH(packed.sh[i], packed.shMin, packed.shMax);
+    }
   }
 
   result.convertCoordinates(CoordinateSystem::RUB, o.to);
@@ -462,6 +525,10 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
     .shDegree = static_cast<uint8_t>(packed.shDegree),
     .fractionalBits = static_cast<uint8_t>(packed.fractionalBits),
     .flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0),
+    .sh1Bits = packed.sh1Bits,
+    .shRestBits = packed.shRestBits,
+    .shMin = packed.shMin,
+    .shMax = packed.shMax,
   };
   out->write(reinterpret_cast<const char *>(&header), sizeof(header));
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
@@ -481,7 +548,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (header.version < 1 || header.version > 2) {
+  if (header.version < 1 || header.version > 3) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
@@ -496,11 +563,34 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
+  
   PackedGaussians result = {
     .numPoints = numPoints,
     .shDegree = header.shDegree,
     .fractionalBits = header.fractionalBits,
-    .antialiased = (header.flags & FlagAntialiased) != 0};
+    .antialiased = (header.flags & FlagAntialiased) != 0,
+  };
+  
+  // Handle SH quantization parameters based on version
+  if (header.version >= 3) {
+    // Validate SH quantization bit parameters
+    if (header.sh1Bits > 8 || header.shRestBits > 8) {
+      SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)", 
+             header.sh1Bits, header.shRestBits);
+      return {};
+    }
+    result.sh1Bits = header.sh1Bits;
+    result.shRestBits = header.shRestBits;
+    result.shMin = header.shMin;
+    result.shMax = header.shMax;
+  } else {
+    // Use legacy defaults for older versions
+    result.sh1Bits = 5;
+    result.shRestBits = 4;
+    result.shMin = -1.0f;
+    result.shMax = 1.0f;
+  }
+  
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 3);

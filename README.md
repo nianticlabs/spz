@@ -21,6 +21,16 @@ and what coordinate system their rendering system uses when loading. These are s
 PackOptions and UnpackOptions respectively.  If the coordinate system is `UNSPECIFIED`, data will
 be saved and loaded without conversion, which may harm interoperability.
 
+### Spherical Harmonics Quantization
+
+Starting with version 3, SPZ supports configurable spherical harmonics quantization with the following improvements:
+
+1. **Adaptive Range Scaling**: Instead of assuming SH coefficients are in the [-1, 1] range, the format now computes the actual min/max values from the data and uses the full quantization range for optimal precision.
+
+2. **Configurable Bit Precision**: The number of quantization bits for SH degree 1 and higher degree coefficients can be configured (1-8 bits), allowing users to trade off between file size and quality.
+
+3. **Backward Compatibility**: The library maintains full backward compatibility with versions 1 and 2, automatically detecting and using legacy quantization methods for older files.
+
 ## Implementations
 
 ### C++
@@ -38,7 +48,7 @@ bool saveSpz(
 Converts a cloud of Gaussians in `.spz` format to a vector of bytes.
 
    - `gaussians`: The Gaussians to save
-   - `options`: Flags that control the packing behavior.
+   - `options`: Flags that control the packing behavior, including SH quantization parameters.
    - `output`: A vector that will be populated with bytes encoded in .spz format
    - Returns true on success and false on failure.
 
@@ -53,7 +63,7 @@ bool saveSpz(
 Saves a cloud of Gaussians in `.spz` format to a file
 
    - `gaussians`: The Gaussians to save
-   - `options`: Flags that control the packing behavior.
+   - `options`: Flags that control the packing behavior, including SH quantization parameters.
    - `filename`: The path to the file to save to.
    - Returns true on success and false on failure.
 
@@ -84,14 +94,40 @@ Loads a cloud of Gaussians from a file in `.spz` format.
    - Returns a `GaussianCloud` decoded from the file. In case of an error, this will return
      a result with no gaussians
 
+### PackOptions
+
+The `PackOptions` struct supports the following fields:
+
+- `from`: Source coordinate system (default: `UNSPECIFIED`)
+- `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
+- `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
+
 ## File Format
 
-The .spz format is a gzipped stream of data consisting of a 16-byte header followed by the
+The .spz format is a gzipped stream of data consisting of a variable-size header followed by the
 gaussian data. This data is organized by attribute in the following order: positions,
 alphas, colors, scales, rotations, spherical harmonics.
 
 ### Header
 
+**Version 3 (current):**
+```c
+struct PackedGaussiansHeader {
+  uint32_t magic;
+  uint32_t version;
+  uint32_t numPoints;
+  uint8_t shDegree;
+  uint8_t fractionalBits;
+  uint8_t flags;
+  uint8_t sh1Bits;        // Bits for SH degree 1 coefficients
+  uint8_t shRestBits;     // Bits for SH degree 2+ coefficients  
+  uint8_t reserved;
+  float shMin;            // Minimum SH coefficient value for quantization
+  float shMax;            // Maximum SH coefficient value for quantization
+};
+```
+
+**Version 2 (legacy):**
 ```c
 struct PackedGaussiansHeader {
   uint32_t magic;
@@ -107,14 +143,18 @@ struct PackedGaussiansHeader {
 All values are little-endian.
 
 1. **magic**: This is always 0x5053474e
-2. **version**: Currently, the only valid version is 2
+2. **version**: Currently supported versions are 1, 2, and 3
 3. **numPoints**: The number of gaussians
 4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 4 (inclusive).
 5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
    the fixed-point encoding.
 6. **flags**: A bit field containing flags.
    - `0x1`: whether the splat was trained with [antialiasing](https://niujinshuchong.github.io/mip-splatting/).
-7. **reserved**: Reserved for future use. Must be 0.
+7. **sh1Bits** (v3+): Number of quantization bits for SH degree 1 coefficients (1-8).
+8. **shRestBits** (v3+): Number of quantization bits for SH degree 2+ coefficients (1-8).
+9. **shMin** (v3+): Minimum SH coefficient value used for quantization scaling.
+10. **shMax** (v3+): Maximum SH coefficient value used for quantization scaling.
+11. **reserved**: Reserved for future use. Must be 0.
 
 ### Positions
 
@@ -153,7 +193,14 @@ the order of the 9 values is:
 sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
 ```
 
-Each coefficient is represented as an 8-bit signed integer. Additional quantization can be performed
-to attain a higher compression ratio. This library currently uses 5 bits of precision for degree 0
-and 4 bits of precision for degrees 1, 2 and 3, but this may be changed in the future without breaking
-backwards compatibility.
+Each coefficient is represented as an 8-bit signed integer. 
+
+**Version 3 Quantization (current):**
+- Uses adaptive min/max scaling based on the actual range of SH coefficients in the data
+- Configurable quantization bits for degree 1 (default: 5 bits) and higher degrees (default: 4 bits)
+- Stores quantization parameters in the file header for accurate reconstruction
+
+**Legacy Quantization (versions 1-2):**
+- Assumes SH coefficients are in the [-1, 1] range
+- Fixed 5 bits of precision for degree 1 and 4 bits for degrees 2, 3, and 4
+- Maintained for backward compatibility
