@@ -81,16 +81,17 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
         x,          // 12
         z,          // 13
         x,          // 14
-        // TODO: These are incorrect, need to be computed for SH4 coeffs.
-        1.0f,       // 15
-        1.0f,       // 16
-        1.0f,       // 17
-        1.0f,       // 18
+        // Used https://github.com/nerfstudio-project/gsplat/blob/main/gsplat/cuda/csrc/SphericalHarmonicsCUDA.cu
+        // to compute these values.
+        x * y,      // 15
+        y * z,      // 16
+        x * y,      // 17
+        y * z,      // 18
         1.0f,       // 19
-        1.0f,       // 20
+        x * z,      // 20
         1.0f,       // 21
-        1.0f,       // 22
-        1.0f,       // 23
+        x * z,      // 22
+        y,          // 23
       },
   };
 }
