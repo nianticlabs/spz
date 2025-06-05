@@ -51,7 +51,9 @@ int32_t degreeForDim(int32_t dim) {
     return 1;
   if (dim < 15)
     return 2;
-  return 3;
+  if (dim < 24)
+    return 3;
+  return 4;
 }
 
 int32_t dimForDegree(int32_t degree) {
@@ -64,6 +66,8 @@ int32_t dimForDegree(int32_t degree) {
       return 8;
     case 3:
       return 15;
+    case 4:
+      return 24;
     default:
       SpzLog("[SPZ: ERROR] Unsupported SH degree: %d\n", degree);
       return 0;
@@ -105,7 +109,7 @@ size_t countBytes(std::vector<T> vec) {
 bool checkSizes(const GaussianCloud &g) {
   CHECK_GE(g.numPoints, 0);
   CHECK_GE(g.shDegree, 0);
-  CHECK_LE(g.shDegree, 3);
+  CHECK_LE(g.shDegree, SH_MAX_DEGREE);
   CHECK_EQ(g.positions.size(), g.numPoints * 3);
   CHECK_EQ(g.scales.size(), g.numPoints * 3);
   CHECK_EQ(g.rotations.size(), g.numPoints * 4);
@@ -340,7 +344,7 @@ UnpackedGaussian PackedGaussian::unpack(
     result.color[i] = ((color[i] / 255.0f) - 0.5f) / colorScale;
   }
 
-  for (size_t i = 0; i < 15; i++) {
+  for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
     result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i]);
     result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i]);
     result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i]);
@@ -367,7 +371,7 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
     result.shG[j] = sh[1];
     result.shB[j] = sh[2];
   }
-  for (int32_t j = shDim; j < 15; ++j) {
+  for (int32_t j = shDim; j < SH_MAX_COEFFS; ++j) {
     result.shR[j] = 128;
     result.shG[j] = 128;
     result.shB[j] = 128;
@@ -485,7 +489,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
     return {};
   }
-  if (header.shDegree > 3) {
+  if (header.shDegree > SH_MAX_DEGREE) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Unsupported SH degree: %d", header.shDegree);
     return {};
   }

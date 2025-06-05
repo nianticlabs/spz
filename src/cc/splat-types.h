@@ -36,8 +36,12 @@ enum class CoordinateSystem {
 struct CoordinateConverter {
   std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};  // x, y, z flips.
   std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};  // x, y, z flips, w is never flipped.
-  std::array<float, 15> flipSh =  // Flips for the 15 spherical harmonics coefficients.
-    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  std::array<float, 24> flipSh =  // Flips for the 24 spherical harmonics coefficients.
+    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 constexpr std::array<bool, 3> axesMatch(CoordinateSystem a, CoordinateSystem b) {
@@ -77,6 +81,17 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
         x,          // 12
         z,          // 13
         x,          // 14
+        // Used https://github.com/nerfstudio-project/gsplat/blob/main/gsplat/cuda/csrc/SphericalHarmonicsCUDA.cu
+        // to compute these values.
+        x * y,      // 15
+        y * z,      // 16
+        x * y,      // 17
+        y * z,      // 18
+        1.0f,       // 19
+        x * z,      // 20
+        1.0f,       // 21
+        x * z,      // 22
+        y,          // 23
       },
   };
 }
@@ -87,7 +102,7 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
 //   - xyzw quaternion
 //   - alpha (before sigmoid activation, compute sigmoid(a) to get alpha value between 0 and 1)
 //   - rgb color (as SH DC component, compute 0.5 + 0.282095 * x to get color value between 0 and 1)
-//   - 0 to 45 spherical harmonics coefficients (see comment below)
+//   - 0 to 75 spherical harmonics coefficients (see comment below)
 struct GaussianCloud {
   // Total number of points (gaussians) in this splat.
   int32_t numPoints = 0;
@@ -110,6 +125,7 @@ struct GaussianCloud {
   //   1 -> 9   (3 coeffs x 3 channels)
   //   2 -> 24  (8 coeffs x 3 channels)
   //   3 -> 45  (15 coeffs x 3 channels)
+  //   4 -> 72  (24 coeffs x 3 channels)
   // The color channel is the inner (fastest varying) axis, and the coefficient is the outer
   // (slower varying) axis, i.e. for degree 1, the order of the 9 values is:
   //   sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
@@ -197,7 +213,10 @@ float norm(const Vec3f &a);
 
 // Quaternion helpers.
 float norm(const Quat4f &q);
-Quat4f normalized(const Quat4f &v);
+constexpr Quat4f normalized(const Quat4f &v) {
+  float norm = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+  return {v[0] / norm, v[1] / norm, v[2] / norm, v[3] / norm};
+}
 Quat4f axisAngleQuat(const Vec3f &scaledAxis);
 
 // Constexpr helpers.
