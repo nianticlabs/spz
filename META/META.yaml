@@ -1,0 +1,15 @@
+mb:
+  disabled_archs: "arm32,x86"
+  disabled_configs: "Coverage"
+  policy: "//policy:spz_policy"
+  c_version: "17"
+  cxx_version: "17"
+
+xcode:
+  deployment_target: "11.0"
+
+pybind11:
+  version: "3.0.23"
+
+zlib:
+  version: "1.1.22"

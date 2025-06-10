@@ -1,0 +1,12 @@
+# Manifest file. This keeps track of things that need to be synced with artifactory.
+manifest: "unit_test_files_manifest.txt"
+# path to folder where source files are, *relative to tiny.yaml*. Make sure this folder is gitignored so you don't accidentally check in binaries into git
+data_dir: "./../data"
+
+# The artifactory repo URL
+# See these links if you need to create your own artifactory repo:
+# * https://git.corp.adobe.com/lagrange/tiny/tree/6ceba3a3b63aa63b5d90fe29aca7146d4308d49f#artifactory-repository
+# * https://git.corp.adobe.com/lagrange/tiny/tree/6ceba3a3b63aa63b5d90fe29aca7146d4308d49f#artifactory-repository-permissions
+# * Make sure your ARTIFACTORY_API_KEY environment variable is set up
+# * Make sure the Jenkins account is used for your builds(e.g. 's3dibot', '') has read access to your artifactory repo
+repo_url: "https://artifactory.corp.adobe.com/artifactory/generic-3di-ml-release/neural_assets"

@@ -1,0 +1,120 @@
+[build-system]
+# These are the build dependencies
+requires = [
+    "setuptools>=62",
+    "setuptools_scm[toml]>=6.2",
+    "wheel",
+    "metabuild @ git+ssh://git@git.corp.adobe.com/meta-build/meta-build.git@2.9.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spz"
+authors = [
+    {name = "Raymond Fei", email = "yfei@adobe.com"},
+    {name = "Skylar Wurster", email = "swurster@adobe.com"}
+]
+description = "SPZ source code and python bindings."
+readme = "README.md"
+license = {text = "Proprietary"}
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: Proprietary",
+    "Operating System :: OS Independent",
+    "Private :: Internal Use Only"  # Prevents accidentally publishing to public pypi - pypi won't accept "unknown" classifiers
+]
+# All the packages that your code depends on to run
+# Note that development dependencies should go into the conda yaml file.
+# For deps like boa_toolkit that reside in private repos, you still need
+# to install them manually in conda.yaml, putting them here, just checks
+# that the package is installed already
+dependencies = [
+    "numpy",
+    "pathlib",
+    "boa_toolkit>=3.2.0,==3.2.*",
+]
+dynamic = ["version"]
+
+[tool.setuptools_scm]
+write_to = "version.py"
+
+[project.optional-dependencies]
+tests = [
+    "coverage[toml]==5.3",
+    "pylint==2.14",
+    "black==22.1.0",
+    "unittest-xml-reporting",
+    "lxml",
+]
+
+[project.urls]
+repository = "https://git.corp.adobe.com/AdobeShared/python-scaffold"
+
+[project.scripts]
+spz = "spz.commands.main:main_cmd"
+
+[tool.setuptools.packages.find]
+include = ["spz", "spz.*"]
+
+[tool.setuptools.package-data]
+"spz" = ["*.so", "*.pyd", "*.pyi", "py.typed"]
+
+[tool.black]
+line_length = 160
+
+# ===========================[ ISORT ]========================
+
+[tool.isort]
+line_length = 160
+profile = "black"
+# if need to skip something
+# skip = [ ]
+
+# ===========================[ COVERAGE ]========================
+
+[tool.coverage.run]
+branch = true
+data_file = '.coverage/coverage'
+parallel = true
+command_line = './tests/main.py'
+source = [
+        'spz/',
+]
+# if skip needed
+# omit = []
+
+[tool.coverage.paths]
+source = [
+        'spz/',
+]
+
+# ===========================[ PYLINT ]========================
+[tool.pylint.MASTER]
+# If folders need to be ignored add them here.
+# (e.g. pylint complains about the dynamically created version.py file having a lowercase constant `version`)
+ignore = [
+  'version.py',
+]
+
+[tool.pylint.TYPECHECK]
+# Tell pylint about dynamically loaded members from C extensions
+generated-members = [
+  ".*spz.*",
+]
+
+[tool.pylint.FORMAT]
+max-line-length = 160
+
+[tool.pylint.'MESSAGES CONTROL']
+disable=[
+    'missing-module-docstring',
+    'missing-class-docstring',
+    'missing-function-docstring',
+    'line-too-long',
+    'too-many-instance-attributes',
+    'too-many-arguments',
+    'too-few-public-methods',
+    'too-many-branches',
+    'duplicate-code',
+]
