@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from plyfile import PlyData
 
-import spz  # pylint: disable=consider-using-from-import
+import spz
 
 
 def _extract_positions(vertex_data, num_points, reinterpret_dtype: str = "float32", cast_dtype: str = "float32"):

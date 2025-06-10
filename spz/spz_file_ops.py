@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
-import spz # pylint: disable=consider-using-from-import
+import spz
 
 
 def read_spz_to_gaussian_cloud(filename: Path, coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED) -> spz.GaussianCloud:  # pylint: disable=no-member
