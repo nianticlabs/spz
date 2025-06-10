@@ -1,6 +1,6 @@
 import metabuild.public as mb
 
-mb.set_project_name('spz')
+mb.set_project_name("spz")
 
 
 def on_http_request_callback(ctx):
@@ -13,9 +13,9 @@ mb.meta_policy(
 )
 
 # build directory will be .build by default, in repo root.
-mb.set_output_directory('$(project_root)/../build_mb')
+mb.set_output_directory("$(project_root)/../build_mb")
 
-mb.import_rules('//deps')
+mb.import_rules("//deps")
 
 mb.cxx_library(
     name="universe_flags",
@@ -24,9 +24,9 @@ mb.cxx_library(
 
 # group(name = 'spz', deps='//components/spz:spz')
 mb.group(
-    name = 'main',
+    name = "main",
     deps = [
-        (mb.target.windows, '//spz:spz_bindings_pyd'),
-        (~mb.target.windows, '//spz:spz_bindings_so'),
+        (mb.target.windows, "//spz:spz_bindings_pyd"),
+        (~mb.target.windows, "//spz:spz_bindings_so"),
     ]
 )

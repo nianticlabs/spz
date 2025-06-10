@@ -94,7 +94,7 @@ def main():
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs, output=xml_out, stream=UnitTestStream())
 
-    unit_test_config = dict(
+    unit_test_config = dict( # noqa: C408
         failfast=False,
         buffer=False,
         catchbreak=False,

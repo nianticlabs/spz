@@ -5,8 +5,8 @@ which handles sparse point-cloud compression and decompression.
 """
 
 try:
-    from .spz_bindings import *  # type: ignore[misc]
+    from .spz_bindings import *  # noqa: F403
 except ImportError as e:
     # The C++ extension might not be built yet
     import warnings
-    warnings.warn(f"SPZ bindings not available: {e}")
+    warnings.warn(f"SPZ bindings not available: {e}", stacklevel=1)

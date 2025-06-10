@@ -23,11 +23,11 @@ def gaussian_cloud_to_spz_file(
 ) -> Path:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
-    setattr(pack_options, "sh1Bits", sh1_bits)
-    setattr(pack_options, "shRestBits", sh_rest_bits)
+    pack_options.sh1Bits = sh1_bits
+    pack_options.shRestBits = sh_rest_bits
     if disable_sh_min_max_scaling and len(gaussian_cloud.sh) > 0:
         # artificially set the first two sh coefficients to -1 and 1 so the minmax scaler doesn't do anything
-        gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()
+        gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
         if np.min(gaussian_cloud.sh) > -1.0:
             gaussian_cloud.sh[0] = -1.0
         if np.max(gaussian_cloud.sh) < 1.0:
@@ -45,10 +45,10 @@ def gaussian_cloud_to_spz_buffer(
 ) -> bytes:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
-    setattr(pack_options, "sh1Bits", sh1_bits)
-    setattr(pack_options, "shRestBits", sh_rest_bits)
+    pack_options.sh1Bits = sh1_bits
+    pack_options.shRestBits = sh_rest_bits
     if disable_sh_min_max_scaling and len(gaussian_cloud.sh) > 0:
-        gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()
+        gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
         # artificially set the first two sh coefficients to -1 and 1 so the minmax scaler doesn't do anything
         if np.min(gaussian_cloud.sh) > -1.0:
             gaussian_cloud.sh[0] = -1.0

@@ -36,32 +36,27 @@ def setupCondaEnvironment(venv_name, profile) {
 def lintPython(venv_name) {
 
     def linter_failures = []
-
     try {
-    runInConda(name: venv_name, script: "python ./tools/lint.py pylint")
-    } catch (e) {
-    linter_failures.add("Running pylint")
+        runInConda(name: venv_name, script: "python ./tools/lint.py ruff --verbose")
+    } catch (Exception e) {
+        echo "Got exception: pylint ${e}"
+        linter_failures.add("Running ruff")
     }
 
     try {
-        runInConda(name: venv_name, script: "python ./tools/lint.py isort --check")
-    } catch (e) {
-        linter_failures.add("Running isort")
-    }
-
-    try {
-    runInConda(name: venv_name, script: "python ./tools/lint.py black --check")
-    } catch (e) {
-    linter_failures.add("Running black")
+        runInConda(name: venv_name, script: "python ./tools/lint.py mypy --verbose")
+    } catch (Exception e) {
+        echo "Got exception: mypy ${e}"
+        linter_failures.add("Running mypy")
     }
 
     if (!linter_failures.isEmpty()) {
-    String msg = "The following linter phases have failed\n"
-    for (String m in linter_failures) {
+        String msg = "The following linter phases have failed\n"
+        for (String m in linter_failures) {
         msg = msg + m + "\n"
-    }
-    msg = msg + "To see the faulty files, see the corresponding section of each linter phase.\n"
-    error(msg)
+        }
+        msg = msg + "To see the faulty files, see the corresponding section of each linter phase.\n"
+        error(msg)
     }
 }
 

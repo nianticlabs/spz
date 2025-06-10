@@ -1,8 +1,8 @@
 import numpy as np
 
+from spz import GaussianCloud  # pylint: disable=no-name-in-module
 from spz.ply_file_ops import gaussian_cloud_to_ply_file, read_ply_to_gaussian_cloud
 from spz.spz_test_case import SpzTestCase
-from spz import GaussianCloud  # pylint: disable=no-name-in-module
 
 
 def _assert_gaussian_cloud_equal(test_case: SpzTestCase, gaussian_cloud1: GaussianCloud, gaussian_cloud2: GaussianCloud):

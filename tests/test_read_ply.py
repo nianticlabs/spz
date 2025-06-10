@@ -1,6 +1,6 @@
+from spz import GaussianCloud  # pylint: disable=no-name-in-module
 from spz.ply_file_ops import read_ply_to_gaussian_cloud
 from spz.spz_test_case import SpzTestCase
-from spz import GaussianCloud  # pylint: disable=no-name-in-module
 
 
 def _assert_gaussian_cloud_correct_size(test_case: SpzTestCase, gaussian_cloud1: GaussianCloud, num_splats: int, sh_degree: int):
