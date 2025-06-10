@@ -47,6 +47,7 @@ tests = [
     "black==22.1.0",
     "unittest-xml-reporting",
     "lxml",
+    "tiny",
 ]
 
 [project.urls]

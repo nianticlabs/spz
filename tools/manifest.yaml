@@ -1,5 +1,5 @@
 # Manifest file. This keeps track of things that need to be synced with artifactory.
-manifest: "unit_test_files_manifest.txt"
+manifest: "manifest_files.txt"
 # path to folder where source files are, *relative to tiny.yaml*. Make sure this folder is gitignored so you don't accidentally check in binaries into git
 data_dir: "./../data"
 

@@ -4,20 +4,6 @@ from spz.spz_test_case import SpzTestCase
 
 
 class TestDataDownload(SpzTestCase):
-    def test_downloaded_npz(self):
-        ut_file = self.input_test_path() / "npz/v0.4/Furry_Toy_2.npz"
-        sha_file = self.file_sha256(ut_file)
-        self.assertEqual(sha_file, "1ec24f805130fef5807f8f91f5ae7fb7dd699276ce3a853a9c3746ee7c411d2f")
-
-    def test_downloaded_gltf(self):
-        ut_file = self.input_test_path() / "gltf/v0.4/Furry_Toy_2.gltf"
-        sha_file = self.file_sha256(ut_file)
-        self.assertEqual(sha_file, "305c5b7a33c4be31e33f1c554ae6e27cf533a6f7c1636d767cec422d34a5454d")
-
-    def test_downloaded_usdc(self):
-        ut_file = self.input_test_path() / "usdc/v0.4/Furry_Toy_2.usdc"
-        sha_file = self.file_sha256(ut_file)
-        self.assertEqual(sha_file, "95d7319f9d05cfc1f7eaa0f3c9f60283b259674763fd3fe9f582ca092592049f")
 
     def test_downloaded_gs_f16(self):
         ut_file = self.input_test_path() / "ply/Furry_Toy_2_sh3_float16.ply"

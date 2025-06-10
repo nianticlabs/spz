@@ -24,7 +24,7 @@ def _assert_gaussian_cloud_equal(test_case: SpzTestCase, gaussian_cloud1: Gaussi
     test_case.assertTrue(np.allclose(gaussian_cloud1.sh, gaussian_cloud2.sh, atol=1e-3))
 
 
-class TestPly(NeuralAssetsTestCase):
+class TestPly(SpzTestCase):
     def test_write_ply_float32_sh3(self):
         gt_file = self.input_test_path() / "ply/shoe_sh3_float32.ply"
         gaussian_cloud = read_ply_to_gaussian_cloud(gt_file)

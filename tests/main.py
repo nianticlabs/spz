@@ -45,7 +45,7 @@ def write_xml_test_report(path, content):
 
 
 def main():
-    parser = argparse.ArgumentParser("neural_assets test runner")
+    parser = argparse.ArgumentParser("spz test runner")
     parser.add_argument(
         "--no-discover",
         "-n",
