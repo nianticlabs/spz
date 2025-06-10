@@ -636,7 +636,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     result.shMax = header.shMax;
   } else {
     // Use legacy defaults for older versions
-    SpzLog("[SPZ WARNING] deserializePackedGaussians: loaded SPZ version is out of date: %d, please upgrade to version 3 or later", header.version);
+    SpzLog("[SPZ WARNING] deserializePackedGaussians: loaded SPZ version %d is out of date", header.version);
     result.sh1Bits = 5;
     result.shRestBits = 4;
     result.shMin = -1.0f;
