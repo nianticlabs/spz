@@ -27,8 +27,15 @@ def zap_venv = true
 // Please be mindful of the limited resources on Jenkins when setting the timeout and issuing retries for jobs.
 // If you need to replay a job on only one platform, please comment the other platforms out for the replay to conserve build resources
 def profiles = [
-  [host:'mac', name: 'MacOS', label: 'Xcode_16_0', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0')],
-  [host:'ubuntu', name: 'Ubuntu' ,  label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11)],
+  // Python 3.11 builds
+  [host:'mac', name: 'MacOS-Python3.11', python_version: '3.11', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv],
+  [host:'ubuntu', name: 'Ubuntu-Python3.11', python_version: '3.11', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv],
+  [host:'windows', name: 'Windows-Python3.11', python_version: '3.11', label: 'builder&&win', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.vs(2022, 'x64', '14.38'), zap_py_venv: zap_venv],
+
+  // Python 3.12 builds
+  [host:'mac', name: 'MacOS-Python3.12', python_version: '3.12', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv],
+  [host:'ubuntu', name: 'Ubuntu-Python3.12', python_version: '3.12', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv],
+  [host:'windows', name: 'Windows-Python3.12', python_version: '3.12', label: 'builder&&win', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.vs(2022, 'x64', '14.38'), zap_py_venv: zap_venv],
 ]
 
 smartStage("Load utils.groovy") {
@@ -65,18 +72,18 @@ def build_neural_assets_wheel(profile, bump_tag) {
         usernamePassword(credentialsId: 's3dibot-artifactory-uw2-apikey', passwordVariable: 'ARTIFACTORY_UW2_API_KEY', usernameVariable: 'ARTIFACTORY_UW2_USER'),
         string(credentialsId: 'git-ghec-api-s3dibot-apitoken', variable: 'GIT_TOKEN'),
       ]) {
-        sshagent(['gerrit-ssh', 's3dibot_gitcorp_ssh']) {
+        withSshCredentials() {
           try {
               def venv_name = '.venv'
 
-              smartStage("Setup-${profile.host}") {
+              smartStage("Setup-${profile.name}") {
                 smartCleanWs() // ensure there aren't any old .whl builds hanging around
                 printEnvVarsAndJobParams()
                 checkout scm
                 utils.setupCondaEnvironment(venv_name, profile)
               } // setup
 
-              smartStage("Wheel-${profile.host}") {
+              smartStage("Wheel-${profile.name}") {
                 def wheel_version = bump_tag
                 def release_mode = "release"
                 utils.pythonWheelOps(venv_name, wheel_version, release_mode, profile)
@@ -98,7 +105,7 @@ def build_neural_assets_wheel(profile, bump_tag) {
 
             printEnvVarsAndJobParams()
           } // finally
-        } // sshagent
+        } // withSshCredentials
       } // with credentials
     } // nodeTimeout
   } // stage

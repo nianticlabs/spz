@@ -1,4 +1,3 @@
-
 def setupCondaEnvironment(venv_name, profile) {
     def debug_flag = '' // set to '-vvv' for detailed debugging info
 
@@ -14,7 +13,14 @@ def setupCondaEnvironment(venv_name, profile) {
         }
     }
 
-    runInConda.createEnv(name: venv_name, file: "./tools/conda.yaml", extra_params: debug_flag)
+        // Build conda create command with optional Python version override
+    def extra_params = debug_flag
+    if (profile.python_version) {
+        extra_params += " python=${profile.python_version}"
+        echo "INFO: Overriding Python version to ${profile.python_version}"
+    }
+
+    runInConda.createEnv(name: venv_name, file: "./tools/conda.yaml", extra_params: extra_params)
 
     runInConda(name: venv_name, label: "Check tools version",
     script: [
