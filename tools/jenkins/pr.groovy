@@ -14,8 +14,8 @@ def clean_workspace = false
 // If you need to replay a job on only one platform, please comment the other platforms out for the replay to conserve build resources
 def profiles = [
   [host:'mac', name: 'MacOS', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0')],
-  [host:'ubuntu', name: 'Ubuntu' ,  label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11)],
-  [host:'windows', name: 'Windows' ,  label: 'builder&&win', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.vs(2022, 'x64', '14.38')],
+  [host:'ubuntu', name: 'Ubuntu', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11)],
+  [host:'windows', name: 'Windows' , label: 'builder&&win', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.vs(2022, 'x64', '14.38')],
 ]
 
 def wheel_profile = [name:'linux', platform: 'linux', label: 'builder&&linux', zap_py_venv: false, timeout: [time: '60', unit: 'MINUTES']]
