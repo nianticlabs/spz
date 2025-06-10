@@ -159,11 +159,12 @@ struct PackedGaussiansHeader {
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
   uint8_t flags = 0;
+  uint8_t reserved = 0;
   uint8_t sh1Bits = 5;        // Bits for SH degree 1 coefficients
   uint8_t shRestBits = 4;     // Bits for SH degree 2+ coefficients
-  uint8_t reserved = 0;
   float shMin = -1.0f;        // Minimum SH coefficient value for quantization
   float shMax = 1.0f;         // Maximum SH coefficient value for quantization
+  uint8_t padding[2] = {0};   // Padding at the end for alignment
 };
 
 bool decompressGzippedImpl(
@@ -542,52 +543,61 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
 PackedGaussians deserializePackedGaussians(std::istream &in) {
   constexpr int32_t maxPointsToRead = 10000000;
 
-  // Read the common header fields that exist in all versions
-  struct CommonHeader {
+  // Read just enough to determine the version
+  struct VersionHeader {
     uint32_t magic;
     uint32_t version;
-    uint32_t numPoints;
-    uint8_t shDegree;
-    uint8_t fractionalBits;
-    uint8_t flags;
-    uint8_t reserved;
   };
 
-  CommonHeader commonHeader;
-  in.read(reinterpret_cast<char *>(&commonHeader), sizeof(commonHeader));
-  if (!in || commonHeader.magic != PackedGaussiansHeader().magic) {
+  VersionHeader versionHeader;
+  in.read(reinterpret_cast<char *>(&versionHeader), sizeof(versionHeader));
+  if (!in || versionHeader.magic != PackedGaussiansHeader().magic) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (commonHeader.version < 1 || commonHeader.version > 3) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", commonHeader.version);
+  if (versionHeader.version < 1 || versionHeader.version > 3) {
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", versionHeader.version);
     return {};
   }
 
-  // Initialize header with common fields
-  PackedGaussiansHeader header;
-  header.magic = commonHeader.magic;
-  header.version = commonHeader.version;
-  header.numPoints = commonHeader.numPoints;
-  header.shDegree = commonHeader.shDegree;
-  header.fractionalBits = commonHeader.fractionalBits;
-  header.flags = commonHeader.flags;
-  header.reserved = commonHeader.reserved;
+  // Reset stream to beginning of header
+  in.seekg(-static_cast<int>(sizeof(versionHeader)), std::ios::cur);
 
-  // Read version-specific fields
-  if (header.version >= 3) {
-    // Read the additional fields for version 3+
-    in.read(reinterpret_cast<char *>(&header.sh1Bits), sizeof(header.sh1Bits));
-    in.read(reinterpret_cast<char *>(&header.shRestBits), sizeof(header.shRestBits));
-    in.read(reinterpret_cast<char *>(&header.reserved), sizeof(header.reserved)); // This overwrites the reserved field read above
-    in.read(reinterpret_cast<char *>(&header.shMin), sizeof(header.shMin));
-    in.read(reinterpret_cast<char *>(&header.shMax), sizeof(header.shMax));
+  PackedGaussiansHeader header;
+  if (versionHeader.version >= 3) {
+    // Read the full version 3+ header
+    in.read(reinterpret_cast<char *>(&header), sizeof(header));
     if (!in) {
-      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version 3 header fields");
+      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version 3 header");
       return {};
     }
   } else {
-    // Set defaults for older versions
+    // For version 2, read only the basic header fields
+    struct Version2Header {
+      uint32_t magic;
+      uint32_t version;
+      uint32_t numPoints;
+      uint8_t shDegree;
+      uint8_t fractionalBits;
+      uint8_t flags;
+      uint8_t reserved;
+    };
+
+    Version2Header v2Header;
+    in.read(reinterpret_cast<char *>(&v2Header), sizeof(v2Header));
+    if (!in) {
+      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version 2 header");
+      return {};
+    }
+
+    // Initialize header with version 2 fields and defaults for new fields
+    header.magic = v2Header.magic;
+    header.version = v2Header.version;
+    header.numPoints = v2Header.numPoints;
+    header.shDegree = v2Header.shDegree;
+    header.fractionalBits = v2Header.fractionalBits;
+    header.flags = v2Header.flags;
+    header.reserved = v2Header.reserved;
     header.sh1Bits = 5;
     header.shRestBits = 4;
     header.shMin = -1.0f;
@@ -626,6 +636,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     result.shMax = header.shMax;
   } else {
     // Use legacy defaults for older versions
+    SpzLog("[SPZ WARNING] deserializePackedGaussians: loaded SPZ version is out of date: %d, please upgrade to version 3 or later", header.version);
     result.sh1Bits = 5;
     result.shRestBits = 4;
     result.shMin = -1.0f;
