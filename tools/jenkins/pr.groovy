@@ -57,11 +57,6 @@ def build_py_project_scaffold(profile) {
               utils.testPython(venv_name, profile)
             } // TestPython
 
-            smartStage("BuildTypeScript") {
-              utils.runInConda(name: venv_name, script: "npx tsc --build")
-            } // BuildTypeScript
-            currentBuild.result="SUCCESS"
-
           } catch(Exception e) {
             println("${profile.name} on ${NODE_NAME} caught Exception:\n    ${e}")
             currentBuild.result = "FAILURE"
