@@ -59,6 +59,7 @@ struct PackedGaussians {
 
 struct PackOptions {
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
+  bool fast_rot_quantization = false;
 };
 
 struct UnpackOptions {

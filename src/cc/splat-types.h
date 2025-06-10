@@ -210,6 +210,10 @@ constexpr float squaredNorm(const Vec3f &v) { return dot(v, v); }
 
 constexpr Quat4f quat4f(const float *data) { return {data[0], data[1], data[2], data[3]}; }
 
+constexpr float dot(const Quat4f &a, const Quat4f &b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+}
+
 constexpr Vec3f times(const Quat4f &q, const Vec3f &p) {
   auto [w, x, y, z] = q;
   auto [vx, vy, vz] = p;
