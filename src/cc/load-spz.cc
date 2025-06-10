@@ -245,14 +245,14 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (!checkSizes(g)) {
     return {};
   }
-  
+
   // Validate SH quantization bit parameters
   if (o.sh1Bits > 8 || o.shRestBits > 8) {
-    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)", 
+    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
            o.sh1Bits, o.shRestBits);
     return {};
   }
-  
+
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
@@ -272,13 +272,13 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (g.shDegree > 0 && !g.sh.empty()) {
     float minSH = *std::min_element(g.sh.begin(), g.sh.end());
     float maxSH = *std::max_element(g.sh.begin(), g.sh.end());
-    
+
     // Ensure we have a valid range
     if (maxSH <= minSH) {
       minSH = -1.0f;
       maxSH = 1.0f;
     }
-    
+
     packed.shMin = minSH;
     packed.shMax = maxSH;
   }
@@ -350,7 +350,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 }
 
 UnpackedGaussian PackedGaussian::unpack(
-  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c, 
+  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c,
   float shMin, float shMax) const {
   UnpackedGaussian result;
   if (usesFloat16) {
@@ -542,15 +542,56 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
 PackedGaussians deserializePackedGaussians(std::istream &in) {
   constexpr int32_t maxPointsToRead = 10000000;
 
-  PackedGaussiansHeader header;
-  in.read(reinterpret_cast<char *>(&header), sizeof(header));
-  if (!in || header.magic != PackedGaussiansHeader().magic) {
+  // Read the common header fields that exist in all versions
+  struct CommonHeader {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t numPoints;
+    uint8_t shDegree;
+    uint8_t fractionalBits;
+    uint8_t flags;
+    uint8_t reserved;
+  };
+
+  CommonHeader commonHeader;
+  in.read(reinterpret_cast<char *>(&commonHeader), sizeof(commonHeader));
+  if (!in || commonHeader.magic != PackedGaussiansHeader().magic) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (header.version < 1 || header.version > 3) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
+  if (commonHeader.version < 1 || commonHeader.version > 3) {
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", commonHeader.version);
     return {};
+  }
+
+  // Initialize header with common fields
+  PackedGaussiansHeader header;
+  header.magic = commonHeader.magic;
+  header.version = commonHeader.version;
+  header.numPoints = commonHeader.numPoints;
+  header.shDegree = commonHeader.shDegree;
+  header.fractionalBits = commonHeader.fractionalBits;
+  header.flags = commonHeader.flags;
+  header.reserved = commonHeader.reserved;
+
+  // Read version-specific fields
+  if (header.version >= 3) {
+    // Read the additional fields for version 3+
+    in.read(reinterpret_cast<char *>(&header.sh1Bits), sizeof(header.sh1Bits));
+    in.read(reinterpret_cast<char *>(&header.shRestBits), sizeof(header.shRestBits));
+    in.read(reinterpret_cast<char *>(&header.reserved), sizeof(header.reserved)); // This overwrites the reserved field read above
+    in.read(reinterpret_cast<char *>(&header.shMin), sizeof(header.shMin));
+    in.read(reinterpret_cast<char *>(&header.shMax), sizeof(header.shMax));
+    if (!in) {
+      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version 3 header fields");
+      return {};
+    }
+  } else {
+    // Set defaults for older versions
+    header.sh1Bits = 5;
+    header.shRestBits = 4;
+    header.shMin = -1.0f;
+    header.shMax = 1.0f;
   }
   if (header.numPoints > maxPointsToRead) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
@@ -563,19 +604,19 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
-  
+
   PackedGaussians result = {
     .numPoints = numPoints,
     .shDegree = header.shDegree,
     .fractionalBits = header.fractionalBits,
     .antialiased = (header.flags & FlagAntialiased) != 0,
   };
-  
+
   // Handle SH quantization parameters based on version
   if (header.version >= 3) {
     // Validate SH quantization bit parameters
     if (header.sh1Bits > 8 || header.shRestBits > 8) {
-      SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)", 
+      SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
              header.sh1Bits, header.shRestBits);
       return {};
     }
@@ -590,7 +631,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     result.shMin = -1.0f;
     result.shMax = 1.0f;
   }
-  
+
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 3);
