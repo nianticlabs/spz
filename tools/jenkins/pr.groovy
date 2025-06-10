@@ -45,8 +45,8 @@ def build_py_project_scaffold(profile) {
               printEnvVarsAndJobParams()
               checkout scm
               utils.setupCondaEnvironment(venv_name, profile)
-              utils.runInConda(name: venv_name, script: "python tools/artifacts.py test_data_manifests/unit_test_neural_assets.yaml clean")
-              utils.runInConda(name: venv_name, script: "python tools/artifacts.py test_data_manifests/unit_test_neural_assets.yaml pull")
+              utils.runInConda(name: venv_name, script: "python tools/artifacts.py tools/manifest.yaml clean")
+              utils.runInConda(name: venv_name, script: "python tools/artifacts.py tools/manifest.yaml pull")
             } // Setup
 
             smartStage("Lint-${profile.host}") {
