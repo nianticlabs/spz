@@ -37,10 +37,10 @@ struct CoordinateConverter {
   std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};  // x, y, z flips.
   std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};  // x, y, z flips, w is never flipped.
   std::array<float, 24> flipSh =  // Flips for the 24 spherical harmonics coefficients.
-    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
-    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
-    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
-    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 
+    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f};
 };
 
@@ -61,11 +61,10 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
   float x = xMatch ? 1.0f : -1.0f;
   float y = yMatch ? 1.0f : -1.0f;
   float z = zMatch ? 1.0f : -1.0f;
-  return {
-    .flipP = {x, y, z},
-    .flipQ = {y * z, x * z, x * y},
-    .flipSh =
-      {
+  CoordinateConverter result;
+  result.flipP = {x, y, z};
+  result.flipQ = {y * z, x * z, x * y};
+  result.flipSh = {
         y,          // 0
         z,          // 1
         x,          // 2
@@ -92,8 +91,8 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
         1.0f,       // 21
         x * z,      // 22
         y,          // 23
-      },
-  };
+      };
+  return result;
 }
 
 // A point cloud composed of Gaussians. Each gaussian is represented by:
@@ -213,7 +212,7 @@ float norm(const Vec3f &a);
 
 // Quaternion helpers.
 float norm(const Quat4f &q);
-constexpr Quat4f normalized(const Quat4f &v) {
+inline Quat4f normalized(const Quat4f &v) {
   float norm = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
   return {v[0] / norm, v[1] / norm, v[2] / norm, v[3] / norm};
 }
@@ -251,7 +250,7 @@ constexpr Vec3f times(const Quat4f &q, const Vec3f &p) {
     vx * (xz2 - wy2) + vy * (yz2 + wx2) + vz * (1.0f - (xx2 + yy2))};
 }
 
-constexpr Quat4f times(const Quat4f &a, const Quat4f &b) {
+inline Quat4f times(const Quat4f &a, const Quat4f &b) {
   auto [w, x, y, z] = a;
   auto [qw, qx, qy, qz] = b;
   return normalized(std::array<float, 4>{

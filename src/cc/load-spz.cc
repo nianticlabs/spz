@@ -451,11 +451,10 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
     return {};
   }
 
-  GaussianCloud result = {
-    .numPoints = packed.numPoints,
-    .shDegree = packed.shDegree,
-    .antialiased = packed.antialiased,
-  };
+  GaussianCloud result;
+  result.numPoints = packed.numPoints;
+  result.shDegree = packed.shDegree;
+  result.antialiased = packed.antialiased;
   result.positions.resize(numPoints * 3);
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 4);
