@@ -13,7 +13,7 @@ def setupCondaEnvironment(venv_name, profile) {
         }
     }
 
-        // Build conda create command with optional Python version override
+    // Build conda create command with optional Python version override
     def extra_params = debug_flag
     if (profile.python_version) {
         extra_params += " python=${profile.python_version}"

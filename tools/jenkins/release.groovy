@@ -50,19 +50,19 @@ env.tag = ''
 smartStage("Compute and Push Tag") {
   node('builder') {
     withCredentials([
-      string(credentialsId: 'git-ghec-api-s3dibot-apitoken', variable: 'GIT_TOKEN'),
+      string(credentialsId: 'git-corp-api-s3dibot-apitoken', variable: 'GIT_TOKEN'),
     ]) {
       sshagent(['gerrit-ssh', 's3dibot_gitcorp_ssh']) {
       checkout scm
-      env.tag = cmd(returnStdout: true, script: "git ls-remote --tags https://x-access-token:${GIT_TOKEN}@github.com/Adobe-3di/neural-assets.git | awk -F'/' '{print \$3}' | sort -V | tail -n 1 | sed 's/^v//' | sed 's/\\^{}\$//'").trim()
+      env.tag = cmd(returnStdout: true, script: "git ls-remote --tags https://x-access-token:${GIT_TOKEN}@git.corp.adobe.com/thirdparty/spz.git | awk -F'/' '{print \$3}' | sort -V | tail -n 1 | sed 's/^v//' | sed 's/\\^{}\$//'").trim()
       env.bump_tag = cmd(returnStdout: true, script: '''echo "v${tag%.*}.$((${tag##*.}+1))"''')
-      cmd(script: '''git tag ${bump_tag} && git push https://x-access-token:${GIT_TOKEN}@github.com/Adobe-3di/neural-assets.git --tags''')
+      cmd(script: '''git tag ${bump_tag} && git push https://x-access-token:${GIT_TOKEN}@git.corp.adobe.com/thirdparty/spz.git --tags''')
       }
     }
   }
 }
 
-def build_neural_assets_wheel(profile, bump_tag) {
+def build_spz_wheel(profile, bump_tag) {
     smartStage(profile.name) {
     nodeTimeout(profile.label, [time: profile.timeout, unit: profile.timeout_unit]) {
       withCredentials([
@@ -70,7 +70,7 @@ def build_neural_assets_wheel(profile, bump_tag) {
         usernamePassword(credentialsId: 'aws_access_techtransfer', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY'),
         usernamePassword(credentialsId: 's3dibot_artifactory_adobe', passwordVariable: 'ARTIFACTORY_API_KEY', usernameVariable: 'ARTIFACTORY_USER'),
         usernamePassword(credentialsId: 's3dibot-artifactory-uw2-apikey', passwordVariable: 'ARTIFACTORY_UW2_API_KEY', usernameVariable: 'ARTIFACTORY_UW2_USER'),
-        string(credentialsId: 'git-ghec-api-s3dibot-apitoken', variable: 'GIT_TOKEN'),
+        string(credentialsId: 'git-corp-api-s3dibot-apitoken', variable: 'GIT_TOKEN'),
       ]) {
         withSshCredentials() {
           try {
@@ -90,7 +90,7 @@ def build_neural_assets_wheel(profile, bump_tag) {
               } // wheel
             currentBuild.result = "SUCCESS"
           } catch(Exception e) {
-            println("+++++ build_neural_assets_wheel() for ${profile.name} on ${NODE_NAME} caught Exception:\n    ${e}")
+            println("+++++ build_spz_wheel() for ${profile.name} on ${NODE_NAME} caught Exception:\n    ${e}")
             currentBuild.result = "FAILURE"
             // archive any logs lying around before the exception
             utils.archiveLogs(profile.host)
@@ -109,14 +109,14 @@ def build_neural_assets_wheel(profile, bump_tag) {
       } // with credentials
     } // nodeTimeout
   } // stage
-} // build_neural_assets_wheel
+} // build_spz_wheel
 
 timestamps {
   // Cancel old jobs on the same branch
   abortPreviousBuild(isPRBuild())
   parallel profiles.collectEntries { profile ->
     [ "${profile.name}" : {
-        build_neural_assets_wheel(profile, env.bump_tag)
+        build_spz_wheel(profile, env.bump_tag)
     } ]
   }
 }
