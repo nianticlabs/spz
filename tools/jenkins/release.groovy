@@ -54,7 +54,23 @@ smartStage("Compute and Push Tag") {
     ]) {
       sshagent(['gerrit-ssh', 's3dibot_gitcorp_ssh']) {
       checkout scm
-      env.tag = cmd(returnStdout: true, script: "git ls-remote --tags https://x-access-token:${GIT_TOKEN}@git.corp.adobe.com/thirdparty/spz.git | awk -F'/' '{print \$3}' | sort -V | tail -n 1 | sed 's/^v//' | sed 's/\\^{}\$//'").trim()
+      // Get the current branch name and extract the version
+      def current_branch = cmd(returnStdout: true, script: "git rev-parse --abbrev-ref HEAD").trim()
+      def version_match = current_branch =~ /adobe-v(\d+\.\d+)\.\d+/
+      if (!version_match) {
+        error "Current branch '${current_branch}' does not match expected format 'adobe-vX.Y.Z'"
+      }
+      def major_minor = version_match[0][1]
+
+      // Find the latest tag matching the major.minor version
+      env.tag = cmd(returnStdout: true, script: "git ls-remote --tags https://x-access-token:${GIT_TOKEN}@git.corp.adobe.com/thirdparty/spz.git | grep 'v${major_minor}' | awk -F'/' '{print \$3}' | sort -V | tail -n 1 | sed 's/^v//' | sed 's/\\^{}\$//'").trim()
+
+      // If no matching tag exists, start with .0
+      if (!env.tag) {
+        env.tag = "${major_minor}.0"
+      }
+
+      // Only increment the patch number
       env.bump_tag = cmd(returnStdout: true, script: '''echo "v${tag%.*}.$((${tag##*.}+1))"''')
       cmd(script: '''git tag ${bump_tag} && git push https://x-access-token:${GIT_TOKEN}@git.corp.adobe.com/thirdparty/spz.git --tags''')
       }
