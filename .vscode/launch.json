@@ -1,0 +1,36 @@
+// This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "test",
+            "request": "launch",
+            "type": "debugpy",
+            "program": "${workspaceFolder}/tests/main.py",
+            "console": "integratedTerminal",
+            // "justMyCode": false,
+            "args": [
+                "--xml=.tmp_test_out/test_report.xml",
+                "--log=.tmp_test_out/test_log.txt",
+                // Add more args here if need be, but don't check them in
+                // for example to run only one test you can put
+                // "--no-discover", "test_demo.TestDemo.test_example_fixture",
+            ]
+        },
+        {
+            "name": "lint",
+            "request": "launch",
+            "type": "debugpy",
+            "program": "${workspaceFolder}/tools/lint.py",
+            "console": "integratedTerminal",
+            "args": [
+                "all",
+                // "--verbose",
+            ]
+        }
+    ]
+}

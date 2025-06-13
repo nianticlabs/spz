@@ -159,11 +159,12 @@ struct PackedGaussiansHeader {
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
   uint8_t flags = 0;
+  uint8_t reserved = 0;
   uint8_t sh1Bits = 5;        // Bits for SH degree 1 coefficients
   uint8_t shRestBits = 4;     // Bits for SH degree 2+ coefficients
-  uint8_t reserved = 0;
   float shMin = -1.0f;        // Minimum SH coefficient value for quantization
   float shMax = 1.0f;         // Maximum SH coefficient value for quantization
+  uint8_t padding[2] = {0};   // Padding at the end for alignment
 };
 
 bool decompressGzippedImpl(
@@ -245,40 +246,39 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (!checkSizes(g)) {
     return {};
   }
-  
+
   // Validate SH quantization bit parameters
   if (o.sh1Bits > 8 || o.shRestBits > 8) {
-    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)", 
+    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
            o.sh1Bits, o.shRestBits);
     return {};
   }
-  
+
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
 
   // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
   // we can use different values on a per-splat basis and still be compatible with the decoder.
-  PackedGaussians packed = {
-    .numPoints = g.numPoints,
-    .shDegree = g.shDegree,
-    .fractionalBits = 12,
-    .antialiased = g.antialiased,
-    .sh1Bits = o.sh1Bits,
-    .shRestBits = o.shRestBits,
-  };
+  PackedGaussians packed;
+  packed.numPoints = g.numPoints;
+  packed.shDegree = g.shDegree;
+  packed.fractionalBits = 12;
+  packed.antialiased = g.antialiased;
+  packed.sh1Bits = o.sh1Bits;
+  packed.shRestBits = o.shRestBits;
 
   // Compute min/max of SH coefficients for optimal quantization
   if (g.shDegree > 0 && !g.sh.empty()) {
     float minSH = *std::min_element(g.sh.begin(), g.sh.end());
     float maxSH = *std::max_element(g.sh.begin(), g.sh.end());
-    
+
     // Ensure we have a valid range
     if (maxSH <= minSH) {
       minSH = -1.0f;
       maxSH = 1.0f;
     }
-    
+
     packed.shMin = minSH;
     packed.shMax = maxSH;
   }
@@ -350,7 +350,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 }
 
 UnpackedGaussian PackedGaussian::unpack(
-  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c, 
+  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c,
   float shMin, float shMax) const {
   UnpackedGaussian result;
   if (usesFloat16) {
@@ -451,11 +451,10 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
     return {};
   }
 
-  GaussianCloud result = {
-    .numPoints = packed.numPoints,
-    .shDegree = packed.shDegree,
-    .antialiased = packed.antialiased,
-  };
+  GaussianCloud result;
+  result.numPoints = packed.numPoints;
+  result.shDegree = packed.shDegree;
+  result.antialiased = packed.antialiased;
   result.positions.resize(numPoints * 3);
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 4);
@@ -520,16 +519,15 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
 }
 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) {
-  PackedGaussiansHeader header = {
-    .numPoints = static_cast<uint32_t>(packed.numPoints),
-    .shDegree = static_cast<uint8_t>(packed.shDegree),
-    .fractionalBits = static_cast<uint8_t>(packed.fractionalBits),
-    .flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0),
-    .sh1Bits = packed.sh1Bits,
-    .shRestBits = packed.shRestBits,
-    .shMin = packed.shMin,
-    .shMax = packed.shMax,
-  };
+  PackedGaussiansHeader header;
+  header.numPoints = static_cast<uint32_t>(packed.numPoints);
+  header.shDegree = static_cast<uint8_t>(packed.shDegree);
+  header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
+  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0);
+  header.sh1Bits = packed.sh1Bits;
+  header.shRestBits = packed.shRestBits;
+  header.shMin = packed.shMin;
+  header.shMax = packed.shMax;
   out->write(reinterpret_cast<const char *>(&header), sizeof(header));
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
@@ -542,15 +540,65 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
 PackedGaussians deserializePackedGaussians(std::istream &in) {
   constexpr int32_t maxPointsToRead = 10000000;
 
-  PackedGaussiansHeader header;
-  in.read(reinterpret_cast<char *>(&header), sizeof(header));
-  if (!in || header.magic != PackedGaussiansHeader().magic) {
+  // Read just enough to determine the version
+  struct VersionHeader {
+    uint32_t magic;
+    uint32_t version;
+  };
+
+  VersionHeader versionHeader;
+  in.read(reinterpret_cast<char *>(&versionHeader), sizeof(versionHeader));
+  if (!in || versionHeader.magic != PackedGaussiansHeader().magic) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (header.version < 1 || header.version > 3) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
+  if (versionHeader.version < 1 || versionHeader.version > 3) {
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", versionHeader.version);
     return {};
+  }
+
+  // Reset stream to beginning of header
+  in.seekg(-static_cast<int>(sizeof(versionHeader)), std::ios::cur);
+
+  PackedGaussiansHeader header;
+  if (versionHeader.version >= 3) {
+    // Read the full version 3+ header
+    in.read(reinterpret_cast<char *>(&header), sizeof(header));
+    if (!in) {
+      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version 3 header");
+      return {};
+    }
+  } else {
+    // For version 2, read only the basic header fields
+    struct Version2Header {
+      uint32_t magic;
+      uint32_t version;
+      uint32_t numPoints;
+      uint8_t shDegree;
+      uint8_t fractionalBits;
+      uint8_t flags;
+      uint8_t reserved;
+    };
+
+    Version2Header v2Header;
+    in.read(reinterpret_cast<char *>(&v2Header), sizeof(v2Header));
+    if (!in) {
+      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version 2 header");
+      return {};
+    }
+
+    // Initialize header with version 2 fields and defaults for new fields
+    header.magic = v2Header.magic;
+    header.version = v2Header.version;
+    header.numPoints = v2Header.numPoints;
+    header.shDegree = v2Header.shDegree;
+    header.fractionalBits = v2Header.fractionalBits;
+    header.flags = v2Header.flags;
+    header.reserved = v2Header.reserved;
+    header.sh1Bits = 5;
+    header.shRestBits = 4;
+    header.shMin = -1.0f;
+    header.shMax = 1.0f;
   }
   if (header.numPoints > maxPointsToRead) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
@@ -563,19 +611,18 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
-  
-  PackedGaussians result = {
-    .numPoints = numPoints,
-    .shDegree = header.shDegree,
-    .fractionalBits = header.fractionalBits,
-    .antialiased = (header.flags & FlagAntialiased) != 0,
-  };
-  
+
+  PackedGaussians result;
+  result.numPoints = numPoints;
+  result.shDegree = header.shDegree;
+  result.fractionalBits = header.fractionalBits;
+  result.antialiased = (header.flags & FlagAntialiased) != 0;
+
   // Handle SH quantization parameters based on version
   if (header.version >= 3) {
     // Validate SH quantization bit parameters
     if (header.sh1Bits > 8 || header.shRestBits > 8) {
-      SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)", 
+      SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
              header.sh1Bits, header.shRestBits);
       return {};
     }
@@ -585,12 +632,13 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     result.shMax = header.shMax;
   } else {
     // Use legacy defaults for older versions
+    SpzLog("[SPZ WARNING] deserializePackedGaussians: loaded SPZ version %d is out of date", header.version);
     result.sh1Bits = 5;
     result.shRestBits = 4;
     result.shMin = -1.0f;
     result.shMax = 1.0f;
   }
-  
+
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 3);
