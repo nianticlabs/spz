@@ -60,8 +60,8 @@ smartStage("Compute and Push Tag") {
         if (isUnix()) {
             branch_cmd = "git branch -a --contains ${commit_hash} | grep 'remotes/origin/adobe-v' | head -n 1 | sed 's/remotes\\/origin\\///'"
         } else {
-            // Windows PowerShell command for branch detection
-            branch_cmd = """powershell -Command "\$branches = git branch -a --contains ${commit_hash} | Select-String 'remotes/origin/adobe-v'; if (\$branches) { \$branches[0].ToString().Trim().Replace('remotes/origin/', '') } else { Write-Output '' }" """
+            // Windows PowerShell command for branch detection with more robust null handling
+            branch_cmd = """powershell -Command "\$output = git branch -a --contains ${commit_hash}; if (\$output) { \$branch = \$output | Where-Object { \\$_ -match 'remotes/origin/adobe-v' } | Select-Object -First 1; if (\$branch) { \$branch -replace 'remotes/origin/', '' } else { '' } } else { '' }" """
         }
         current_branch = cmd(returnStdout: true, script: branch_cmd).trim()
         if (!current_branch) {
