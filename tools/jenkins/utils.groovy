@@ -77,7 +77,8 @@ def testPython(venv_name, profile) {
 def pythonWheelOps(venv_name, wheel_version, release_mode, profile) {
 
     withEnv(["PIP_EXTRA_INDEX_URL=https://$ARTIFACTORY_UW2_USER:$ARTIFACTORY_UW2_API_KEY@artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-release/simple https://$ARTIFACTORY_UW2_USER:$ARTIFACTORY_UW2_API_KEY@artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release/simple"]) {
-        def repo_url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-${release_mode}"
+        def repo_url_tech_transfer = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-${release_mode}"
+        def repo_url_adobeshared = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-${release_mode}"
         try {
             def script = "boa_toolkit package build --wheel_dir wheelhouse --version ${wheel_version}"
             if (profile.host == 'mac') {
@@ -96,8 +97,10 @@ def pythonWheelOps(venv_name, wheel_version, release_mode, profile) {
             throw e
         }
         try {
-            echo "Uploading ${repo_url}..."
-            runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url}")
+            echo "Uploading ${repo_url_adobeshared}..."
+            runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_adobeshared}")
+            echo "Uploading ${repo_url_tech_transfer}..."
+            runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_tech_transfer}")
         } catch (Exception e) {
             echo "Got exception: ${e}"
             throw e
