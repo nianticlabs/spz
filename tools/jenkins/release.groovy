@@ -26,7 +26,7 @@ def zap_venv = true
 
 // Only build for Linux Python 3.11
 def profiles = [
-  [host:'ubuntu', name: 'Ubuntu-Python3.11', python_version: '3.11', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv],
+  [host:'ubuntu', name: 'Ubuntu-Python3.11', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv],
 ]
 
 smartStage("Load utils.groovy") {
