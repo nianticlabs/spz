@@ -56,14 +56,21 @@ smartStage("Compute and Push Tag") {
     if (current_branch == "HEAD") {
         // We're in detached HEAD state, try to find the branch containing this commit
         def commit_hash = cmd(returnStdout: true, script: "git rev-parse HEAD").trim()
-        current_branch = cmd(returnStdout: true, script: "git branch -a --contains ${commit_hash} | grep 'remotes/origin/adobe-v' | head -n 1 | sed 's/remotes\\/origin\\///'").trim()
+        def branch_cmd
+        if (isUnix()) {
+            branch_cmd = "git branch -a --contains ${commit_hash} | grep 'remotes/origin/adobe-v' | head -n 1 | sed 's/remotes\\/origin\\///'"
+        } else {
+            // Windows PowerShell command for branch detection
+            branch_cmd = """powershell -Command "\$branches = git branch -a --contains ${commit_hash} | Select-String 'remotes/origin/adobe-v'; if (\$branches) { \$branches[0].ToString().Trim().Replace('remotes/origin/', '') } else { Write-Output '' }" """
+        }
+        current_branch = cmd(returnStdout: true, script: branch_cmd).trim()
         if (!current_branch) {
             error "Could not determine branch name from commit ${commit_hash}"
         }
     }
     def version_match = current_branch =~ /adobe-v(\d+\.\d+)\.\d+/
     if (!version_match) {
-    error "Current branch '${current_branch}' does not match expected format 'adobe-vX.Y.Z'"
+        error "Current branch '${current_branch}' does not match expected format 'adobe-vX.Y.Z'"
     }
     def major_minor = version_match[0][1]
 
