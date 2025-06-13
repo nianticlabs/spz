@@ -72,8 +72,8 @@ smartStage("Compute and Push Tag") {
     if (isUnix()) {
         tag_cmd = "git ls-remote --tags | grep 'v${major_minor}' | awk -F'/' '{print \$3}' | sort -V | tail -n 1 | sed 's/^v//' | sed 's/\\^{}\$//'"
     } else {
-        // Windows PowerShell command
-        tag_cmd = "powershell -Command \"git ls-remote --tags | Select-String 'v${major_minor}' | ForEach-Object { \\$_.ToString().Split('/')[-1] } | Sort-Object { [version]\\$_.TrimStart('v').TrimEnd('^{}') } | Select-Object -Last 1 | ForEach-Object { \\$_.TrimStart('v').TrimEnd('^{}') }\""
+        // Windows PowerShell command with null handling
+        tag_cmd = """powershell -Command "\$tags = git ls-remote --tags | Select-String 'v${major_minor}'; if (\$tags) { \$tags | ForEach-Object { \\$_.ToString().Split('/')[-1] } | Sort-Object { [version]\\$_.TrimStart('v').TrimEnd('^{}') } | Select-Object -Last 1 | ForEach-Object { \\$_.TrimStart('v').TrimEnd('^{}') } } else { Write-Output '' }" """
     }
     env.tag = cmd(returnStdout: true, script: tag_cmd).trim()
 
