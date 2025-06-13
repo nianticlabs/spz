@@ -15,10 +15,6 @@ def setupCondaEnvironment(venv_name, profile) {
 
     // Build conda create command with optional Python version override
     def extra_params = debug_flag
-    if (profile.python_version) {
-        extra_params += " python=${profile.python_version}"
-        echo "INFO: Overriding Python version to ${profile.python_version}"
-    }
 
     runInConda.createEnv(name: venv_name, file: "./tools/conda.yaml", extra_params: extra_params)
 
