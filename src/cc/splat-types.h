@@ -57,27 +57,26 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
   float x = xMatch ? 1.0f : -1.0f;
   float y = yMatch ? 1.0f : -1.0f;
   float z = zMatch ? 1.0f : -1.0f;
-  return {
-    .flipP = {x, y, z},
-    .flipQ = {y * z, x * z, x * y},
-    .flipSh =
-      {
-        y,          // 0
-        z,          // 1
-        x,          // 2
-        x * y,      // 3
-        y * z,      // 4
-        1.0f,       // 5
-        x * z,      // 6
-        1.0f,       // 7
-        y,          // 8
-        x * y * z,  // 9
-        y,          // 10
-        z,          // 11
-        x,          // 12
-        z,          // 13
-        x,          // 14
-      },
+  return CoordinateConverter{
+    {x, y, z},
+    {y * z, x * z, x * y},
+    {
+      y,          // 0
+      z,          // 1
+      x,          // 2
+      x * y,      // 3
+      y * z,      // 4
+      1.0f,       // 5
+      x * z,      // 6
+      1.0f,       // 7
+      y,          // 8
+      x * y * z,  // 9
+      y,          // 10
+      z,          // 11
+      x,          // 12
+      z,          // 13
+      x           // 14
+    }
   };
 }
 
@@ -236,7 +235,7 @@ constexpr Vec3f times(const Quat4f &q, const Vec3f &p) {
     vx * (xz2 - wy2) + vy * (yz2 + wx2) + vz * (1.0f - (xx2 + yy2))};
 }
 
-constexpr Quat4f times(const Quat4f &a, const Quat4f &b) {
+inline Quat4f times(const Quat4f &a, const Quat4f &b) {
   auto [w, x, y, z] = a;
   auto [qw, qx, qy, qz] = b;
   return normalized(std::array<float, 4>{
