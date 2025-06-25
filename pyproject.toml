@@ -33,7 +33,6 @@ dependencies = [
     "numpy",
     "pathlib",
     "plyfile @ git+ssh://git@git.corp.adobe.com/thirdparty/python-plyfile@d9a8f4f0b7bf23767328c8e949b8100229aeba5f",
-    "boa_toolkit",
 ]
 dynamic = ["version"]
 
@@ -53,6 +52,7 @@ tests = [
     "twine",
     "importlib_metadata==7.2.1",
     "tiny[s3]>=2.1.4",
+    "boa_toolkit",
 ]
 
 [project.urls]
