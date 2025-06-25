@@ -32,7 +32,7 @@ classifiers = [
 dependencies = [
     "numpy",
     "pathlib",
-    "plyfile @ git+ssh://git@git.corp.adobe.com/thirdparty/python-plyfile@d9a8f4f0b7bf23767328c8e949b8100229aeba5f",
+    "plyfile",
 ]
 dynamic = ["version"]
 

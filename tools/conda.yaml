@@ -6,7 +6,7 @@ name: spz
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
+  - python=3.12
 variables:
   PYTHONIOENCODING: utf-8
   OPENCV_IO_ENABLE_OPENEXR: 1
