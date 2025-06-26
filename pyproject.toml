@@ -32,7 +32,7 @@ classifiers = [
 dependencies = [
     "numpy",
     "pathlib",
-    "plyfile",
+    "plyfile>=1.2.0",
 ]
 dynamic = ["version"]
 
