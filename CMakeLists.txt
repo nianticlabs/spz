@@ -7,6 +7,10 @@ project(spz
 
 include(GNUInstallDirs)
 
+# Set C++ standard to C++17
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # zlib is required to build the project
 find_package(ZLIB REQUIRED)
 
@@ -70,4 +74,15 @@ install(TARGETS spz
 install(EXPORT spzTargets
   NAMESPACE spz::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/spz"
+)
+
+# Add executable for converting .ply to .spz
+add_executable(spz_convert src/main.cpp)
+  
+# Link the spz library
+target_link_libraries(spz_convert PRIVATE spz)
+
+# Optionally, set the executable to install
+install(TARGETS spz_convert
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

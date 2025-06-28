@@ -14,6 +14,11 @@
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+// Verbosity level 1 = global stats, 2 = per-Gaussian results, 3 = debug.
+#define VERBOSE 1
+#ifdef VERBOSE
+#include <cassert>
+#endif
 
 namespace spz {
 
@@ -180,6 +185,75 @@ bool decompressGzipped(const uint8_t *compressed, size_t size, std::string *out)
   return true;
 }
 
+// unpack an 8-bit quantized quaternion
+// returns a normalized quaternion (unit norm with s[3]>=0)
+Quat4f unpackQuaternion(const uint8_t* r) {
+    // unpack
+    const Vec3f xyz = plus(
+        times(
+            Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
+            1.0f / 127.5f),
+        Vec3f{-1, -1, -1});
+    Quat4f s;
+    std::copy(xyz.data(), xyz.data() + 3, &s[0]);
+    // Compute the real component - we know the quaternion is normalized and w is non-negative
+    float xyz_squaredNorm = squaredNorm(xyz);
+    if (xyz_squaredNorm <= 1) {
+        s[3] = std::sqrt(1.0f - squaredNorm(xyz));
+    } else {
+        s[3] = 0.f;
+        s = times(s, 1.f / std::sqrt(xyz_squaredNorm));
+    }
+    return s;
+}
+
+// Compute the quaternion reconstruction error: 1 - dot(q,r)
+// q and r are supposed to be unit quaternions, and their scalar component
+// (4th component) should be positive.
+// Ref: https://math.stackexchange.com/a/90098
+float quaternionReconstructionError(const Quat4f& q, const Quat4f& r) {
+  return 1. - std::pow(dot(q, r), 2);
+}
+
+// Compute the geodesic distance in degrees: acos(clamp(2 * dot(q,r)^2 - 1.0, -1.0, 1.0))
+// q and r are supposed to be unit quaternions, and their scalar component
+// (4th component) should be positive.
+// Note: 2 * acos(abs(dot(q,r))) would work too.
+// Ref: https://math.stackexchange.com/a/90098
+float quaternionGeodesicDistanceDegree(const Quat4f& q, const Quat4f& r) {
+  // Compute the real component - we know the quaternion is normalized and w is non-negative
+  return std::acos(std::clamp(2 * std::pow(dot(q, r), 2) - 1.0, -1.0, 1.0)) * 180 / M_PI;
+}
+
+constexpr float quaternionGeodesicDistanceDegreeToReconstructionError(float deg) {
+  return (1 - std::cos(deg * M_PI / 180)) / 2;
+}
+
+// Compute the rotation angle distance in degrees: abs(2 * acos(q[3]) - 2.0 * std::acos(std::clamp(std::abs(s[3]), -1.0f, 1.0f)))
+// q and r are supposed to be unit quaternions, and their scalar component
+// (4th component) should be positive.
+float quaternionRotationAngleDistanceDegree(const Quat4f& q, const Quat4f& r) {
+  // For a unit quaternion [x,y,z,w], the rotation angle is 2*arccos(|w|)
+  return std::abs(2.0 * std::acos(std::clamp(std::abs(q[3]), -1.0f, 1.0f)) - 2.0 * std::acos(std::clamp(std::abs(r[3]), -1.0f, 1.0f))) * 180 / M_PI;
+}
+
+// Compute the angle between rotation axes in degrees
+// q and r are supposed to be unit quaternions, and their scalar component
+// (4th component) should be positive.
+float quaternionAxisAngleDistanceDegree(const Quat4f& q, const Quat4f& r) {
+  // Get rotation axis direction for each quaternion
+  Vec3f axis_q = normalized(Vec3f{q[0], q[1], q[2]});
+  Vec3f axis_r = normalized(Vec3f{r[0], r[1], r[2]});
+
+  // Compute angle between rotation axes in radians
+  double dist_axis_angle_deg = std::acos(std::clamp(dot(axis_q, axis_r), -1.0f, 1.0f)) * 180 / M_PI;
+  // Handle case where axes point in opposite directions but represent same rotation
+  if (dist_axis_angle_deg > 90.0) {
+    dist_axis_angle_deg = 180.0 - dist_axis_angle_deg;
+  }
+  return dist_axis_angle_deg;
+}
+
 }  // namespace
 
 bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out) {
@@ -248,19 +322,227 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     packed.scales[i] = toUint8((g.scales[i] + 10.0f) * 16.0f);
   }
 
+  // Define maximum search radius and error thresholds for early termination
+  //
+  // Maximum neighborhood size to explore (radius=3 means up to 7x7x7 cube)
+  // Experimentally, it was determined that exploring beyond radius=8 never yields a better optimum.
+  const int radius_max = 8;
+  // Angle thresholds in degrees - if we find a representation with error below this, we can stop searching
+  assert(radius_max >= 2);
+  float geodesicDistanceThresholdDegree[radius_max] = {0.5, 1.0, 1.4};
+  if(radius_max > 3) {
+    geodesicDistanceThresholdDegree[3] = 1.7;
+  }
+  if(radius_max > 4) {
+    geodesicDistanceThresholdDegree[4] = 2.1;
+  }
+  for (int radius = 5; radius < radius_max; ++radius) {
+    const_cast<float*>(geodesicDistanceThresholdDegree)[radius] = 0.5f * radius;
+  }
+
+  // Convert angle thresholds to reconstruction error thresholds
+  float errorThreshold[radius_max];
+  for (int radius = 0; radius < radius_max; ++radius) {
+    errorThreshold[radius] = quaternionGeodesicDistanceDegreeToReconstructionError(geodesicDistanceThresholdDegree[radius]);
+#if VERBOSE >= 2
+    if (!o.fast_rot_quantization) {
+      SpzLog("[SPZ] error_threshold[%d]=%g", radius, errorThreshold[radius]);
+    }
+#endif
+  }
+
+  int32_t numPointsMaxRadius[radius_max + 1] = {0}; // Count of max radius used for testing points
+  int32_t numPointsBestRadius[radius_max + 1] = {0}; // Count of best radius used for testing points
+#if VERBOSE >= 1
+  double averageGeodesicDistanceDegreeFast = 0.;
+  double averageGeodesicDistanceDegreeBest = 0.;
+#endif
+  
   for (size_t i = 0; i < numPoints; i++) {
     // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
     // NOTE: These are already in xyzw order.
     Quat4f q = normalized(quat4f(&g.rotations[i * 4]));
+  #if VERBOSE >= 2
+    SpzLog("[SPZ] ** Gaussian %d", i );
+    SpzLog("[SPZ] %g, %g, %g, %g (scalar)", g.rotations[i * 4 + 0], g.rotations[i * 4 + 1], g.rotations[i * 4 + 2], g.rotations[i * 4 + 3]);
+    SpzLog("[SPZ] Normalized");
+    SpzLog("[SPZ] %g, %g, %g, %g (scalar)", q[0], q[1], q[2], q[3]);
+  #endif
     q[0] *= c.flipQ[0];
     q[1] *= c.flipQ[1];
     q[2] *= c.flipQ[2];
-    q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
-    q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
-    packed.rotations[i * 3 + 0] = toUint8(q[0]);
-    packed.rotations[i * 3 + 1] = toUint8(q[1]);
-    packed.rotations[i * 3 + 2] = toUint8(q[2]);
+
+    Quat4f qq = times(q, (q[3] < 0 ? -127.5f : 127.5f));
+    qq = plus(qq, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
+    uint8_t r0[3] = {toUint8(qq[0]), toUint8(qq[1]), toUint8(qq[2])};
+
+#if VERBOSE >= 1
+    {
+      // unpack
+      Quat4f s = unpackQuaternion(r0);
+      float dist = quaternionGeodesicDistanceDegree(q, s);
+      averageGeodesicDistanceDegreeFast += dist;
+#if VERBOSE >= 2
+      SpzLog("[SPZ] Packed");
+      SpzLog("[SPZ] %d, %d, %d", (int)r0[0], (int)r0[1], (int)r0[2]);
+      // Distance between quaternions
+      // Geodesic distance of the normalized quaternions. https://math.stackexchange.com/a/90098
+      SpzLog("[SPZ] Unpacked normalized");
+      SpzLog("[SPZ] %g, %g, %g, %g (scalar)", s[0], s[1], s[2], s[3]);
+  
+      SpzLog("[SPZ] Distances:");
+      SpzLog("[SPZ] Reconstruction error: %g", quaternionGeodesicDistanceDegreeToReconstructionError(dist));
+      SpzLog("[SPZ] Geodesic quaternion distance (degrees): %g", dist);
+      SpzLog("[SPZ] Rotation angle distance (degrees): %g", quaternionRotationAngleDistanceDegree(q, s));
+      SpzLog("[SPZ] Axis angle distance (degrees): %g", quaternionAxisAngleDistanceDegree(q, s));
+#endif
+    }
+#endif
+
+    if (o.fast_rot_quantization) {
+      for (int j = 0; j < 3; ++j) packed.rotations[i * 3 + j] = r0[j];
+      continue;
+    } else {
+      // Optimize the quaternion representation by exploring a neighborhood around the initial quantization
+      // to find the best 8-bit representation that minimizes reconstruction error
+            
+      // Track the best representation found so far
+      float err_min = 1;  // Start with maximum possible error (1.0 means opposite quaternions)
+      int radius_err_min = -1;  // Best error found so far
+      int radius_tested_max = -1;  // Max radius at which point was tested
+      uint8_t r_best[3] = {r0[0], r0[1], r0[2]};  // Start with the initial quantization
+      
+      // Progressively search larger neighborhoods until we find a good enough representation
+      // or reach the maximum radius
+      for (int radius = 0; radius <= radius_max && (radius == 0 || err_min >= errorThreshold[radius - 1]); ++radius) {
+#if VERBOSE >= 3
+        SpzLog("[SPZ] radius=%d", radius);
+#endif
+        if (radius >  radius_tested_max) {
+          radius_tested_max = radius;
+        }
+        // Special case for radius=0: just evaluate the initial quantization
+        if (radius == 0) {
+          Quat4f s = unpackQuaternion(r0);
+          float err = quaternionReconstructionError(q, s);
+          err_min = err;
+          radius_err_min = radius;
+#if VERBOSE >= 3
+          SpzLog("[SPZ] err_min=%g", err_min);
+#endif
+          continue;
+        }
+        
+        // For radius > 0, explore the surface of a cube with the given radius
+        // We only need to check the surface since we've already checked all points
+        // with smaller radii in previous iterations
+        for (int dim = 0; dim < 3; ++dim) {
+          // For each dimension, check both the positive and negative faces
+          for (int val : {-radius, radius}) {
+            // Set up the other two dimensions for iteration
+            int nextDim = (dim + 1) % 3;
+            int lastDim = (dim + 2) % 3;
+            
+            // Define range limits for the other two dimensions to avoid duplicate processing
+            // We process faces in a specific order to avoid checking the same point multiple times:
+            // - x-faces: full y and z ranges
+            // - y-faces: full z range but limited x range (excluding edges already covered by x-faces)
+            // - z-faces: limited x and y ranges (excluding edges already covered by x and y faces)
+            int nextMin = (dim < 2) ? -radius : -radius+1;
+            int nextMax = (dim < 2) ? radius : radius-1;
+            int lastMin = (dim < 1) ? -radius : -radius+1;
+            int lastMax = (dim < 1) ? radius : radius-1;
+            
+            // Iterate over all points on this face
+            for (int face_i = nextMin; face_i <= nextMax; ++face_i) {
+              for (int face_j = lastMin; face_j <= lastMax; ++face_j) {
+                // Calculate the coordinates of this point relative to r0
+                int coords[3] = {0, 0, 0};
+                coords[dim] = r0[dim] + val;
+                coords[nextDim] = r0[nextDim] + face_i;
+                coords[lastDim] = r0[lastDim] + face_j;
+                
+                // Skip points outside the valid 8-bit range
+                if (coords[0] < 0 || coords[0] > 255 || 
+                    coords[1] < 0 || coords[1] > 255 ||
+                    coords[2] < 0 || coords[2] > 255) {
+                  continue;
+                }
+                
+                // Create the candidate quaternion representation
+                uint8_t r[3];
+                for (int j = 0; j < 3; ++j) r[j] = static_cast<uint8_t>(coords[j]);
+                
+                // Unpack it to evaluate its quality
+                Quat4f s = unpackQuaternion(r);
+                
+#if VERBOSE >= 3
+                {
+                  SpzLog("[SPZ] Packed");
+                  SpzLog("[SPZ] %d, %d, %d", (int)r[0], (int)r[1], (int)r[2]);
+                  SpzLog("[SPZ] Unpacked normalized");
+                  SpzLog("[SPZ] %g, %g, %g, %g (scalar)", s[0], s[1], s[2], s[3]);
+
+                  SpzLog("[SPZ] Distances:");
+                  SpzLog("[SPZ] Reconstruction error: %g", quaternionReconstructionError(q, s));
+                  SpzLog("[SPZ] Geodesic quaternion distance (degrees): %g", quaternionGeodesicDistanceDegree(q, s));
+                  SpzLog("[SPZ] Rotation angle distance (degrees): %g", quaternionRotationAngleDistanceDegree(q, s));
+                  SpzLog("[SPZ] Axis angle distance (degrees): %g", quaternionAxisAngleDistanceDegree(q, s));
+                }
+#endif
+                // Calculate reconstruction error and update best solution if improved
+                float err = quaternionReconstructionError(q, s);
+                if (err < err_min) {
+                  err_min = err;
+                  radius_err_min = radius;
+                  for (int j = 0; j < 3; ++j) r_best[j] = r[j];
+#if VERBOSE >= 3
+                  SpzLog("[SPZ] err_min=%g", err_min);
+#endif
+                }
+              }
+            }
+          }
+        }
+      }
+#if VERBOSE >= 1
+      if (!o.fast_rot_quantization) {
+        // Unpack it to evaluate its quality
+        Quat4f s = unpackQuaternion(r_best);
+        float dist = quaternionGeodesicDistanceDegree(q, s);
+        averageGeodesicDistanceDegreeBest += dist;
+#if VERBOSE >= 2
+        SpzLog("[SPZ] Winner found at radius=%d (packed):", radius_err_min);
+        SpzLog("[SPZ] %d, %d, %d", (int)r_best[0], (int)r_best[1], (int)r_best[2]);
+        SpzLog("[SPZ] Distances:");
+        SpzLog("[SPZ] Reconstruction error: %g", quaternionGeodesicDistanceDegreeToReconstructionError(dist));
+        SpzLog("[SPZ] Geodesic quaternion distance (degrees): %g", dist);
+        SpzLog("[SPZ] Rotation angle distance (degrees): %g", quaternionRotationAngleDistanceDegree(q, s));
+        SpzLog("[SPZ] Axis angle distance (degrees): %g", quaternionAxisAngleDistanceDegree(q, s));
+#endif
+      }
+#endif
+      for (int j = 0; j < 3; ++j) packed.rotations[i * 3 + j] = r_best[j];
+      numPointsMaxRadius[radius_tested_max] += 1;
+      numPointsBestRadius[radius_err_min] += 1;
+    }
   }
+#if VERBOSE >= 1
+  averageGeodesicDistanceDegreeFast /= numPoints;
+  averageGeodesicDistanceDegreeBest /= numPoints;
+  SpzLog("[SPZ] Rotation quantization statistics:");
+  SpzLog("[SPZ] Average geodesic distance in degrees with fast quantization: %g", averageGeodesicDistanceDegreeFast);
+  if (!o.fast_rot_quantization) {
+    SpzLog("[SPZ] Average geodesic distance in degrees with optimized quantization: %g", averageGeodesicDistanceDegreeBest);
+    for (int radius = 0; radius <= radius_max; ++radius) {
+      SpzLog("[SPZ] Points tested up to radius %d: %.2f%% (%d)", radius, 100.0f * numPointsMaxRadius[radius] / numPoints, numPointsMaxRadius[radius]);
+    }
+    SpzLog("[SPZ] Best radius found:");
+    for (int radius = 0; radius <= radius_max; ++radius) {
+      SpzLog("[SPZ] Best radius %d: %.2f%% (%d)", radius, 100.0f * numPointsBestRadius[radius] / numPoints, numPointsBestRadius[radius]);
+    }
+  }
+#endif
 
   for (size_t i = 0; i < numPoints; i++) {
     // Apply sigmoid activation to alpha
@@ -581,6 +863,16 @@ GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o) {
   return loadSpz(data, o);
 }
 
+// Helper function to get a line from the file, skipping comment lines
+bool getLineSkipComments(std::ifstream& in, std::string& line) {
+  while (std::getline(in, line)) {
+    if (line.compare(0, 8, "comment ") != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions &o) {
   SpzLog("[SPZ] Loading: %s", filename.c_str());
   std::ifstream in(filename, std::ios::binary);
@@ -602,8 +894,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     in.close();
     return {};
   }
-  std::getline(in, line);
-  if (line.find("element vertex ") != 0) {
+  if (!getLineSkipComments(in, line) || line.find("element vertex ") != 0) {
     SpzLog("[SPZ ERROR] %s: missing vertex count", filename.c_str());
     in.close();
     return {};
@@ -618,7 +909,12 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
   SpzLog("[SPZ] Loading %d points", numPoints);
   std::unordered_map<std::string, int> fields;  // name -> index
   for (int32_t i = 0;; i++) {
-    std::getline(in, line);
+    if (!getLineSkipComments(in, line)) {
+      SpzLog("[SPZ ERROR] %s: unexpected end of file", filename.c_str());
+      in.close();
+      return {};
+    }
+    
     if (line == "end_header")
       break;
 
