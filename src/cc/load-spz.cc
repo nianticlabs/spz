@@ -129,7 +129,7 @@ constexpr uint8_t FlagAntialiased = 0x1;
 
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
-  uint32_t version = 2;
+  uint32_t version = 3;
   uint32_t numPoints = 0;
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
@@ -212,6 +212,26 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   return success;
 }
 
+void packRotation(PackedGaussians& packed, const std::vector<float>& rotations, const CoordinateConverter& c, const int32_t& numPoints) {
+  for (size_t i = 0; i < numPoints; i++) {
+    // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
+    // NOTE: These are already in xyzw order.
+    Quat4f q = normalized(quat4f(&rotations[i * 4]));
+    q[0] *= c.flipQ[0];
+    q[1] *= c.flipQ[1];
+    q[2] *= c.flipQ[2];
+    q = times(q, q[3] < 0 ? -127.5f : 127.5f);
+    q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
+    packed.rotations[i * 3 + 0] = toUint8(q[0]);
+    packed.rotations[i * 3 + 1] = toUint8(q[1]);
+    packed.rotations[i * 3 + 2] = toUint8(q[2]);
+  }
+}
+
+void packRotationHigherPrecision(PackedGaussians& packed, const std::vector<float>& rotations, const CoordinateConverter& c, const int32_t& numPoints) {
+  // TODO for Jean-Phillipe
+}
+
 PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (!checkSizes(g)) {
     return {};
@@ -248,18 +268,10 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     packed.scales[i] = toUint8((g.scales[i] + 10.0f) * 16.0f);
   }
 
-  for (size_t i = 0; i < numPoints; i++) {
-    // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
-    // NOTE: These are already in xyzw order.
-    Quat4f q = normalized(quat4f(&g.rotations[i * 4]));
-    q[0] *= c.flipQ[0];
-    q[1] *= c.flipQ[1];
-    q[2] *= c.flipQ[2];
-    q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
-    q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
-    packed.rotations[i * 3 + 0] = toUint8(q[0]);
-    packed.rotations[i * 3 + 1] = toUint8(q[1]);
-    packed.rotations[i * 3 + 2] = toUint8(q[2]);
+  if (o.useHigherPrecisionRotations) {
+    packRotationHigherPrecision(packed, g.rotations, c, numPoints);
+  } else {
+    packRotation(packed, g.rotations, c, numPoints);
   }
 
   for (size_t i = 0; i < numPoints; i++) {
@@ -321,6 +333,8 @@ UnpackedGaussian PackedGaussian::unpack(
     result.scale[i] = (scale[i] / 16.0f - 10.0f);
   }
 
+  // TODO: This appears to be dead code. If not, then this rotation work needs to be pulled out similarly to how it has
+  //   been done for the packGaussians and unpackGaussians functions.
   const uint8_t *r = &rotation[0];
   Vec3f xyz = times(
     plus(
@@ -372,14 +386,35 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
     result.shB[j] = 128;
   }
 
+  result.useHigherPrecisionRotations = useHigherPrecisionRotations;
+
   return result;
 }
 
+// TODO: Not sure if this function and PackedGaussian::unpack() are dead code. Doesn't seem to be called from anywhere. -ANM
 UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c) const {
   return at(i).unpack(usesFloat16(), fractionalBits, c);
 }
 
 bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }
+
+void unpackGaussians(GaussianCloud& cloud, const std::vector<uint8_t>& rotations, int32_t numPoints) {
+  for (size_t i = 0; i < numPoints; i++) {
+    const uint8_t *r = &rotations[i * 3];
+    Vec3f xyz = plus(
+      times(
+        Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
+        1.0f / 127.5f),
+      Vec3f{-1, -1, -1});
+    std::copy(xyz.data(), xyz.data() + 3, &cloud.rotations[i * 4]);
+    // Compute the real component - we know the quaternion is normalized and w is non-negative
+    cloud.rotations[i * 4 + 3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
+  }
+}
+
+void unpackGaussiansHighPrecision(GaussianCloud& cloud, const std::vector<uint8_t>& rotations, int32_t numPoints) {
+  // TODO for Jean-Phillipe
+}
 
 GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions &o) {
   const int32_t numPoints = packed.numPoints;
@@ -422,16 +457,10 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
     result.scales[i] = packed.scales[i] / 16.0f - 10.0f;
   }
 
-  for (size_t i = 0; i < numPoints; i++) {
-    const uint8_t *r = &packed.rotations[i * 3];
-    Vec3f xyz = plus(
-      times(
-        Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
-        1.0f / 127.5f),
-      Vec3f{-1, -1, -1});
-    std::copy(xyz.data(), xyz.data() + 3, &result.rotations[i * 4]);
-    // Compute the real component - we know the quaternion is normalized and w is non-negative
-    result.rotations[i * 4 + 3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
+  if (packed.useHigherPrecisionRotations) {
+    unpackGaussiansHighPrecision(result, packed.rotations, numPoints);
+  } else {
+    unpackGaussians(result, packed.rotations, numPoints);
   }
 
   for (size_t i = 0; i < numPoints; i++) {
@@ -474,7 +503,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (header.version < 1 || header.version > 2) {
+  if (header.version < 1 || header.version > 3) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
@@ -493,6 +522,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   result.numPoints = numPoints;
   result.shDegree = header.shDegree;
   result.fractionalBits = header.fractionalBits;
+  result.useHigherPrecisionRotations = header.version >= 3;
   result.antialiased = (header.flags & FlagAntialiased) != 0;
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);

@@ -33,6 +33,9 @@ struct PackedGaussian {
   std::array<uint8_t, 15> shG{};
   std::array<uint8_t, 15> shB{};
 
+  // Indicates if the packed Gaussian is using higher precision for rotations.
+  bool useHigherPrecisionRotations = false;
+
   UnpackedGaussian unpack(
     bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c) const;
 };
@@ -44,6 +47,7 @@ struct PackedGaussians {
   int32_t shDegree = 0;        // Degree of spherical harmonics
   int32_t fractionalBits = 0;  // Number of bits used for fractional part of fixed-point coords
   bool antialiased = false;    // Whether gaussians should be rendered with mip-splat antialiasing
+  bool useHigherPrecisionRotations = true;  // Whether to use higher precision rotations
 
   std::vector<uint8_t> positions;
   std::vector<uint8_t> scales;
@@ -59,6 +63,7 @@ struct PackedGaussians {
 
 struct PackOptions {
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
+  bool useHigherPrecisionRotations = true;
 };
 
 struct UnpackOptions {
