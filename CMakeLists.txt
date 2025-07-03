@@ -39,6 +39,8 @@ set_target_properties(spz PROPERTIES
   CXX_STANDARD_REQUIRED ON
 )
 
+add_subdirectory(src/tests/quaternion_test)
+
 # Installation
 
 ## Install spzConfig.cmake spz::spz target can be found when calling find_package(spz)
