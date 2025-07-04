@@ -21,11 +21,11 @@ struct UnpackedGaussian {
   std::array<float, 15> shB;
 };
 
-// Represents a single low precision gaussian. Each gaussian has exactly 64 bytes, even if it does
+// Represents a single low precision gaussian. Each gaussian has exactly 65 bytes, even if it does
 // not have full spherical harmonics.
 struct PackedGaussian {
   std::array<uint8_t, 9> position{};
-  std::array<uint8_t, 3> rotation{};
+  std::array<uint8_t, 4> rotation{};
   std::array<uint8_t, 3> scale{};
   std::array<uint8_t, 3> color{};
   uint8_t alpha = 0;
@@ -34,7 +34,7 @@ struct PackedGaussian {
   std::array<uint8_t, 15> shB{};
 
   UnpackedGaussian unpack(
-    bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c) const;
+    bool usesFloat16, bool usesHigherPrecisionRotation, int32_t fractionalBits, const CoordinateConverter &c) const;
 };
 
 // Represents a full splat with lower precision. Each splat has at most 64 bytes, although splats
@@ -53,6 +53,7 @@ struct PackedGaussians {
   std::vector<uint8_t> sh;
 
   bool usesFloat16() const;
+  bool usesHigherPrecisionRotation() const;
   PackedGaussian at(int32_t i) const;
   UnpackedGaussian unpack(int32_t i, const CoordinateConverter &c) const;
 };
@@ -94,4 +95,6 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out);
 
 bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out);
+
+float quaternionGeodesicDistanceDegree(const Quat4f q, const Quat4f& r);
 }  // namespace spz
