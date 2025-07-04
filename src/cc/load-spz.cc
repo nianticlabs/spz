@@ -485,7 +485,6 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
   return result;
 }
 
-// TODO: Not sure if this function and PackedGaussian::unpack() are dead code. Doesn't seem to be called from anywhere. -ANM
 UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c) const {
   return at(i).unpack(usesFloat16(), usesHigherPrecisionRotation(), fractionalBits, c);
 }
