@@ -107,7 +107,7 @@ struct PackedGaussiansHeader {
 All values are little-endian.
 
 1. **magic**: This is always 0x5053474e
-2. **version**: Currently, the only valid version is 2
+2. **version**: Currently, the only valid versions are 2 and 3
 3. **numPoints**: The number of gaussians
 4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 3 (inclusive).
 5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
@@ -127,8 +127,12 @@ Scales are represented as `(x, y, z)` components, each represented as an 8-bit l
 
 ### Rotation
 
-Rotations are represented as the `(x, y, z)` components of the normalized rotation quaternion. The
-`w` component can be derived from the others and is not stored. Each components is encoded as an
+In version 3, rotations are represented as the smallest three components of the normalized rotation quaternion, for optimal rotation accuracy.
+The largest component can be derived from the others and is not stored. Its index is stored on 2 bits
+and each of the smallest three components is encoded as a 10-bit signed integer.
+
+In version 2, rotations are represented as the `(x, y, z)` components of the normalized rotation quaternion. The
+`w` component can be derived from the others and is not stored. Each component is encoded as an
 8-bit signed integer.
 
 ### Alphas
