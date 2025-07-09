@@ -1,8 +1,5 @@
 #include "load-spz.h"
 
-// Uncomment this to save version 2 of SPZ
-//#define SPZ_SAVE_VERSION_2
-
 #include <zlib.h>
 
 #ifdef ANDROID
@@ -46,6 +43,7 @@ static void SpzLog(const char *fmt) {
 // be useful to represent base colors that are out of range if the higher spherical harmonics bands
 // bring them back into range so we multiply by a smaller value.
 constexpr float colorScale = 0.15f;
+constexpr float sqrt1_2 = (float)0.707106781186547524401; // 1/sqrt(2)
 
 int32_t degreeForDim(int32_t dim) {
   if (dim < 3)
@@ -118,10 +116,10 @@ bool checkSizes(const GaussianCloud &g) {
   return true;
 }
 
-bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim, bool usesFloat16, bool usesHigherPrecisionRotation) {
+bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim, bool usesFloat16) {
   CHECK_EQ(packed.positions.size(), numPoints * 3 * (usesFloat16 ? 2 : 3));
   CHECK_EQ(packed.scales.size(), numPoints * 3);
-  CHECK_EQ(packed.rotations.size(), numPoints * (usesHigherPrecisionRotation ? 4 : 3));
+  CHECK_EQ(packed.rotations.size(), numPoints * (packed.usesQuaternionSmallestThree ? 4 : 3));
   CHECK_EQ(packed.alphas.size(), numPoints);
   CHECK_EQ(packed.colors.size(), numPoints * 3);
   CHECK_EQ(packed.sh.size(), numPoints * shDim * 3);
@@ -132,11 +130,7 @@ constexpr uint8_t FlagAntialiased = 0x1;
 
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
-#ifdef SPZ_SAVE_VERSION_2
-  uint32_t version = 2;
-#else
   uint32_t version = 3;
-#endif
   uint32_t numPoints = 0;
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
@@ -219,23 +213,8 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   return success;
 }
 
-// With version 3, this is now dead code
-void packRotation(uint8_t r[3], const float rotation[4], const CoordinateConverter& c) {
-  // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
-  // NOTE: These are already in xyzw order.
-  Quat4f q = normalized(quat4f(&rotation[0]));
-  q[0] *= c.flipQ[0];
-  q[1] *= c.flipQ[1];
-  q[2] *= c.flipQ[2];
-  q = times(q, q[3] < 0 ? -127.5f : 127.5f);
-  q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
-  r[0] = toUint8(q[0]);
-  r[1] = toUint8(q[1]);
-  r[2] = toUint8(q[2]);
-}
-
-void packRotationHigherPrecision(uint8_t r[4], const float rotation[4], const CoordinateConverter& c) {
-  // Normalize the quaternion, make w positive
+void packQuaternionSmallestThree(uint8_t r[4], const float rotation[4], const CoordinateConverter& c) {
+  // Normalize the quaternion
   Quat4f q = normalized(quat4f(&rotation[0]));
   q[0] *= c.flipQ[0];
   q[1] *= c.flipQ[1];
@@ -263,11 +242,12 @@ void packRotationHigherPrecision(uint8_t r[4], const float rotation[4], const Co
       {
           uint32_t negbit = (q[i] < 0) ^ negate;
           uint32_t mag =
-              (uint32_t)(float((1u << 9u) - 1u) * (std::fabs(q[i]) / (float)M_SQRT1_2) + 0.5f);
+              (uint32_t)(float((1u << 9u) - 1u) * (std::fabs(q[i]) / sqrt1_2) + 0.5f);
           comp = (comp << 10u) | (negbit << 9u) | mag;
       }
   }
 
+  // Ensure little-endianness on all platforms
   r[0] = comp & 0xff;
   r[1] = (comp >> 8) & 0xff;
   r[2] = (comp >> 16) & 0xff;
@@ -289,13 +269,10 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.shDegree = g.shDegree;
   packed.fractionalBits = 12;
   packed.antialiased = g.antialiased;
+  packed.usesQuaternionSmallestThree = true;
   packed.positions.resize(numPoints * 3 * 3);
   packed.scales.resize(numPoints * 3);
-#ifdef SPZ_SAVE_VERSION_2
-  packed.rotations.resize(numPoints * 3);
-#else
   packed.rotations.resize(numPoints * 4);
-#endif
   packed.alphas.resize(numPoints);
   packed.colors.resize(numPoints * 3);
   packed.sh.resize(numPoints * shDim * 3);
@@ -316,11 +293,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
   for (size_t i = 0; i < numPoints; i++)
   {
-#ifdef SPZ_SAVE_VERSION_2
-    packRotation(&packed.rotations[3 * i], &g.rotations[4 * i], c);
-#else
-    packRotationHigherPrecision(&packed.rotations[4 * i], &g.rotations[4 * i], c);
-#endif
+    packQuaternionSmallestThree(&packed.rotations[4 * i], &g.rotations[4 * i], c);
   }
 
   for (size_t i = 0; i < numPoints; i++) {
@@ -357,7 +330,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   return packed;
 }
 
-void unpackRotation(float rotation[4], const uint8_t r[3], const CoordinateConverter& c = CoordinateConverter())
+void unpackQuaternionFirstThree(float rotation[4], const uint8_t r[3], const CoordinateConverter& c = CoordinateConverter())
 {
   Vec3f xyz = times(
     plus(
@@ -371,7 +344,7 @@ void unpackRotation(float rotation[4], const uint8_t r[3], const CoordinateConve
   rotation[3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
 }
 
-void unpackRotationHigherPrecision(float rotation[4], const uint8_t r[4], const CoordinateConverter& c = CoordinateConverter())
+void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const CoordinateConverter& c = CoordinateConverter())
 {
   uint32_t comp =
     r[0] +
@@ -391,7 +364,7 @@ void unpackRotationHigherPrecision(float rotation[4], const uint8_t r[4], const 
       uint32_t mag    = comp & c_mask;
       uint32_t negbit = (comp >> 9u) & 0x1u;
       comp            = comp >> 10u;
-      rotation[i]     = (float)M_SQRT1_2 * ((float)mag) / float(c_mask);
+      rotation[i]     = sqrt1_2 * ((float)mag) / float(c_mask);
       if (negbit == 1)
       {
         rotation[i] = -rotation[i];
@@ -408,7 +381,7 @@ void unpackRotationHigherPrecision(float rotation[4], const uint8_t r[4], const 
 }
 
 UnpackedGaussian PackedGaussian::unpack(
-  bool usesFloat16, bool usesHigherPrecisionRotation, int32_t fractionalBits, const CoordinateConverter &c) const {
+  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c) const {
   UnpackedGaussian result;
   if (usesFloat16) {
     // Decode legacy float16 format. We can remove this at some point as it was never released.
@@ -432,13 +405,13 @@ UnpackedGaussian PackedGaussian::unpack(
     result.scale[i] = (scale[i] / 16.0f - 10.0f);
   }
 
-  if (usesHigherPrecisionRotation)
+  if (usesQuaternionSmallestThree)
   {
-      unpackRotationHigherPrecision(&result.rotation[0], &rotation[0], c);
+      unpackQuaternionSmallestThree(&result.rotation[0], &rotation[0], c);
   }
   else
   {
-      unpackRotation(&result.rotation[0], &rotation[0], c);
+      unpackQuaternionFirstThree(&result.rotation[0], &rotation[0], c);
   }
 
   result.alpha = invSigmoid(alpha / 255.0f);
@@ -463,11 +436,12 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
   const auto *p = &positions[i * positionBytes];
   std::copy(p, p + positionBytes, result.position.data());
   std::copy(&scales[start3], &scales[start3] + 3, result.scale.data());
-  int32_t rotationBytes = usesHigherPrecisionRotation() ? 4 : 3;
+  int32_t rotationBytes = usesQuaternionSmallestThree ? 4 : 3;
   const auto& r = &rotations[i * rotationBytes];
   std::copy(r, r + rotationBytes, result.rotation.data());
   std::copy(&colors[start3], &colors[start3] + 3, result.color.data());
   result.alpha = alphas[i];
+  result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
 
   int32_t shDim = dimForDegree(shDegree);
   const auto *sh = &this->sh[i * shDim * 3];
@@ -486,19 +460,17 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
 }
 
 UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c) const {
-  return at(i).unpack(usesFloat16(), usesHigherPrecisionRotation(), fractionalBits, c);
+  return at(i).unpack(usesFloat16(), fractionalBits, c);
 }
 
 bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }
-
-bool PackedGaussians::usesHigherPrecisionRotation() const { return rotations.size() == numPoints * 4; }
 
 GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions &o) {
   const int32_t numPoints = packed.numPoints;
   const int32_t shDim = dimForDegree(packed.shDegree);
   const bool usesFloat16 = packed.usesFloat16();
-  const bool usesHigherPrecisionRotation = packed.usesHigherPrecisionRotation();
-  if (!checkSizes(packed, numPoints, shDim, usesFloat16, usesHigherPrecisionRotation)) {
+  const bool usesQuaternionSmallestThree = packed.usesQuaternionSmallestThree;
+  if (!checkSizes(packed, numPoints, shDim, usesFloat16)) {
     return {};
   }
 
@@ -536,10 +508,10 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   }
 
   for (size_t i = 0; i < numPoints; i++) {
-    if (usesHigherPrecisionRotation) {
-      unpackRotationHigherPrecision(&result.rotations[4 * i], &packed.rotations[4 * i]);
+    if (usesQuaternionSmallestThree) {
+      unpackQuaternionSmallestThree(&result.rotations[4 * i], &packed.rotations[4 * i]);
     } else {
-      unpackRotation(&result.rotations[4 * i], &packed.rotations[3 * i]);
+      unpackQuaternionFirstThree(&result.rotations[4 * i], &packed.rotations[3 * i]);
     }
   }
 
@@ -598,7 +570,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
-  const bool usesHigherPrecisionRotation = header.version >= 3;
+  const bool usesQuaternionSmallestThree = header.version >= 3;
   PackedGaussians result;
   result.numPoints = numPoints;
   result.shDegree = header.shDegree;
@@ -606,7 +578,8 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   result.antialiased = (header.flags & FlagAntialiased) != 0;
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
-  result.rotations.resize(numPoints * (usesHigherPrecisionRotation ? 4 : 3));
+  result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
+  result.rotations.resize(numPoints * (usesQuaternionSmallestThree ? 4 : 3));  
   result.alphas.resize(numPoints);
   result.colors.resize(numPoints * 3);
   result.sh.resize(numPoints * shDim * 3);
