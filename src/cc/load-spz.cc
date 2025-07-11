@@ -381,7 +381,7 @@ void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const 
 }
 
 UnpackedGaussian PackedGaussian::unpack(
-  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c) const {
+  bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c) const {
   UnpackedGaussian result;
   if (usesFloat16) {
     // Decode legacy float16 format. We can remove this at some point as it was never released.
@@ -441,7 +441,6 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
   std::copy(r, r + rotationBytes, result.rotation.data());
   std::copy(&colors[start3], &colors[start3] + 3, result.color.data());
   result.alpha = alphas[i];
-  result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
 
   int32_t shDim = dimForDegree(shDegree);
   const auto *sh = &this->sh[i * shDim * 3];
@@ -460,7 +459,7 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
 }
 
 UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c) const {
-  return at(i).unpack(usesFloat16(), fractionalBits, c);
+  return at(i).unpack(usesFloat16(), usesQuaternionSmallestThree, fractionalBits, c);
 }
 
 bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }

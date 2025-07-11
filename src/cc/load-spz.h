@@ -32,10 +32,9 @@ struct PackedGaussian {
   std::array<uint8_t, 15> shR{};
   std::array<uint8_t, 15> shG{};
   std::array<uint8_t, 15> shB{};
-  bool usesQuaternionSmallestThree;
 
   UnpackedGaussian unpack(
-    bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c) const;
+    bool usesFloat16,  bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c) const;
 };
 
 // Represents a full splat with lower precision. Each splat has at most 64 bytes, although splats
