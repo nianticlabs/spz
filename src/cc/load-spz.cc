@@ -906,12 +906,4 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   return true;
 }
 
-constexpr float dot(const Quat4f &a, const Quat4f &b) {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-}
-
-float quaternionGeodesicDistanceDegree(const Quat4f q, const Quat4f& r) {
-  // Compute the real component - we know the quaternion is normalized and w is non-negative
-  return std::acos(std::clamp(2 * std::pow(dot(q, r), 2) - 1.0, -1.0, 1.0)) * 180 / M_PI;
-}
 }  // namespace spz

@@ -95,6 +95,4 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out);
 
 bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out);
-
-float quaternionGeodesicDistanceDegree(const Quat4f q, const Quat4f& r);
 }  // namespace spz
