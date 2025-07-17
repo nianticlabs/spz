@@ -124,7 +124,6 @@ Loads a cloud of Gaussians from a file in `.spz` format.
 
 Check [src/emscripten/spz.d.ts](src/emscripten/spz.d.ts) for the Typescript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
 
-
 ### PackOptions
 
 The `PackOptions` struct supports the following fields:
@@ -132,8 +131,6 @@ The `PackOptions` struct supports the following fields:
 - `from`: Source coordinate system (default: `UNSPECIFIED`)
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
-
-### Javascript
 
 ## File Format
 
