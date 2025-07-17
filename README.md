@@ -38,7 +38,33 @@ Starting with version 3, SPZ supports configurable spherical harmonics quantizat
 Requires `libz` as the only dependent library, otherwise the code is completely self-contained.
 A CMake build system is provided for convenience.
 
+### Typescript
+
+To build the Typescript interface through Web-Assembly (WASM), an Emscripten environment needs to be setup before compilation. One may install the Emscripten SDK following the instructions [here](https://emscripten.org/docs/getting_started/downloads.html).
+
+Under an emscripten environment, the Makefile can be generated through:
+```
+emcmake cmake -B build-wasm .
+```
+Then one can build through
+```
+cmake --build build-wasm
+```
+The package will be built and installed into the `dist` folder.
+
+To publish the package to the NPM repository, one may login in with
+```
+npm login --registry https://artifactory.corp.adobe.com/artifactory/api/npm/npm-adobe-release-local
+```
+Then publish through
+```
+npm run publishPackage
+```
+
+
 ## API
+
+### C++
 
 ```
 bool saveSpz(
@@ -93,6 +119,10 @@ Loads a cloud of Gaussians from a file in `.spz` format.
    - `options`: Flags that control the unpacking behavior.
    - Returns a `GaussianCloud` decoded from the file. In case of an error, this will return
      a result with no gaussians
+
+### Typescript
+
+Check [src/emscripten/spz.d.ts](src/emscripten/spz.d.ts) for the Typescript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
 
 ### PackOptions
 
