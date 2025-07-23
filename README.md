@@ -153,68 +153,21 @@ struct PackedGaussiansHeader {
   uint8_t shDegree;
   uint8_t fractionalBits;
   uint8_t flags;
-  uint8_t reserved;
+  uint8_t v2Padding;
+  // Version 3 additions
   uint8_t sh1Bits;                   // Bits for SH degree 1 coefficients
   uint8_t shRestBits;                // Bits for SH degree 2+ coefficients  
   float shMin;                       // Minimum SH coefficient value for quantization
   float shMax;                       // Maximum SH coefficient value for quantization
+  uint8_t v3Padding[2];              // Padding to make version 3 end at 28 bytes
+  // Version 4 additions
   uint8_t hasSafeOrbit;              // Whether safe orbit data is present
-  uint8_t padding[1];                // Padding for alignment
   float safeOrbitElevationMin;       // Minimum elevation for safe orbit (radians)
   float safeOrbitElevationMax;       // Maximum elevation for safe orbit (radians)
   float safeOrbitRadiusMin;          // Minimum radius for safe orbit
+  uint8_t v4Padding[1];              // Padding
 };
 ```
-
-**Version 3 (legacy):**
-```c
-struct PackedGaussiansHeader {
-  uint32_t magic;
-  uint32_t version;
-  uint32_t numPoints;
-  uint8_t shDegree;
-  uint8_t fractionalBits;
-  uint8_t flags;
-  uint8_t sh1Bits;        // Bits for SH degree 1 coefficients
-  uint8_t shRestBits;     // Bits for SH degree 2+ coefficients  
-  uint8_t reserved;
-  float shMin;            // Minimum SH coefficient value for quantization
-  float shMax;            // Maximum SH coefficient value for quantization
-};
-```
-
-**Version 2 (legacy):**
-```c
-struct PackedGaussiansHeader {
-  uint32_t magic;
-  uint32_t version;
-  uint32_t numPoints;
-  uint8_t shDegree;
-  uint8_t fractionalBits;
-  uint8_t flags;
-  uint8_t reserved;
-};
-```
-
-All values are little-endian.
-
-1. **magic**: This is always 0x5053474e
-2. **version**: Currently supported versions are 1, 2, 3, and 4
-3. **numPoints**: The number of gaussians
-4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 4 (inclusive).
-5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
-   the fixed-point encoding.
-6. **flags**: A bit field containing flags.
-   - `0x1`: whether the splat was trained with [antialiasing](https://niujinshuchong.github.io/mip-splatting/).
-7. **sh1Bits** (v3+): Number of quantization bits for SH degree 1 coefficients (1-8).
-8. **shRestBits** (v3+): Number of quantization bits for SH degree 2+ coefficients (1-8).
-9. **shMin** (v3+): Minimum SH coefficient value used for quantization scaling.
-10. **shMax** (v3+): Maximum SH coefficient value used for quantization scaling.
-11. **hasSafeOrbit** (v4+): Whether safe orbit camera data is present (0 or 1).
-12. **safeOrbitElevationMin** (v4+): Minimum elevation for safe orbit in radians.
-13. **safeOrbitElevationMax** (v4+): Maximum elevation for safe orbit in radians.
-14. **safeOrbitRadiusMin** (v4+): Minimum radius for safe orbit.
-15. **reserved**: Reserved for future use. Must be 0.
 
 ### Positions
 
