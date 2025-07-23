@@ -159,7 +159,7 @@ struct PackedGaussiansHeader {
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
   uint8_t flags = 0;
-  uint8_t reserved = 0;
+  uint8_t v2Padding = 0;
 
   // Version 3+ fields: SH quantization parameters
   uint8_t sh1Bits = 5;        // Bits for SH degree 1 coefficients
@@ -173,7 +173,7 @@ struct PackedGaussiansHeader {
   float safeOrbitElevationMin = 0.0f;    // Minimum elevation for safe orbit (radians)
   float safeOrbitElevationMax = 0.0f;    // Maximum elevation for safe orbit (radians)
   float safeOrbitRadiusMin = 0.0f;       // Minimum radius for safe orbit
-  uint8_t padding[1] = {0};              // Padding
+  uint8_t v4Padding = 0;                 // Padding
 
   // Helper methods for version-aware I/O
   size_t getHeaderSize() const {
