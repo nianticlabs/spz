@@ -101,7 +101,7 @@ timestamps {
             utils.setupCondaEnvironment(venv_name, wheel_profile)
             def wheel_version = "0.0.0.dev+pr${CHANGE_ID}build${BUILD_NUMBER}"
             def release_mode = "dev"
-            utils.pythonWheelOps(venv_name, wheel_version, release_mode, wheel_profile)
+            utils.pythonWheelOps(venv_name, wheel_version, release_mode, wheel_profile, true)
           } catch(Exception e) {
             println("+++++ Build wheel on ${NODE_NAME} caught Exception:\n    ${e}")
             currentBuild.result = "FAILURE"
