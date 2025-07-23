@@ -180,7 +180,7 @@ struct PackedGaussiansHeader {
     if (version >= 4) return sizeof(PackedGaussiansHeader);
     if (version >= 3) return offsetof(PackedGaussiansHeader, hasSafeOrbit);
     if (version >= 1) return offsetof(PackedGaussiansHeader, sh1Bits);
-    return sizeof(uint32_t) * 2;  // Version 0
+    return sizeof(uint32_t) * 2;  // Minimum to get the magic and version
   }
 };
 
@@ -586,7 +586,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
 
   // Read remaining header data based on actual version
   uint32_t actualVersion = header.version;
-  header.version = actualVersion;  // Update version for correct getHeaderSize()
+  header.version = actualVersion;
   size_t totalHeaderSize = header.getHeaderSize();
   size_t remainingSize = totalHeaderSize - minHeaderSize;
   if (remainingSize > 0) {
