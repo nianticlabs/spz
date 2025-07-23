@@ -182,12 +182,6 @@ struct PackedGaussiansHeader {
     if (version >= 1) return offsetof(PackedGaussiansHeader, sh1Bits);
     return sizeof(uint32_t) * 2;  // Version 0
   }
-
-  void setDefaults(uint32_t ver) {
-    version = ver;
-    // Note: All fields already have appropriate defaults via default member initializers
-    // This method is kept for potential future use, but is no longer needed for deserialization
-  }
 };
 
 bool decompressGzippedImpl(
