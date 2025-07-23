@@ -166,20 +166,21 @@ struct PackedGaussiansHeader {
   uint8_t shRestBits = 4;     // Bits for SH degree 2+ coefficients
   float shMin = -1.0f;        // Minimum SH coefficient value for quantization
   float shMax = 1.0f;         // Maximum SH coefficient value for quantization
+  uint8_t v3Padding[2] = {0}; // Padding
 
   // Version 4+ fields: Safe orbit camera parameters
   uint8_t hasSafeOrbit = 0;              // Whether safe orbit data is present
-  uint8_t padding[1] = {0};              // Padding for alignment
   float safeOrbitElevationMin = 0.0f;    // Minimum elevation for safe orbit (radians)
   float safeOrbitElevationMax = 0.0f;    // Maximum elevation for safe orbit (radians)
   float safeOrbitRadiusMin = 0.0f;       // Minimum radius for safe orbit
+  uint8_t padding[1] = {0};              // Padding
 
   // Helper methods for version-aware I/O
   size_t getHeaderSize() const {
     if (version >= 4) return sizeof(PackedGaussiansHeader);
     if (version >= 3) return offsetof(PackedGaussiansHeader, hasSafeOrbit);
-    if (version >= 1) return offsetof(PackedGaussiansHeader, sh1Bits);  // Version 1-2
-    return sizeof(uint32_t) * 2;  // Version 0 = just magic + version
+    if (version >= 1) return offsetof(PackedGaussiansHeader, sh1Bits);
+    return sizeof(uint32_t) * 2;  // Version 0
   }
 
   void setDefaults(uint32_t ver) {
