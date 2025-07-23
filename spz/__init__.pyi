@@ -36,6 +36,10 @@ class PackOptions:
     from_: int  # Note: 'from' is a Python keyword in the C++ binding
     sh1Bits: int  # Bits for SH degree 1 coefficients
     shRestBits: int  # Bits for SH degree 2+ coefficients
+    hasSafeOrbit: bool  # Whether safe orbit data is present
+    safeOrbitElevationMin: float  # Minimum elevation for safe orbit (radians)
+    safeOrbitElevationMax: float  # Maximum elevation for safe orbit (radians)
+    safeOrbitRadiusMin: float  # Minimum radius for safe orbit
 
 class UnpackOptions:
     def __init__(self) -> None: ...
@@ -66,6 +70,10 @@ class PackedGaussians:
     shRestBits: int  # Bits for SH degree 2+ coefficients
     shMin: float  # Minimum SH coefficient value used for quantization
     shMax: float  # Maximum SH coefficient value used for quantization
+    hasSafeOrbit: bool  # Whether safe orbit data is present
+    safeOrbitElevationMin: float  # Minimum elevation for safe orbit (radians)
+    safeOrbitElevationMax: float  # Maximum elevation for safe orbit (radians)
+    safeOrbitRadiusMin: float  # Minimum radius for safe orbit
     positions: List[float]
     scales: List[float]
     rotations: List[float]

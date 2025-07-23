@@ -38,7 +38,7 @@ struct PackedGaussian {
   std::array<uint8_t, SH_MAX_COEFFS> shB{};
 
   UnpackedGaussian unpack(
-    bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c, 
+    bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c,
     float shMin = -1.0f, float shMax = 1.0f) const;
 };
 
@@ -55,6 +55,12 @@ struct PackedGaussians {
   uint8_t shRestBits = 4;   // Bits for SH degree 2+ coefficients
   float shMin = -1.0f;      // Minimum SH coefficient value used for quantization
   float shMax = 1.0f;       // Maximum SH coefficient value used for quantization
+
+  // Safe orbit camera parameters
+  bool hasSafeOrbit = false;           // Whether safe orbit data is present
+  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
+  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
+  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
 
   std::vector<uint8_t> positions;
   std::vector<uint8_t> scales;
@@ -73,6 +79,12 @@ struct PackOptions {
   // Spherical harmonics quantization parameters
   uint8_t sh1Bits = 5;      // Bits for SH degree 1 coefficients (max 8)
   uint8_t shRestBits = 4;   // Bits for SH degree 2+ coefficients (max 8)
+
+  // Safe orbit camera parameters
+  bool hasSafeOrbit = false;           // Whether safe orbit data is present
+  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
+  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
+  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
 };
 
 struct UnpackOptions {

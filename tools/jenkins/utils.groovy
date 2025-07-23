@@ -70,7 +70,7 @@ def testPython(venv_name, profile) {
     junit testResults: ".tmp_test_out/${profile.name}/test_report.xml"
 }}
 
-def pythonWheelOps(venv_name, wheel_version, release_mode, profile) {
+def pythonWheelOps(venv_name, wheel_version, release_mode, profile, is_pr=false) {
 
     withEnv(["PIP_EXTRA_INDEX_URL=https://$ARTIFACTORY_UW2_USER:$ARTIFACTORY_UW2_API_KEY@artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-release/simple https://$ARTIFACTORY_UW2_USER:$ARTIFACTORY_UW2_API_KEY@artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release/simple"]) {
         def repo_url_tech_transfer = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-${release_mode}"
@@ -93,8 +93,10 @@ def pythonWheelOps(venv_name, wheel_version, release_mode, profile) {
             throw e
         }
         try {
-            echo "Uploading ${repo_url_adobeshared}..."
-            runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_adobeshared}")
+            if (!is_pr) {
+                echo "Uploading ${repo_url_adobeshared}..."
+                runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_adobeshared}")
+            }
             echo "Uploading ${repo_url_tech_transfer}..."
             runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_tech_transfer}")
         } catch (Exception e) {

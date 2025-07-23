@@ -154,17 +154,34 @@ constexpr uint8_t FlagAntialiased = 0x1;
 
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
-  uint32_t version = 3;
+  uint32_t version = 4;
   uint32_t numPoints = 0;
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
   uint8_t flags = 0;
-  uint8_t reserved = 0;
+  uint8_t v2Padding = 0;
+
+  // Version 3+ fields: SH quantization parameters
   uint8_t sh1Bits = 5;        // Bits for SH degree 1 coefficients
   uint8_t shRestBits = 4;     // Bits for SH degree 2+ coefficients
   float shMin = -1.0f;        // Minimum SH coefficient value for quantization
   float shMax = 1.0f;         // Maximum SH coefficient value for quantization
-  uint8_t padding[2] = {0};   // Padding at the end for alignment
+  uint8_t v3Padding[2] = {0}; // Padding
+
+  // Version 4+ fields: Safe orbit camera parameters
+  uint8_t hasSafeOrbit = 0;              // Whether safe orbit data is present
+  float safeOrbitElevationMin = 0.0f;    // Minimum elevation for safe orbit (radians)
+  float safeOrbitElevationMax = 0.0f;    // Maximum elevation for safe orbit (radians)
+  float safeOrbitRadiusMin = 0.0f;       // Minimum radius for safe orbit
+  uint8_t v4Padding = 0;                 // Padding
+
+  // Helper methods for version-aware I/O
+  size_t getHeaderSize() const {
+    if (version >= 4) return sizeof(PackedGaussiansHeader);
+    if (version >= 3) return offsetof(PackedGaussiansHeader, hasSafeOrbit);
+    if (version >= 1) return offsetof(PackedGaussiansHeader, sh1Bits);
+    return sizeof(uint32_t) * 2;  // Minimum to get the magic and version
+  }
 };
 
 bool decompressGzippedImpl(
@@ -267,6 +284,12 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.antialiased = g.antialiased;
   packed.sh1Bits = o.sh1Bits;
   packed.shRestBits = o.shRestBits;
+
+  // Copy safe orbit parameters from options
+  packed.hasSafeOrbit = o.hasSafeOrbit;
+  packed.safeOrbitElevationMin = o.safeOrbitElevationMin;
+  packed.safeOrbitElevationMax = o.safeOrbitElevationMax;
+  packed.safeOrbitRadiusMin = o.safeOrbitRadiusMin;
 
   // Compute min/max of SH coefficients for optimal quantization
   if (g.shDegree > 0 && !g.sh.empty()) {
@@ -528,6 +551,12 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
   header.shRestBits = packed.shRestBits;
   header.shMin = packed.shMin;
   header.shMax = packed.shMax;
+
+  // Write safe orbit parameters (version 4+)
+  header.hasSafeOrbit = static_cast<uint8_t>(packed.hasSafeOrbit ? 1 : 0);
+  header.safeOrbitElevationMin = packed.safeOrbitElevationMin;
+  header.safeOrbitElevationMax = packed.safeOrbitElevationMax;
+  header.safeOrbitRadiusMin = packed.safeOrbitRadiusMin;
   out->write(reinterpret_cast<const char *>(&header), sizeof(header));
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
@@ -540,66 +569,34 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
 PackedGaussians deserializePackedGaussians(std::istream &in) {
   constexpr int32_t maxPointsToRead = 10000000;
 
-  // Read just enough to determine the version
-  struct VersionHeader {
-    uint32_t magic;
-    uint32_t version;
-  };
+  PackedGaussiansHeader header;
+  header.version = 0;
 
-  VersionHeader versionHeader;
-  in.read(reinterpret_cast<char *>(&versionHeader), sizeof(versionHeader));
-  if (!in || versionHeader.magic != PackedGaussiansHeader().magic) {
+  // Read just the magic and version to see how much we need to read
+  size_t minHeaderSize = header.getHeaderSize();
+  in.read(reinterpret_cast<char *>(&header), minHeaderSize);
+  if (!in || header.magic != PackedGaussiansHeader().magic) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (versionHeader.version < 1 || versionHeader.version > 3) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", versionHeader.version);
+  if (header.version < 1 || header.version > 4) {
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
 
-  // Reset stream to beginning of header
-  in.seekg(-static_cast<int>(sizeof(versionHeader)), std::ios::cur);
-
-  PackedGaussiansHeader header;
-  if (versionHeader.version >= 3) {
-    // Read the full version 3+ header
-    in.read(reinterpret_cast<char *>(&header), sizeof(header));
+  // Read remaining header data based on actual version
+  uint32_t actualVersion = header.version;
+  header.version = actualVersion;
+  size_t totalHeaderSize = header.getHeaderSize();
+  size_t remainingSize = totalHeaderSize - minHeaderSize;
+  if (remainingSize > 0) {
+    in.read(reinterpret_cast<char *>(&header) + minHeaderSize, remainingSize);
     if (!in) {
-      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version 3 header");
+      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version %d header", actualVersion);
       return {};
     }
-  } else {
-    // For version 2, read only the basic header fields
-    struct Version2Header {
-      uint32_t magic;
-      uint32_t version;
-      uint32_t numPoints;
-      uint8_t shDegree;
-      uint8_t fractionalBits;
-      uint8_t flags;
-      uint8_t reserved;
-    };
-
-    Version2Header v2Header;
-    in.read(reinterpret_cast<char *>(&v2Header), sizeof(v2Header));
-    if (!in) {
-      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version 2 header");
-      return {};
-    }
-
-    // Initialize header with version 2 fields and defaults for new fields
-    header.magic = v2Header.magic;
-    header.version = v2Header.version;
-    header.numPoints = v2Header.numPoints;
-    header.shDegree = v2Header.shDegree;
-    header.fractionalBits = v2Header.fractionalBits;
-    header.flags = v2Header.flags;
-    header.reserved = v2Header.reserved;
-    header.sh1Bits = 5;
-    header.shRestBits = 4;
-    header.shMin = -1.0f;
-    header.shMax = 1.0f;
   }
+
   if (header.numPoints > maxPointsToRead) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
     return {};
@@ -618,25 +615,25 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   result.fractionalBits = header.fractionalBits;
   result.antialiased = (header.flags & FlagAntialiased) != 0;
 
-  // Handle SH quantization parameters based on version
-  if (header.version >= 3) {
-    // Validate SH quantization bit parameters
-    if (header.sh1Bits > 8 || header.shRestBits > 8) {
-      SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
-             header.sh1Bits, header.shRestBits);
-      return {};
-    }
-    result.sh1Bits = header.sh1Bits;
-    result.shRestBits = header.shRestBits;
-    result.shMin = header.shMin;
-    result.shMax = header.shMax;
-  } else {
-    // Use legacy defaults for older versions
+  // Validate SH quantization bit parameters
+  if (header.sh1Bits > 8 || header.shRestBits > 8) {
+    SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
+           header.sh1Bits, header.shRestBits);
+    return {};
+  }
+
+  // Copy all header fields (defaults already set for older versions)
+  result.sh1Bits = header.sh1Bits;
+  result.shRestBits = header.shRestBits;
+  result.shMin = header.shMin;
+  result.shMax = header.shMax;
+  result.hasSafeOrbit = header.hasSafeOrbit != 0;
+  result.safeOrbitElevationMin = header.safeOrbitElevationMin;
+  result.safeOrbitElevationMax = header.safeOrbitElevationMax;
+  result.safeOrbitRadiusMin = header.safeOrbitRadiusMin;
+
+  if (header.version < 3) {
     SpzLog("[SPZ WARNING] deserializePackedGaussians: loaded SPZ version %d is out of date", header.version);
-    result.sh1Bits = 5;
-    result.shRestBits = 4;
-    result.shMin = -1.0f;
-    result.shMax = 1.0f;
   }
 
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
@@ -762,10 +759,27 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   SpzLog("[SPZ] Loading %d points", numPoints);
   std::unordered_map<std::string, int> fields;  // name -> index
+  bool hasSafeOrbitElevation = false;
+  bool hasSafeOrbitRadius = false;
+
   for (int32_t i = 0;; i++) {
     std::getline(in, line);
     if (line == "end_header")
       break;
+
+    // Check for safe orbit elements
+    if (line == "element safe_orbit_camera_elevation_min_max 2") {
+      hasSafeOrbitElevation = true;
+      continue;
+    }
+    if (line == "element safe_orbit_camera_radius_min 1") {
+      hasSafeOrbitRadius = true;
+      continue;
+    }
+    if (line == "property float safe_orbit_camera_elevation_min_max" ||
+        line == "property float safe_orbit_camera_radius_min") {
+      continue;
+    }
 
     if (line.find("property float ") != 0) {
       SpzLog("[SPZ ERROR] %s: unsupported property data type: %s", filename.c_str(), line.c_str());
@@ -841,6 +855,21 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     in.close();
     return {};
   }
+
+  // Read safe orbit data if present
+  float safeOrbitElevationMin = 0.0f, safeOrbitElevationMax = 0.0f, safeOrbitRadiusMin = 0.0f;
+  if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
+    float safeOrbitData[3];
+    in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
+    if (in.good()) {
+      safeOrbitElevationMin = safeOrbitData[0];
+      safeOrbitElevationMax = safeOrbitData[1];
+      safeOrbitRadiusMin = safeOrbitData[2];
+      SpzLog("[SPZ] Loaded safe orbit data: elevation [%f, %f], radius min %f",
+             safeOrbitElevationMin, safeOrbitElevationMax, safeOrbitRadiusMin);
+    }
+  }
+
   in.close();
 
   GaussianCloud result;
@@ -959,8 +988,28 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out << "property float rot_1\n";
   out << "property float rot_2\n";
   out << "property float rot_3\n";
+
+  // Add safe orbit elements if present
+  if (o.hasSafeOrbit) {
+    out << "element safe_orbit_camera_elevation_min_max 2\n";
+    out << "property float safe_orbit_camera_elevation_min_max\n";
+    out << "element safe_orbit_camera_radius_min 1\n";
+    out << "property float safe_orbit_camera_radius_min\n";
+  }
+
   out << "end_header\n";
   out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
+
+  // Write safe orbit data if present
+  if (o.hasSafeOrbit) {
+    float safeOrbitData[3] = {
+      o.safeOrbitElevationMin,
+      o.safeOrbitElevationMax,
+      o.safeOrbitRadiusMin
+    };
+    out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
+  }
+
   out.close();
   if (!out.good()) {
     SpzLog("[SPZ ERROR] Failed to write to: %s", filename.c_str());
