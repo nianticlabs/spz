@@ -102,7 +102,11 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def(py::init<>())
       .def_readwrite("from", &PackOptions::from)
       .def_readwrite("sh1Bits", &PackOptions::sh1Bits)
-      .def_readwrite("shRestBits", &PackOptions::shRestBits);
+      .def_readwrite("shRestBits", &PackOptions::shRestBits)
+      .def_readwrite("hasSafeOrbit", &PackOptions::hasSafeOrbit)
+      .def_readwrite("safeOrbitElevationMin", &PackOptions::safeOrbitElevationMin)
+      .def_readwrite("safeOrbitElevationMax", &PackOptions::safeOrbitElevationMax)
+      .def_readwrite("safeOrbitRadiusMin", &PackOptions::safeOrbitRadiusMin);
 
   // Bind UnpackOptions
   py::class_<UnpackOptions>(m, "UnpackOptions")
@@ -137,6 +141,10 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def_readwrite("shRestBits", &PackedGaussians::shRestBits)
       .def_readwrite("shMin", &PackedGaussians::shMin)
       .def_readwrite("shMax", &PackedGaussians::shMax)
+      .def_readwrite("hasSafeOrbit", &PackedGaussians::hasSafeOrbit)
+      .def_readwrite("safeOrbitElevationMin", &PackedGaussians::safeOrbitElevationMin)
+      .def_readwrite("safeOrbitElevationMax", &PackedGaussians::safeOrbitElevationMax)
+      .def_readwrite("safeOrbitRadiusMin", &PackedGaussians::safeOrbitRadiusMin)
       .def_readwrite("positions", &PackedGaussians::positions)
       .def_readwrite("scales", &PackedGaussians::scales)
       .def_readwrite("rotations", &PackedGaussians::rotations)

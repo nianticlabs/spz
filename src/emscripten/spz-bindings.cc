@@ -116,7 +116,11 @@ EMSCRIPTEN_BINDINGS(spz_module) {
   emscripten::value_object<spz::PackOptions>("PackOptions")
       .field("from", &spz::PackOptions::from)
       .field("sh1Bits", &spz::PackOptions::sh1Bits)
-      .field("shRestBits", &spz::PackOptions::shRestBits);
+      .field("shRestBits", &spz::PackOptions::shRestBits)
+      .field("hasSafeOrbit", &spz::PackOptions::hasSafeOrbit)
+      .field("safeOrbitElevationMin", &spz::PackOptions::safeOrbitElevationMin)
+      .field("safeOrbitElevationMax", &spz::PackOptions::safeOrbitElevationMax)
+      .field("safeOrbitRadiusMin", &spz::PackOptions::safeOrbitRadiusMin);
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 

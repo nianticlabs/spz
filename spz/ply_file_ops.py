@@ -131,9 +131,19 @@ def read_ply_to_gaussian_cloud(ply_filename, no_sh: bool = False) -> spz.Gaussia
 
 
 def gaussian_cloud_to_ply_file(
-    gaussian_cloud: spz.GaussianCloud, filename: Path, coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED
+    gaussian_cloud: spz.GaussianCloud,
+    filename: Path,
+    coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED,
+    has_safe_orbit: bool = False,
+    safe_orbit_elevation_min: float = 0.0,
+    safe_orbit_elevation_max: float = 0.0,
+    safe_orbit_radius_min: float = 0.0,
 ) -> Path:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
+    pack_options.hasSafeOrbit = has_safe_orbit
+    pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
+    pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
+    pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
     spz.saveSplatToPly(gaussian_cloud, pack_options, str(filename))  # pylint: disable=no-member
     return filename

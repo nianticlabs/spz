@@ -13,6 +13,25 @@ def read_spz_to_gaussian_cloud(filename: Path, coordinate_system: int = spz.Coor
     return gaussian_cloud
 
 
+def read_spz_safe_orbit_data(filename: Path) -> dict:
+    """Read safe orbit camera data from an SPZ file.
+
+    Returns:
+        Dictionary containing safe orbit data with keys:
+        - has_safe_orbit: bool
+        - elevation_min: float (radians)
+        - elevation_max: float (radians)
+        - radius_min: float
+    """
+    packed_gaussians = spz.loadSpzPacked(str(filename))  # pylint: disable=no-member
+    return {
+        "has_safe_orbit": packed_gaussians.hasSafeOrbit,
+        "elevation_min": packed_gaussians.safeOrbitElevationMin,
+        "elevation_max": packed_gaussians.safeOrbitElevationMax,
+        "radius_min": packed_gaussians.safeOrbitRadiusMin,
+    }
+
+
 def gaussian_cloud_to_spz_file(
     gaussian_cloud: spz.GaussianCloud,
     filename: Path,
@@ -20,11 +39,19 @@ def gaussian_cloud_to_spz_file(
     sh1_bits: int = 5,
     sh_rest_bits: int = 5,
     disable_sh_min_max_scaling: bool = False,
+    has_safe_orbit: bool = False,
+    safe_orbit_elevation_min: float = 0.0,
+    safe_orbit_elevation_max: float = 0.0,
+    safe_orbit_radius_min: float = 0.0,
 ) -> Path:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
     pack_options.sh1Bits = sh1_bits
     pack_options.shRestBits = sh_rest_bits
+    pack_options.hasSafeOrbit = has_safe_orbit
+    pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
+    pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
+    pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
     if disable_sh_min_max_scaling and len(gaussian_cloud.sh) > 0:
         # artificially set the first two sh coefficients to -1 and 1 so the minmax scaler doesn't do anything
         gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
@@ -42,11 +69,19 @@ def gaussian_cloud_to_spz_buffer(
     sh1_bits: int = 5,
     sh_rest_bits: int = 5,
     disable_sh_min_max_scaling: bool = False,
+    has_safe_orbit: bool = False,
+    safe_orbit_elevation_min: float = 0.0,
+    safe_orbit_elevation_max: float = 0.0,
+    safe_orbit_radius_min: float = 0.0,
 ) -> bytes:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
     pack_options.sh1Bits = sh1_bits
     pack_options.shRestBits = sh_rest_bits
+    pack_options.hasSafeOrbit = has_safe_orbit
+    pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
+    pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
+    pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
     if disable_sh_min_max_scaling and len(gaussian_cloud.sh) > 0:
         gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
         # artificially set the first two sh coefficients to -1 and 1 so the minmax scaler doesn't do anything

@@ -16,6 +16,10 @@ export interface PackOptions {
   from: CoordinateSystem;
   sh1Bits: number;
   shRestBits: number;
+  hasSafeOrbit: boolean;
+  safeOrbitElevationMin: number;
+  safeOrbitElevationMax: number;
+  safeOrbitRadiusMin: number;
 }
 
 export interface UnpackOptions {
