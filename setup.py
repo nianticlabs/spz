@@ -36,15 +36,15 @@ class MetabuildSpzBindings(build_ext):
 
     def build_extension(self, ext):
         build_temp = Path(self.build_temp).resolve()
-
-        # Prepare and build using Metabuild
         build_temp.mkdir(parents=True, exist_ok=True)
+
+        # Run Metabuild steps
         subprocess.check_call(["metabuild", "prepare", "--verbose"], cwd=ext.sourcedir)
         subprocess.check_call(["metabuild", "build", "-c", "Release", "--verbose"], cwd=ext.sourcedir)
 
-        # Determine the output file based on the platform
+        # Determine the output file
         system = platform.system()
-        if system == "Darwin":  # macOS
+        if system == "Darwin":
             output_file = ext.sourcedir / "build_mb/xcode_macos/Release/universal/build/spz/spz/spz_bindings_so/spz_bindings.so"
         elif system == "Windows":
             output_file = ext.sourcedir / "build_mb/msvs_win32/Release/x64/build/spz/spz/spz_bindings_pyd/spz_bindings.pyd"
@@ -53,18 +53,13 @@ class MetabuildSpzBindings(build_ext):
         else:
             raise RuntimeError(f"Unsupported platform: {system}")
 
-        # Check if the output file exists
         if not output_file.exists():
             raise RuntimeError(f"Expected shared library not found: {output_file}")
 
-        # Copy the resulting file to the local spz directory
-        ext_filename = Path(self.get_ext_fullpath(ext.name)).name
-        target_dir = Path(ext.sourcedir) / "spz"
-        target_file = target_dir / ext_filename
-
-        # Ensure the target directory exists
-        target_dir.mkdir(parents=True, exist_ok=True)
-        self.copy_file(str(output_file), str(target_file))
+        # Copy into setuptools' expected build directory
+        target_path = Path(self.get_ext_fullpath(ext.name))
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        self.copy_file(str(output_file), str(target_path))
 
 
 if __name__ == "__main__":
