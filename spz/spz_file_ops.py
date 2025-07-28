@@ -35,6 +35,7 @@ def read_spz_safe_orbit_data(filename: Path) -> dict:
 def gaussian_cloud_to_spz_file(
     gaussian_cloud: spz.GaussianCloud,
     filename: Path,
+    version: int = 4,
     coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED,
     sh1_bits: int = 5,
     sh_rest_bits: int = 5,
@@ -45,6 +46,7 @@ def gaussian_cloud_to_spz_file(
     safe_orbit_radius_min: float = 0.0,
 ) -> Path:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
+    pack_options.version = version
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
     pack_options.sh1Bits = sh1_bits
     pack_options.shRestBits = sh_rest_bits
@@ -65,6 +67,7 @@ def gaussian_cloud_to_spz_file(
 
 def gaussian_cloud_to_spz_buffer(
     gaussian_cloud: spz.GaussianCloud,
+    version: int = 4,
     coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED,
     sh1_bits: int = 5,
     sh_rest_bits: int = 5,
@@ -75,6 +78,7 @@ def gaussian_cloud_to_spz_buffer(
     safe_orbit_radius_min: float = 0.0,
 ) -> bytes:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
+    pack_options.version = version
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
     pack_options.sh1Bits = sh1_bits
     pack_options.shRestBits = sh_rest_bits

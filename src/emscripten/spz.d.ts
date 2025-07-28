@@ -13,6 +13,7 @@ export enum CoordinateSystem {
 }
 
 export interface PackOptions {
+  version: number;
   from: CoordinateSystem;
   sh1Bits: number;
   shRestBits: number;

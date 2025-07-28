@@ -19,9 +19,9 @@ namespace {
 // A counterpart to the C++ GaussianCloud structure, used to
 // transfer data between C++ and JavaScript.
 struct EmGaussianCloud {
-  int32_t         numPoints;
-  int32_t         shDegree;
-  bool            antialiased;
+  int32_t numPoints;
+  int32_t shDegree;
+  bool antialiased;
   emscripten::val positions;
   emscripten::val scales;
   emscripten::val rotations;
@@ -30,7 +30,8 @@ struct EmGaussianCloud {
   emscripten::val sh;
 };
 
-inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer) {
+inline emscripten::val
+jsUint8ArrayFromVector(const std::vector<uint8_t> &buffer) {
   emscripten::val Uint8Array = emscripten::val::global("Uint8Array");
   emscripten::val array = Uint8Array.new_(buffer.size());
   for (size_t i = 0; i < buffer.size(); ++i) {
@@ -39,7 +40,8 @@ inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer
   return array;
 }
 
-inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer) {
+inline emscripten::val
+jsFloat32ArrayFromVector(const std::vector<float> &buffer) {
   emscripten::val Float32Array = emscripten::val::global("Float32Array");
   emscripten::val array = Float32Array.new_(buffer.size());
   for (size_t i = 0; i < buffer.size(); ++i) {
@@ -49,7 +51,8 @@ inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer
 }
 
 template <typename T>
-inline void vectorFromJsArray(const emscripten::val& array, std::vector<T>& out) {
+inline void vectorFromJsArray(const emscripten::val &array,
+                              std::vector<T> &out) {
   const size_t length = array["length"].as<size_t>();
   out.resize(length);
   for (size_t i = 0; i < length; ++i) {
@@ -57,7 +60,8 @@ inline void vectorFromJsArray(const emscripten::val& array, std::vector<T>& out)
   }
 }
 
-EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::UnpackOptions& options) {
+EmGaussianCloud loadSpzFromBuffer(const emscripten::val &buffer,
+                                  const spz::UnpackOptions &options) {
   std::vector<uint8_t> bufferInternal;
   vectorFromJsArray(buffer, bufferInternal);
 
@@ -77,7 +81,8 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   return emCloud;
 }
 
-emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackOptions& options) {
+emscripten::val saveSpzToBuffer(const EmGaussianCloud &emCloud,
+                                const spz::PackOptions &options) {
   spz::GaussianCloud cloud;
   cloud.numPoints = emCloud.numPoints;
   cloud.shDegree = emCloud.shDegree;
@@ -98,7 +103,7 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   return jsUint8ArrayFromVector(output);
 }
 
-}  // namespace
+} // namespace
 
 EMSCRIPTEN_BINDINGS(spz_module) {
   // Wrap CoordinateSystem enum
@@ -114,6 +119,7 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .value("RUF", spz::CoordinateSystem::RUF);
 
   emscripten::value_object<spz::PackOptions>("PackOptions")
+      .field("version", &spz::PackOptions::version)
       .field("from", &spz::PackOptions::from)
       .field("sh1Bits", &spz::PackOptions::sh1Bits)
       .field("shRestBits", &spz::PackOptions::shRestBits)
@@ -122,7 +128,8 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("safeOrbitElevationMax", &spz::PackOptions::safeOrbitElevationMax)
       .field("safeOrbitRadiusMin", &spz::PackOptions::safeOrbitRadiusMin);
 
-  emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
+  emscripten::value_object<spz::UnpackOptions>("UnpackOptions")
+      .field("to", &spz::UnpackOptions::to);
 
   emscripten::value_object<EmGaussianCloud>("GaussianCloud")
       .field("numPoints", &EmGaussianCloud::numPoints)
