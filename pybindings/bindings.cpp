@@ -104,6 +104,7 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def_readwrite("from", &PackOptions::from)
       .def_readwrite("sh1Bits", &PackOptions::sh1Bits)
       .def_readwrite("shRestBits", &PackOptions::shRestBits)
+      .def_readwrite("disableSHMinMaxScaling", &PackOptions::disableSHMinMaxScaling)
       .def_readwrite("hasSafeOrbit", &PackOptions::hasSafeOrbit)
       .def_readwrite("safeOrbitElevationMin", &PackOptions::safeOrbitElevationMin)
       .def_readwrite("safeOrbitElevationMax", &PackOptions::safeOrbitElevationMax)

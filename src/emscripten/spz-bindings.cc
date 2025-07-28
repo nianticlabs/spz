@@ -118,6 +118,7 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("from", &spz::PackOptions::from)
       .field("sh1Bits", &spz::PackOptions::sh1Bits)
       .field("shRestBits", &spz::PackOptions::shRestBits)
+      .field("disableSHMinMaxScaling", &spz::PackOptions::disableSHMinMaxScaling)
       .field("hasSafeOrbit", &spz::PackOptions::hasSafeOrbit)
       .field("safeOrbitElevationMin", &spz::PackOptions::safeOrbitElevationMin)
       .field("safeOrbitElevationMax", &spz::PackOptions::safeOrbitElevationMax)

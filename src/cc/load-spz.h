@@ -85,6 +85,7 @@ struct PackOptions {
   // Spherical harmonics quantization parameters
   uint8_t sh1Bits = 5;      // Bits for SH degree 1 coefficients (max 8)
   uint8_t shRestBits = 4;   // Bits for SH degree 2+ coefficients (max 8)
+  bool disableSHMinMaxScaling = false;  // Whether to disable SH min/max scaling, useful for legacy versions.
 
   // Safe orbit camera parameters
   bool hasSafeOrbit = false;           // Whether safe orbit data is present

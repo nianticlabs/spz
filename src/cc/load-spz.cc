@@ -273,6 +273,10 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
+  if (o.version < 3 && g.shDegree > 3) {
+    SpzLog("[SPZ WARNING] SPZ with SH degrees %d will not be loadable in a legacy loader of version %d",
+        g.shDegree, o.version);
+  }
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
 
   // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
@@ -293,7 +297,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.safeOrbitRadiusMin = o.safeOrbitRadiusMin;
 
   // Compute min/max of SH coefficients for optimal quantization
-  if (g.shDegree > 0 && !g.sh.empty()) {
+  if (!o.disableSHMinMaxScaling && g.shDegree > 0 && !g.sh.empty()) {
     float minSH = *std::min_element(g.sh.begin(), g.sh.end());
     float maxSH = *std::max_element(g.sh.begin(), g.sh.end());
 
