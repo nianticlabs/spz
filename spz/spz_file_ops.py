@@ -35,7 +35,7 @@ def read_spz_safe_orbit_data(filename: Path) -> dict:
 def gaussian_cloud_to_spz_file(
     gaussian_cloud: spz.GaussianCloud,
     filename: Path,
-    version: int = 4,
+    version: int = spz.LATEST_SPZ_HEADER_VERSION,  # pylint: disable=no-member
     coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED,
     sh1_bits: int = 5,
     sh_rest_bits: int = 5,

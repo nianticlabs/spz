@@ -47,6 +47,8 @@ export interface SpzModule {
   // Loaders / Savers
   loadSpzFromBuffer(data: Uint8Array, options: UnpackOptions): GaussianCloud;
   saveSpzToBuffer(cloud: GaussianCloud, options: PackOptions): Uint8Array;
+
+  LATEST_SPZ_HEADER_VERSION: number;
 }
 
 export default function createSpzModule(overrides?: any): Promise<SpzModule>;

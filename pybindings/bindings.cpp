@@ -237,4 +237,6 @@ PYBIND11_MODULE(spz_bindings, m) {
 
   // Bind compressGzipped
   m.def("compressGzipped", &compressGzippedFromBytes, py::arg("data"));
+
+  m.attr("LATEST_SPZ_HEADER_VERSION") = spz::LATEST_SPZ_HEADER_VERSION;
 }
