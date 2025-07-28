@@ -21,26 +21,27 @@ namespace {
 
 #ifdef ANDROID
 static constexpr char LOG_TAG[] = "SPZ";
-template <class... Args> static void SpzLog(const char *fmt, Args &&...args) {
-  __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt,
-                      std::forward<Args>(args)...);
+template <class... Args>
+static void SpzLog(const char *fmt, Args &&...args) {
+  __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt, std::forward<Args>(args)...);
 }
 #else
-template <class... Args> static void SpzLog(const char *fmt, Args &&...args) {
+template <class... Args>
+static void SpzLog(const char *fmt, Args &&...args) {
   printf(fmt, std::forward<Args>(args)...);
   printf("\n");
   fflush(stdout);
 }
-#endif // ANDROID
+#endif  // ANDROID
 
-template <class... Args> static void SpzLog(const char *fmt) {
+template <class... Args>
+static void SpzLog(const char *fmt) {
   SpzLog("%s", fmt);
 }
 
-// Scale factor for DC color components. To convert to RGB, we should multiply
-// by 0.282, but it can be useful to represent base colors that are out of range
-// if the higher spherical harmonics bands bring them back into range so we
-// multiply by a smaller value.
+// Scale factor for DC color components. To convert to RGB, we should multiply by 0.282, but it can
+// be useful to represent base colors that are out of range if the higher spherical harmonics bands
+// bring them back into range so we multiply by a smaller value.
 constexpr float colorScale = 0.15f;
 
 int32_t degreeForDim(int32_t dim) {
@@ -57,31 +58,28 @@ int32_t degreeForDim(int32_t dim) {
 
 int32_t dimForDegree(int32_t degree) {
   switch (degree) {
-  case 0:
-    return 0;
-  case 1:
-    return 3;
-  case 2:
-    return 8;
-  case 3:
-    return 15;
-  case 4:
-    return 24;
-  default:
-    SpzLog("[SPZ: ERROR] Unsupported SH degree: %d\n", degree);
-    return 0;
+    case 0:
+      return 0;
+    case 1:
+      return 3;
+    case 2:
+      return 8;
+    case 3:
+      return 15;
+    case 4:
+      return 24;
+    default:
+      SpzLog("[SPZ: ERROR] Unsupported SH degree: %d\n", degree);
+      return 0;
   }
 }
 
-uint8_t toUint8(float x) {
-  return static_cast<uint8_t>(std::clamp(std::round(x), 0.0f, 255.0f));
-}
+uint8_t toUint8(float x) { return static_cast<uint8_t>(std::clamp(std::round(x), 0.0f, 255.0f)); }
 
-// Quantizes to 8 bits using min/max scaling, then round to nearest bucket
-// center. 0 always maps to a bucket center.
+// Quantizes to 8 bits using min/max scaling, then round to nearest bucket center. 0 always maps to a bucket center.
 uint8_t quantizeSH(float x, int32_t bucketSize, float minVal, float maxVal) {
   if (maxVal <= minVal) {
-    return 128; // Default to middle value if range is invalid
+    return 128;  // Default to middle value if range is invalid
   }
   // Scale from [minVal, maxVal] to [0, 255]
   float normalized = (x - minVal) / (maxVal - minVal);
@@ -92,7 +90,7 @@ uint8_t quantizeSH(float x, int32_t bucketSize, float minVal, float maxVal) {
 
 float unquantizeSH(uint8_t x, float minVal, float maxVal) {
   if (maxVal <= minVal) {
-    return 0.0f; // Default to 0 if range is invalid
+    return 0.0f;  // Default to 0 if range is invalid
   }
   // Scale from [0, 255] to [minVal, maxVal]
   float normalized = static_cast<float>(x) / 255.0f;
@@ -106,24 +104,23 @@ uint8_t quantizeSHLegacy(float x, int32_t bucketSize) {
   return static_cast<uint8_t>(std::clamp(q, 0, 255));
 }
 
-float unquantizeSHLegacy(uint8_t x) {
-  return (static_cast<float>(x) - 128.0f) / 128.0f;
-}
+float unquantizeSHLegacy(uint8_t x) { return (static_cast<float>(x) - 128.0f) / 128.0f; }
 
 float sigmoid(float x) { return 1 / (1 + std::exp(-x)); }
 
 float invSigmoid(float x) { return std::log(x / (1.0f - x)); }
 
-template <typename T> size_t countBytes(std::vector<T> vec) {
+template <typename T>
+size_t countBytes(std::vector<T> vec) {
   return vec.size() * sizeof(vec[0]);
 }
 
-#define CHECK(x)                                                               \
-  {                                                                            \
-    if (!(x)) {                                                                \
-      SpzLog("[SPZ: ERROR] Check failed: %s:%d: %s", __FILE__, __LINE__, #x);  \
-      return false;                                                            \
-    }                                                                          \
+#define CHECK(x)                                                              \
+  {                                                                           \
+    if (!(x)) {                                                               \
+      SpzLog("[SPZ: ERROR] Check failed: %s:%d: %s", __FILE__, __LINE__, #x); \
+      return false;                                                           \
+    }                                                                         \
   }
 
 #define CHECK_GE(x, y) CHECK((x) >= (y))
@@ -143,8 +140,7 @@ bool checkSizes(const GaussianCloud &g) {
   return true;
 }
 
-bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
-                bool usesFloat16) {
+bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim, bool usesFloat16) {
   CHECK_EQ(packed.positions.size(), numPoints * 3 * (usesFloat16 ? 2 : 3));
   CHECK_EQ(packed.scales.size(), numPoints * 3);
   CHECK_EQ(packed.rotations.size(), numPoints * 3);
@@ -157,7 +153,7 @@ bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
 constexpr uint8_t FlagAntialiased = 0x1;
 
 struct PackedGaussiansHeader {
-  uint32_t magic = 0x5053474e; // NGSP = Niantic gaussian splat
+  uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
   uint32_t version = 4;
   uint32_t numPoints = 0;
   uint8_t shDegree = 0;
@@ -173,28 +169,23 @@ struct PackedGaussiansHeader {
   uint8_t v3Padding[2] = {0}; // Padding
 
   // Version 4+ fields: Safe orbit camera parameters
-  uint8_t hasSafeOrbit = 0; // Whether safe orbit data is present
-  float safeOrbitElevationMin =
-      0.0f; // Minimum elevation for safe orbit (radians)
-  float safeOrbitElevationMax =
-      0.0f;                        // Maximum elevation for safe orbit (radians)
-  float safeOrbitRadiusMin = 0.0f; // Minimum radius for safe orbit
-  uint8_t v4Padding = 0;           // Padding
+  uint8_t hasSafeOrbit = 0;              // Whether safe orbit data is present
+  float safeOrbitElevationMin = 0.0f;    // Minimum elevation for safe orbit (radians)
+  float safeOrbitElevationMax = 0.0f;    // Maximum elevation for safe orbit (radians)
+  float safeOrbitRadiusMin = 0.0f;       // Minimum radius for safe orbit
+  uint8_t v4Padding = 0;                 // Padding
 
   // Helper methods for version-aware I/O
   size_t getHeaderSize() const {
-    if (version >= 4)
-      return sizeof(PackedGaussiansHeader);
-    if (version >= 3)
-      return offsetof(PackedGaussiansHeader, hasSafeOrbit);
-    if (version >= 1)
-      return offsetof(PackedGaussiansHeader, sh1Bits);
-    return sizeof(uint32_t) * 2; // Minimum to get the magic and version
+    if (version >= 4) return sizeof(PackedGaussiansHeader);
+    if (version >= 3) return offsetof(PackedGaussiansHeader, hasSafeOrbit);
+    if (version >= 1) return offsetof(PackedGaussiansHeader, sh1Bits);
+    return sizeof(uint32_t) * 2;  // Minimum to get the magic and version
   }
 };
 
-bool decompressGzippedImpl(const uint8_t *compressed, size_t size,
-                           int32_t windowSize, std::vector<uint8_t> *out) {
+bool decompressGzippedImpl(
+  const uint8_t *compressed, size_t size, int32_t windowSize, std::vector<uint8_t> *out) {
   std::vector<uint8_t> buffer(8192);
   z_stream stream = {};
   stream.next_in = const_cast<Bytef *>(compressed);
@@ -211,8 +202,7 @@ bool decompressGzippedImpl(const uint8_t *compressed, size_t size,
     if (res != Z_OK && res != Z_STREAM_END) {
       break;
     }
-    out->insert(out->end(), buffer.data(),
-                buffer.data() + buffer.size() - stream.avail_out);
+    out->insert(out->end(), buffer.data(), buffer.data() + buffer.size() - stream.avail_out);
     if (res == Z_STREAM_END) {
       success = true;
       break;
@@ -222,15 +212,13 @@ bool decompressGzippedImpl(const uint8_t *compressed, size_t size,
   return success;
 }
 
-bool decompressGzipped(const uint8_t *compressed, size_t size,
-                       std::vector<uint8_t> *out) {
-  // Here 16 means enable automatic gzip header detection; consider switching
-  // this to 32 to enable both automated gzip and zlib header detection.
+bool decompressGzipped(const uint8_t *compressed, size_t size, std::vector<uint8_t> *out) {
+  // Here 16 means enable automatic gzip header detection; consider switching this to 32 to enable
+  // both automated gzip and zlib header detection.
   return decompressGzippedImpl(compressed, size, 16 | MAX_WBITS, out);
 }
 
-bool decompressGzipped(const uint8_t *compressed, size_t size,
-                       std::string *out) {
+bool decompressGzipped(const uint8_t *compressed, size_t size, std::string *out) {
   std::vector<uint8_t> buffer;
   if (!decompressGzipped(compressed, size, &buffer)) {
     return false;
@@ -239,14 +227,14 @@ bool decompressGzipped(const uint8_t *compressed, size_t size,
   return true;
 }
 
-} // namespace
+}  // namespace
 
-bool compressGzipped(const uint8_t *data, size_t size,
-                     std::vector<uint8_t> *out) {
+bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out) {
   std::vector<uint8_t> buffer(8192);
   z_stream stream = {};
-  if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 16 + MAX_WBITS,
-                   9, Z_DEFAULT_STRATEGY) != Z_OK) {
+  if (
+    deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 16 + MAX_WBITS, 9, Z_DEFAULT_STRATEGY)
+    != Z_OK) {
     return false;
   }
   out->clear();
@@ -261,8 +249,7 @@ bool compressGzipped(const uint8_t *data, size_t size,
     if (res != Z_OK && res != Z_STREAM_END) {
       break;
     }
-    out->insert(out->end(), buffer.data(),
-                buffer.data() + buffer.size() - stream.avail_out);
+    out->insert(out->end(), buffer.data(), buffer.data() + buffer.size() - stream.avail_out);
     if (res == Z_STREAM_END) {
       success = true;
       break;
@@ -279,8 +266,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
   // Validate SH quantization bit parameters
   if (o.sh1Bits > 8 || o.shRestBits > 8) {
-    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, "
-           "shRestBits=%d)",
+    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
            o.sh1Bits, o.shRestBits);
     return {};
   }
@@ -289,9 +275,8 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   const int32_t shDim = dimForDegree(g.shDegree);
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
 
-  // Use 12 bits for the fractional part of coordinates (~0.25 millimeter
-  // resolution). In the future we can use different values on a per-splat basis
-  // and still be compatible with the decoder.
+  // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
+  // we can use different values on a per-splat basis and still be compatible with the decoder.
   PackedGaussians packed;
   packed.version = o.version;
   packed.numPoints = g.numPoints;
@@ -332,8 +317,8 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   // Store coordinates as 24-bit fixed point values.
   const float scale = (1 << packed.fractionalBits);
   for (size_t i = 0; i < numPoints * 3; i++) {
-    const int32_t fixed32 = static_cast<int32_t>(
-        std::round(c.flipP[i % 3] * g.positions[i] * scale));
+    const int32_t fixed32 =
+      static_cast<int32_t>(std::round(c.flipP[i % 3] * g.positions[i] * scale));
     packed.positions[i * 3 + 0] = fixed32 & 0xff;
     packed.positions[i * 3 + 1] = (fixed32 >> 8) & 0xff;
     packed.positions[i * 3 + 2] = (fixed32 >> 16) & 0xff;
@@ -344,8 +329,8 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
 
   for (size_t i = 0; i < numPoints; i++) {
-    // Normalize the quaternion, make w positive, then store xyz. w can be
-    // derived from xyz. NOTE: These are already in xyzw order.
+    // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
+    // NOTE: These are already in xyzw order.
     Quat4f q = normalized(quat4f(&g.rotations[i * 4]));
     q[0] *= c.flipQ[0];
     q[1] *= c.flipQ[1];
@@ -363,10 +348,8 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
 
   for (size_t i = 0; i < numPoints * 3; i++) {
-    // Convert SH DC component to wide RGB (allowing values that are a bit above
-    // 1 and below 0).
-    packed.colors[i] =
-        toUint8(g.colors[i] * (colorScale * 255.0f) + (0.5f * 255.0f));
+    // Convert SH DC component to wide RGB (allowing values that are a bit above 1 and below 0).
+    packed.colors[i] = toUint8(g.colors[i] * (colorScale * 255.0f) + (0.5f * 255.0f));
   }
 
   if (g.shDegree > 0) {
@@ -374,28 +357,15 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     const int32_t shPerPoint = dimForDegree(g.shDegree) * 3;
     for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
       size_t j = 0, k = 0;
-      for (; j < 9;
-           j += 3, k++) { // There are 9 (3 * 3) coefficients for degree 1
-        packed.sh[i + j + 0] =
-            quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - packed.sh1Bits),
-                       packed.shMin, packed.shMax);
-        packed.sh[i + j + 1] =
-            quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - packed.sh1Bits),
-                       packed.shMin, packed.shMax);
-        packed.sh[i + j + 2] =
-            quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - packed.sh1Bits),
-                       packed.shMin, packed.shMax);
+      for (; j < 9; j += 3, k++) {  // There are 9 (3 * 3) coefficients for degree 1
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - packed.sh1Bits), packed.shMin, packed.shMax);
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - packed.sh1Bits), packed.shMin, packed.shMax);
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - packed.sh1Bits), packed.shMin, packed.shMax);
       }
       for (; j < shPerPoint; j += 3, k++) {
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0],
-                                          1 << (8 - packed.shRestBits),
-                                          packed.shMin, packed.shMax);
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1],
-                                          1 << (8 - packed.shRestBits),
-                                          packed.shMin, packed.shMax);
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2],
-                                          1 << (8 - packed.shRestBits),
-                                          packed.shMin, packed.shMax);
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - packed.shRestBits), packed.shMin, packed.shMax);
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - packed.shRestBits), packed.shMin, packed.shMax);
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - packed.shRestBits), packed.shMin, packed.shMax);
       }
     }
   }
@@ -403,14 +373,12 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   return packed;
 }
 
-UnpackedGaussian PackedGaussian::unpack(bool usesFloat16,
-                                        int32_t fractionalBits,
-                                        const CoordinateConverter &c,
-                                        float shMin, float shMax) const {
+UnpackedGaussian PackedGaussian::unpack(
+  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c,
+  float shMin, float shMax) const {
   UnpackedGaussian result;
   if (usesFloat16) {
-    // Decode legacy float16 format. We can remove this at some point as it was
-    // never released.
+    // Decode legacy float16 format. We can remove this at some point as it was never released.
     const auto *halfData = reinterpret_cast<const Half *>(position.data());
     for (size_t i = 0; i < 3; i++) {
       result.position[i] = c.flipP[i] * halfToFloat(halfData[i]);
@@ -422,7 +390,7 @@ UnpackedGaussian PackedGaussian::unpack(bool usesFloat16,
       int32_t fixed32 = position[i * 3 + 0];
       fixed32 |= position[i * 3 + 1] << 8;
       fixed32 |= position[i * 3 + 2] << 16;
-      fixed32 |= (fixed32 & 0x800000) ? 0xff000000 : 0; // sign extension
+      fixed32 |= (fixed32 & 0x800000) ? 0xff000000 : 0;  // sign extension
       result.position[i] = c.flipP[i] * static_cast<float>(fixed32) * scale;
     }
   }
@@ -432,15 +400,15 @@ UnpackedGaussian PackedGaussian::unpack(bool usesFloat16,
   }
 
   const uint8_t *r = &rotation[0];
-  Vec3f xyz =
-      times(plus(times(Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]),
-                             static_cast<float>(r[2])},
-                       1.0f / 127.5f),
-                 Vec3f{-1, -1, -1}),
-            c.flipQ);
+  Vec3f xyz = times(
+    plus(
+      times(
+        Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
+        1.0f / 127.5f),
+      Vec3f{-1, -1, -1}),
+    c.flipQ);
   std::copy(xyz.data(), xyz.data() + 3, &result.rotation[0]);
-  // Compute the real component - we know the quaternion is normalized and w is
-  // non-negative
+  // Compute the real component - we know the quaternion is normalized and w is non-negative
   result.rotation[3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
 
   result.alpha = invSigmoid(alpha / 255.0f);
@@ -493,17 +461,13 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
   return result;
 }
 
-UnpackedGaussian PackedGaussians::unpack(int32_t i,
-                                         const CoordinateConverter &c) const {
+UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c) const {
   return at(i).unpack(usesFloat16(), fractionalBits, c, shMin, shMax);
 }
 
-bool PackedGaussians::usesFloat16() const {
-  return positions.size() == numPoints * 3 * 2;
-}
+bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }
 
-GaussianCloud unpackGaussians(const PackedGaussians &packed,
-                              const UnpackOptions &o) {
+GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions &o) {
   const int32_t numPoints = packed.numPoints;
   const int32_t shDim = dimForDegree(packed.shDegree);
   const bool usesFloat16 = packed.usesFloat16();
@@ -523,10 +487,8 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed,
   result.sh.resize(numPoints * shDim * 3);
 
   if (usesFloat16) {
-    // Decode legacy float16 format. We can remove this at some point as it was
-    // never released.
-    const auto *halfData =
-        reinterpret_cast<const Half *>(packed.positions.data());
+    // Decode legacy float16 format. We can remove this at some point as it was never released.
+    const auto *halfData = reinterpret_cast<const Half *>(packed.positions.data());
     for (size_t i = 0; i < numPoints * 3; i++) {
       result.positions[i] = halfToFloat(halfData[i]);
     }
@@ -537,7 +499,7 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed,
       int32_t fixed32 = packed.positions[i * 3 + 0];
       fixed32 |= packed.positions[i * 3 + 1] << 8;
       fixed32 |= packed.positions[i * 3 + 2] << 16;
-      fixed32 |= (fixed32 & 0x800000) ? 0xff000000 : 0; // sign extension
+      fixed32 |= (fixed32 & 0x800000) ? 0xff000000 : 0;  // sign extension
       result.positions[i] = static_cast<float>(fixed32) * scale;
     }
   }
@@ -548,16 +510,14 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed,
 
   for (size_t i = 0; i < numPoints; i++) {
     const uint8_t *r = &packed.rotations[i * 3];
-    Vec3f xyz =
-        plus(times(Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]),
-                         static_cast<float>(r[2])},
-                   1.0f / 127.5f),
-             Vec3f{-1, -1, -1});
+    Vec3f xyz = plus(
+      times(
+        Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
+        1.0f / 127.5f),
+      Vec3f{-1, -1, -1});
     std::copy(xyz.data(), xyz.data() + 3, &result.rotations[i * 4]);
-    // Compute the real component - we know the quaternion is normalized and w
-    // is non-negative
-    result.rotations[i * 4 + 3] =
-        std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
+    // Compute the real component - we know the quaternion is normalized and w is non-negative
+    result.rotations[i * 4 + 3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
   }
 
   for (size_t i = 0; i < numPoints; i++) {
@@ -582,8 +542,7 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed,
   return result;
 }
 
-void serializePackedGaussians(const PackedGaussians &packed,
-                              std::ostream *out) {
+void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) {
   PackedGaussiansHeader header;
   header.version = packed.version;
   header.numPoints = static_cast<uint32_t>(packed.numPoints);
@@ -607,18 +566,12 @@ void serializePackedGaussians(const PackedGaussians &packed,
     header.safeOrbitRadiusMin = packed.safeOrbitRadiusMin;
   }
   out->write(reinterpret_cast<const char *>(&header), header.getHeaderSize());
-  out->write(reinterpret_cast<const char *>(packed.positions.data()),
-             countBytes(packed.positions));
-  out->write(reinterpret_cast<const char *>(packed.alphas.data()),
-             countBytes(packed.alphas));
-  out->write(reinterpret_cast<const char *>(packed.colors.data()),
-             countBytes(packed.colors));
-  out->write(reinterpret_cast<const char *>(packed.scales.data()),
-             countBytes(packed.scales));
-  out->write(reinterpret_cast<const char *>(packed.rotations.data()),
-             countBytes(packed.rotations));
-  out->write(reinterpret_cast<const char *>(packed.sh.data()),
-             countBytes(packed.sh));
+  out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
+  out->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
+  out->write(reinterpret_cast<const char *>(packed.colors.data()), countBytes(packed.colors));
+  out->write(reinterpret_cast<const char *>(packed.scales.data()), countBytes(packed.scales));
+  out->write(reinterpret_cast<const char *>(packed.rotations.data()), countBytes(packed.rotations));
+  out->write(reinterpret_cast<const char *>(packed.sh.data()), countBytes(packed.sh));
 }
 
 PackedGaussians deserializePackedGaussians(std::istream &in) {
@@ -635,8 +588,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     return {};
   }
   if (header.version < 1 || header.version > 4) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d",
-           header.version);
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
 
@@ -648,21 +600,17 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   if (remainingSize > 0) {
     in.read(reinterpret_cast<char *>(&header) + minHeaderSize, remainingSize);
     if (!in) {
-      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version "
-             "%d header",
-             actualVersion);
+      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version %d header", actualVersion);
       return {};
     }
   }
 
   if (header.numPoints > maxPointsToRead) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d",
-           header.numPoints);
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
     return {};
   }
   if (header.shDegree > SH_MAX_DEGREE) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: Unsupported SH degree: %d",
-           header.shDegree);
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: Unsupported SH degree: %d", header.shDegree);
     return {};
   }
   const int32_t numPoints = header.numPoints;
@@ -678,8 +626,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
 
   // Validate SH quantization bit parameters
   if (header.sh1Bits > 8 || header.shRestBits > 8) {
-    SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, "
-           "shRestBits=%d)",
+    SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
            header.sh1Bits, header.shRestBits);
     return {};
   }
@@ -695,9 +642,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   result.safeOrbitRadiusMin = header.safeOrbitRadiusMin;
 
   if (header.version < 3) {
-    SpzLog("[SPZ WARNING] deserializePackedGaussians: loaded SPZ version %d is "
-           "out of date",
-           header.version);
+    SpzLog("[SPZ WARNING] deserializePackedGaussians: loaded SPZ version %d is out of date", header.version);
   }
 
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
@@ -706,16 +651,11 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   result.alphas.resize(numPoints);
   result.colors.resize(numPoints * 3);
   result.sh.resize(numPoints * shDim * 3);
-  in.read(reinterpret_cast<char *>(result.positions.data()),
-          countBytes(result.positions));
-  in.read(reinterpret_cast<char *>(result.alphas.data()),
-          countBytes(result.alphas));
-  in.read(reinterpret_cast<char *>(result.colors.data()),
-          countBytes(result.colors));
-  in.read(reinterpret_cast<char *>(result.scales.data()),
-          countBytes(result.scales));
-  in.read(reinterpret_cast<char *>(result.rotations.data()),
-          countBytes(result.rotations));
+  in.read(reinterpret_cast<char *>(result.positions.data()), countBytes(result.positions));
+  in.read(reinterpret_cast<char *>(result.alphas.data()), countBytes(result.alphas));
+  in.read(reinterpret_cast<char *>(result.colors.data()), countBytes(result.colors));
+  in.read(reinterpret_cast<char *>(result.scales.data()), countBytes(result.scales));
+  in.read(reinterpret_cast<char *>(result.rotations.data()), countBytes(result.rotations));
   in.read(reinterpret_cast<char *>(result.sh.data()), countBytes(result.sh));
   if (!in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: read error");
@@ -724,8 +664,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   return result;
 }
 
-bool saveSpz(const GaussianCloud &g, const PackOptions &o,
-             std::vector<uint8_t> *out) {
+bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out) {
   std::string data;
   {
     PackedGaussians packed = packGaussians(g, o);
@@ -733,8 +672,7 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o,
     serializePackedGaussians(packed, &ss);
     data = ss.str();
   }
-  return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()),
-                         data.size(), out);
+  return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
 }
 
 PackedGaussians loadSpzPacked(const uint8_t *data, int32_t size) {
@@ -762,13 +700,11 @@ PackedGaussians loadSpzPacked(const std::string &filename) {
   return loadSpzPacked(data);
 }
 
-GaussianCloud loadSpz(const std::vector<uint8_t> &data,
-                      const UnpackOptions &o) {
+GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &o) {
   return unpackGaussians(loadSpzPacked(data), o);
 }
 
-bool saveSpz(const GaussianCloud &g, const PackOptions &o,
-             const std::string &filename) {
+bool saveSpz(const GaussianCloud &g, const PackOptions &o, const std::string &filename) {
   std::vector<uint8_t> data;
   if (!saveSpz(g, o, &data)) {
     return false;
@@ -796,8 +732,7 @@ GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o) {
   return loadSpz(data, o);
 }
 
-GaussianCloud loadSplatFromPly(const std::string &filename,
-                               const UnpackOptions &o) {
+GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions &o) {
   SpzLog("[SPZ] Loading: %s", filename.c_str());
   std::ifstream in(filename, std::ios::binary);
   if (!in.good()) {
@@ -826,14 +761,13 @@ GaussianCloud loadSplatFromPly(const std::string &filename,
   }
   int32_t numPoints = std::stoi(line.substr(std::strlen("element vertex ")));
   if (numPoints <= 0 || numPoints > 10 * 1024 * 1024) {
-    SpzLog("[SPZ ERROR] %s: invalid vertex count: %d", filename.c_str(),
-           numPoints);
+    SpzLog("[SPZ ERROR] %s: invalid vertex count: %d", filename.c_str(), numPoints);
     in.close();
     return {};
   }
 
   SpzLog("[SPZ] Loading %d points", numPoints);
-  std::unordered_map<std::string, int> fields; // name -> index
+  std::unordered_map<std::string, int> fields;  // name -> index
   bool hasSafeOrbitElevation = false;
   bool hasSafeOrbitRadius = false;
 
@@ -857,8 +791,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename,
     }
 
     if (line.find("property float ") != 0) {
-      SpzLog("[SPZ ERROR] %s: unsupported property data type: %s",
-             filename.c_str(), line.c_str());
+      SpzLog("[SPZ ERROR] %s: unsupported property data type: %s", filename.c_str(), line.c_str());
       in.close();
       return {};
     }
@@ -877,13 +810,10 @@ GaussianCloud loadSplatFromPly(const std::string &filename,
   };
 
   const std::vector<int> positionIdx = {index("x"), index("y"), index("z")};
-  const std::vector<int> scaleIdx = {index("scale_0"), index("scale_1"),
-                                     index("scale_2")};
-  const std::vector<int> rotIdx = {index("rot_1"), index("rot_2"),
-                                   index("rot_3"), index("rot_0")};
+  const std::vector<int> scaleIdx = {index("scale_0"), index("scale_1"), index("scale_2")};
+  const std::vector<int> rotIdx = {index("rot_1"), index("rot_2"), index("rot_3"), index("rot_0")};
   const std::vector<int> alphaIdx = {index("opacity")};
-  const std::vector<int> colorIdx = {index("f_dc_0"), index("f_dc_1"),
-                                     index("f_dc_2")};
+  const std::vector<int> colorIdx = {index("f_dc_0"), index("f_dc_1"), index("f_dc_2")};
 
   // Check that only valid indices were returned.
   for (auto idx : positionIdx) {
@@ -928,8 +858,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename,
   const int32_t shDim = static_cast<int>(shIdx.size() / 3);
 
   std::vector<float> values(numPoints * fields.size());
-  in.read(reinterpret_cast<char *>(values.data()),
-          values.size() * sizeof(float));
+  in.read(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
   if (!in.good()) {
     SpzLog("[SPZ ERROR] Unable to load data from: %s", filename.c_str());
     in.close();
@@ -937,8 +866,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename,
   }
 
   // Read safe orbit data if present
-  float safeOrbitElevationMin = 0.0f, safeOrbitElevationMax = 0.0f,
-        safeOrbitRadiusMin = 0.0f;
+  float safeOrbitElevationMin = 0.0f, safeOrbitElevationMax = 0.0f, safeOrbitRadiusMin = 0.0f;
   if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
     float safeOrbitData[3];
     in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
@@ -977,8 +905,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename,
     for (int32_t j = 0; j < colorIdx.size(); j++) {
       result.colors.push_back(values[i + colorIdx[j]]);
     }
-    // Convert from [N,C,S] to [N,S,C] (where C is color channel, S is SH
-    // coeff).
+    // Convert from [N,C,S] to [N,S,C] (where C is color channel, S is SH coeff).
     for (int32_t j = 0; j < shDim; j++) {
       result.sh.push_back(values[i + shIdx[j]]);
       result.sh.push_back(values[i + shIdx[j + shDim]]);
@@ -990,8 +917,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename,
   return result;
 }
 
-bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o,
-                    const std::string &filename) {
+bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::string &filename) {
   const int32_t N = data.numPoints;
   CHECK_EQ(data.positions.size(), N * 3);
   CHECK_EQ(data.scales.size(), N * 3);
@@ -1010,15 +936,14 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o,
     values[outIdx++] = c.flipP[0] * data.positions[i3 + 0];
     values[outIdx++] = c.flipP[1] * data.positions[i3 + 1];
     values[outIdx++] = c.flipP[2] * data.positions[i3 + 2];
-    // Normals (nx, ny, nz): these are always zero, but some viewers expect them
-    // to be present
+    // Normals (nx, ny, nz): these are always zero, but some viewers expect them to be present
     outIdx += 3;
     // Color (r, g, b): DC component for spherical harmonics
     values[outIdx++] = data.colors[i3 + 0];
     values[outIdx++] = data.colors[i3 + 1];
     values[outIdx++] = data.colors[i3 + 2];
-    // Spherical harmonics: Interleave so the coefficients are the
-    // fastest-changing axis and the channel (r, g, b) is slower-changing axis.
+    // Spherical harmonics: Interleave so the coefficients are the fastest-changing axis and
+    // the channel (r, g, b) is slower-changing axis.
     for (int32_t j = 0; j < shDim; j++) {
       values[outIdx++] = c.flipSh[j] * data.sh[(i * shDim + j) * 3];
     }
@@ -1082,13 +1007,15 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o,
   }
 
   out << "end_header\n";
-  out.write(reinterpret_cast<char *>(values.data()),
-            values.size() * sizeof(float));
+  out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
 
   // Write safe orbit data if present
   if (o.hasSafeOrbit) {
-    float safeOrbitData[3] = {o.safeOrbitElevationMin, o.safeOrbitElevationMax,
-                              o.safeOrbitRadiusMin};
+    float safeOrbitData[3] = {
+      o.safeOrbitElevationMin,
+      o.safeOrbitElevationMax,
+      o.safeOrbitRadiusMin
+    };
     out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
   }
 
@@ -1100,4 +1027,4 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o,
   return true;
 }
 
-} // namespace spz
+}  // namespace spz
