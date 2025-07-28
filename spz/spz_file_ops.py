@@ -48,13 +48,14 @@ def gaussian_cloud_to_spz_file(
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     pack_options.version = version
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
-    pack_options.sh1Bits = sh1_bits
-    pack_options.shRestBits = sh_rest_bits
-    pack_options.hasSafeOrbit = has_safe_orbit
+    # use the default values for SH bits in version 2.
+    pack_options.sh1Bits = 5 if version < 3 else sh1_bits
+    pack_options.shRestBits = 4 if version < 3 else sh_rest_bits
+    pack_options.hasSafeOrbit = False if version < 4 else has_safe_orbit
     pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
     pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
     pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
-    if disable_sh_min_max_scaling and len(gaussian_cloud.sh) > 0:
+    if (version < 3 or disable_sh_min_max_scaling) and len(gaussian_cloud.sh) > 0:
         # artificially set the first two sh coefficients to -1 and 1 so the minmax scaler doesn't do anything
         gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
         if np.min(gaussian_cloud.sh) > -1.0:
@@ -80,13 +81,14 @@ def gaussian_cloud_to_spz_buffer(
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     pack_options.version = version
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
-    pack_options.sh1Bits = sh1_bits
-    pack_options.shRestBits = sh_rest_bits
-    pack_options.hasSafeOrbit = has_safe_orbit
+    # use the default values for SH bits in version 2.
+    pack_options.sh1Bits = 5 if version < 3 else sh1_bits
+    pack_options.shRestBits = 4 if version < 3 else sh_rest_bits
+    pack_options.hasSafeOrbit = False if version < 4 else has_safe_orbit
     pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
     pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
     pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
-    if disable_sh_min_max_scaling and len(gaussian_cloud.sh) > 0:
+    if (version < 3 or disable_sh_min_max_scaling) and len(gaussian_cloud.sh) > 0:
         gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
         # artificially set the first two sh coefficients to -1 and 1 so the minmax scaler doesn't do anything
         if np.min(gaussian_cloud.sh) > -1.0:
