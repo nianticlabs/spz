@@ -85,7 +85,7 @@ def gaussian_cloud_to_spz_buffer(
     pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
     pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
     pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
-    if (version < 3 or disable_sh_min_max_scaling) and len(gaussian_cloud.sh) > 0:
+    if pack_options.disableSHMinMaxScaling is True and len(gaussian_cloud.sh) > 0:
         gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
     return spz.saveSpzToBytes(gaussian_cloud, pack_options)  # pylint: disable=no-member
 
