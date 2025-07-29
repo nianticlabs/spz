@@ -152,6 +152,9 @@ bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
 
 constexpr uint8_t FlagAntialiased = 0x1;
 
+// We always pad the attributes in this header explicitly to the 4-byte boundary to ensure compatibility when
+// reading from files that may have been written with different compilers or settings.
+// Otherwise, some compilers may align a float or uint32_t to 4 bytes (and some may not) and break the compatibility.
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
   uint32_t version = 4;
@@ -164,16 +167,16 @@ struct PackedGaussiansHeader {
   // Version 3+ fields: SH quantization parameters
   uint8_t sh1Bits = 5;        // Bits for SH degree 1 coefficients
   uint8_t shRestBits = 4;     // Bits for SH degree 2+ coefficients
+  uint8_t v3Padding[2] = {0}; // Padding
   float shMin = -1.0f;        // Minimum SH coefficient value for quantization
   float shMax = 1.0f;         // Maximum SH coefficient value for quantization
-  uint8_t v3Padding[2] = {0}; // Padding
 
   // Version 4+ fields: Safe orbit camera parameters
   uint8_t hasSafeOrbit = 0;              // Whether safe orbit data is present
+  uint8_t v4Padding[3] = {0};            // Padding
   float safeOrbitElevationMin = 0.0f;    // Minimum elevation for safe orbit (radians)
   float safeOrbitElevationMax = 0.0f;    // Maximum elevation for safe orbit (radians)
   float safeOrbitRadiusMin = 0.0f;       // Minimum radius for safe orbit
-  uint8_t v4Padding = 0;                 // Padding
 
   // Helper methods for version-aware I/O
   size_t getHeaderSize() const {
