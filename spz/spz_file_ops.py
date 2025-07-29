@@ -64,7 +64,7 @@ def gaussian_cloud_to_spz_file(
 
 def gaussian_cloud_to_spz_buffer(
     gaussian_cloud: spz.GaussianCloud,
-    version: int = 4,
+    version: int = spz.LATEST_SPZ_HEADER_VERSION,
     coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED,
     sh1_bits: int = 5,
     sh_rest_bits: int = 5,
@@ -81,16 +81,12 @@ def gaussian_cloud_to_spz_buffer(
     pack_options.sh1Bits = 5 if version < 3 else sh1_bits
     pack_options.shRestBits = 4 if version < 3 else sh_rest_bits
     pack_options.hasSafeOrbit = False if version < 4 else has_safe_orbit
+    pack_options.disableSHMinMaxScaling = True if version < 3 else disable_sh_min_max_scaling
     pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
     pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
     pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
     if (version < 3 or disable_sh_min_max_scaling) and len(gaussian_cloud.sh) > 0:
         gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
-        # artificially set the first two sh coefficients to -1 and 1 so the minmax scaler doesn't do anything
-        if np.min(gaussian_cloud.sh) > -1.0:
-            gaussian_cloud.sh[0] = -1.0
-        if np.max(gaussian_cloud.sh) < 1.0:
-            gaussian_cloud.sh[1] = 1.0
     return spz.saveSpzToBytes(gaussian_cloud, pack_options)  # pylint: disable=no-member
 
 
