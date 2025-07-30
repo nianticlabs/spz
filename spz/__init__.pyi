@@ -24,6 +24,7 @@ LDF: int
 RDF: int
 LUF: int
 RUF: int
+LATEST_SPZ_HEADER_VERSION: int
 
 class CoordinateConverter:
     def __init__(self) -> None: ...
@@ -33,13 +34,11 @@ class CoordinateConverter:
 
 class PackOptions:
     def __init__(self) -> None: ...
+    version: int  # SPZ file format version
     from_: int  # Note: 'from' is a Python keyword in the C++ binding
     sh1Bits: int  # Bits for SH degree 1 coefficients
     shRestBits: int  # Bits for SH degree 2+ coefficients
-    hasSafeOrbit: bool  # Whether safe orbit data is present
-    safeOrbitElevationMin: float  # Minimum elevation for safe orbit (radians)
-    safeOrbitElevationMax: float  # Maximum elevation for safe orbit (radians)
-    safeOrbitRadiusMin: float  # Minimum radius for safe orbit
+    disableSHMinMaxScaling: bool  # Disable SH min/max scaling for quantization
 
 class UnpackOptions:
     def __init__(self) -> None: ...
@@ -107,6 +106,10 @@ class GaussianCloud:
     numPoints: int
     shDegree: int
     antialiased: bool
+    hasSafeOrbit: bool
+    safeOrbitElevationMin: float  # Minimum elevation for safe orbit (radians)
+    safeOrbitElevationMax: float  # Maximum elevation for safe orbit (radians)
+    safeOrbitRadiusMin: float  # Minimum radius for safe orbit
     positions: List[float]
     scales: List[float]
     rotations: List[float]

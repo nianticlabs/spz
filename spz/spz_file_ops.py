@@ -40,10 +40,6 @@ def gaussian_cloud_to_spz_file(
     sh1_bits: int = 5,
     sh_rest_bits: int = 5,
     disable_sh_min_max_scaling: bool = False,
-    has_safe_orbit: bool = False,
-    safe_orbit_elevation_min: float = 0.0,
-    safe_orbit_elevation_max: float = 0.0,
-    safe_orbit_radius_min: float = 0.0,
 ) -> Path:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     pack_options.version = version
@@ -51,11 +47,7 @@ def gaussian_cloud_to_spz_file(
     # use the default values for SH bits in version 2.
     pack_options.sh1Bits = 5 if version < 3 else sh1_bits
     pack_options.shRestBits = 4 if version < 3 else sh_rest_bits
-    pack_options.hasSafeOrbit = False if version < 4 else has_safe_orbit
     pack_options.disableSHMinMaxScaling = True if version < 3 else disable_sh_min_max_scaling
-    pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
-    pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
-    pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
     if pack_options.disableSHMinMaxScaling is True and len(gaussian_cloud.sh) > 0:
         gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
     spz.saveSpz(gaussian_cloud, pack_options, str(filename))  # pylint: disable=no-member
@@ -69,10 +61,6 @@ def gaussian_cloud_to_spz_buffer(
     sh1_bits: int = 5,
     sh_rest_bits: int = 5,
     disable_sh_min_max_scaling: bool = False,
-    has_safe_orbit: bool = False,
-    safe_orbit_elevation_min: float = 0.0,
-    safe_orbit_elevation_max: float = 0.0,
-    safe_orbit_radius_min: float = 0.0,
 ) -> bytes:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     pack_options.version = version
@@ -80,11 +68,7 @@ def gaussian_cloud_to_spz_buffer(
     # use the default values for SH bits in version 2.
     pack_options.sh1Bits = 5 if version < 3 else sh1_bits
     pack_options.shRestBits = 4 if version < 3 else sh_rest_bits
-    pack_options.hasSafeOrbit = False if version < 4 else has_safe_orbit
     pack_options.disableSHMinMaxScaling = True if version < 3 else disable_sh_min_max_scaling
-    pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
-    pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
-    pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
     if pack_options.disableSHMinMaxScaling is True and len(gaussian_cloud.sh) > 0:
         gaussian_cloud.sh = np.array(gaussian_cloud.sh).clip(-1, 1).tolist()  # type: ignore
     return spz.saveSpzToBytes(gaussian_cloud, pack_options)  # pylint: disable=no-member

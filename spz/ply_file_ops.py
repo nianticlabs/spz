@@ -83,6 +83,33 @@ def _extract_spherical_harmonics(ply_data, vertex_data, num_points, no_sh, reint
     return sh_degree, spherical_harmonics
 
 
+def _extract_optional_metadata(plydata):
+    print("[SPZ] Extract metadata.")
+    metadata = {}
+
+    def _get_element_by_name(name: str):
+        for elem in plydata.elements:
+            if elem.name == name:
+                return elem
+        return None
+
+    # Safe orbit elevation min/max (expecting 2 values)
+    elevation_elem = _get_element_by_name("safe_orbit_camera_elevation_min_max_radians")
+    if elevation_elem and len(elevation_elem.data) == 2:
+        metadata["safe_orbit_camera_elevation_min_max_radians"] = np.array(
+            [elevation_elem.data[0][0], elevation_elem.data[1][0]], dtype = np.float32
+        )
+        print(f"[SPZ] camera elevation min/max: {metadata['safe_orbit_camera_elevation_min_max_radians']}.")
+
+    # Safe orbit radius min (single float)
+    radius_elem = _get_element_by_name("safe_orbit_camera_radius_min")
+    if radius_elem and len(radius_elem.data) >= 1:
+        metadata["safe_orbit_camera_radius_min"] = float(radius_elem.data[0][0])
+        print(f"[SPZ] camera radius min: {metadata['safe_orbit_camera_radius_min']}.")
+
+    return metadata
+
+
 # pylint: disable=too-many-locals
 def read_ply_to_gaussian_cloud(ply_filename, no_sh: bool = False) -> spz.GaussianCloud:
     print("[SPZ] Read the PLY file")
@@ -127,6 +154,13 @@ def read_ply_to_gaussian_cloud(ply_filename, no_sh: bool = False) -> spz.Gaussia
     gaussian_cloud.colors = colors
     gaussian_cloud.sh = spherical_harmonics
 
+    metadata = _extract_optional_metadata(ply_data)
+    if "safe_orbit_camera_elevation_min_max_radians" in metadata and "safe_orbit_camera_radius_min" in metadata:
+        gaussian_cloud.hasSafeOrbit = True
+        gaussian_cloud.safeOrbitElevationMin = metadata["safe_orbit_camera_elevation_min_max_radians"][0]
+        gaussian_cloud.safeOrbitElevationMax = metadata["safe_orbit_camera_elevation_min_max_radians"][1]
+        gaussian_cloud.safeOrbitRadiusMin = metadata["safe_orbit_camera_radius_min"]
+
     return gaussian_cloud
 
 
@@ -134,16 +168,8 @@ def gaussian_cloud_to_ply_file(
     gaussian_cloud: spz.GaussianCloud,
     filename: Path,
     coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED,
-    has_safe_orbit: bool = False,
-    safe_orbit_elevation_min: float = 0.0,
-    safe_orbit_elevation_max: float = 0.0,
-    safe_orbit_radius_min: float = 0.0,
 ) -> Path:  # pylint: disable=no-member
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
-    pack_options.hasSafeOrbit = has_safe_orbit
-    pack_options.safeOrbitElevationMin = safe_orbit_elevation_min
-    pack_options.safeOrbitElevationMax = safe_orbit_elevation_max
-    pack_options.safeOrbitRadiusMin = safe_orbit_radius_min
     spz.saveSplatToPly(gaussian_cloud, pack_options, str(filename))  # pylint: disable=no-member
     return filename

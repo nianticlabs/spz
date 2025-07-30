@@ -294,10 +294,10 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.shRestBits = o.shRestBits;
 
   // Copy safe orbit parameters from options
-  packed.hasSafeOrbit = o.hasSafeOrbit;
-  packed.safeOrbitElevationMin = o.safeOrbitElevationMin;
-  packed.safeOrbitElevationMax = o.safeOrbitElevationMax;
-  packed.safeOrbitRadiusMin = o.safeOrbitRadiusMin;
+  packed.hasSafeOrbit = g.hasSafeOrbit;
+  packed.safeOrbitElevationMin = g.safeOrbitElevationMin;
+  packed.safeOrbitElevationMax = g.safeOrbitElevationMax;
+  packed.safeOrbitRadiusMin = g.safeOrbitRadiusMin;
 
   // Compute min/max of SH coefficients for optimal quantization
   if (!o.disableSHMinMaxScaling && g.shDegree > 0 && !g.sh.empty()) {
@@ -486,6 +486,10 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   result.numPoints = packed.numPoints;
   result.shDegree = packed.shDegree;
   result.antialiased = packed.antialiased;
+  result.hasSafeOrbit = packed.hasSafeOrbit;
+  result.safeOrbitElevationMin = packed.safeOrbitElevationMin;
+  result.safeOrbitElevationMax = packed.safeOrbitElevationMax;
+  result.safeOrbitRadiusMin = packed.safeOrbitRadiusMin;
   result.positions.resize(numPoints * 3);
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 4);
@@ -874,6 +878,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   // Read safe orbit data if present
   float safeOrbitElevationMin = 0.0f, safeOrbitElevationMax = 0.0f, safeOrbitRadiusMin = 0.0f;
+  bool hasSafeOrbit = false;
   if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
     float safeOrbitData[3];
     in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
@@ -884,11 +889,16 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
       SpzLog("[SPZ] Loaded safe orbit data: elevation [%f, %f], radius min %f",
              safeOrbitElevationMin, safeOrbitElevationMax, safeOrbitRadiusMin);
     }
+    hasSafeOrbit = true;
   }
 
   in.close();
 
   GaussianCloud result;
+  result.hasSafeOrbit = hasSafeOrbit;
+  result.safeOrbitElevationMin = safeOrbitElevationMin;
+  result.safeOrbitElevationMax = safeOrbitElevationMax;
+  result.safeOrbitRadiusMin = safeOrbitRadiusMin;
   result.numPoints = numPoints;
   result.shDegree = degreeForDim(shDim);
   result.positions.reserve(numPoints * 3);
@@ -1006,7 +1016,7 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out << "property float rot_3\n";
 
   // Add safe orbit elements if present
-  if (o.hasSafeOrbit) {
+  if (data.hasSafeOrbit) {
     out << "element safe_orbit_camera_elevation_min_max 2\n";
     out << "property float safe_orbit_camera_elevation_min_max\n";
     out << "element safe_orbit_camera_radius_min 1\n";
@@ -1017,11 +1027,11 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
 
   // Write safe orbit data if present
-  if (o.hasSafeOrbit) {
+  if (data.hasSafeOrbit) {
     float safeOrbitData[3] = {
-      o.safeOrbitElevationMin,
-      o.safeOrbitElevationMax,
-      o.safeOrbitRadiusMin
+      data.safeOrbitElevationMin,
+      data.safeOrbitElevationMax,
+      data.safeOrbitRadiusMin
     };
     out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
   }

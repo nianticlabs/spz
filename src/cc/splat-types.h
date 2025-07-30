@@ -130,12 +130,22 @@ struct GaussianCloud {
   //   sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
   std::vector<float> sh;
 
+  // Safe orbit camera parameters
+  bool hasSafeOrbit = false;           // Whether safe orbit data is present
+  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
+  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
+  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
+
   // The caller is responsible for freeing the pointers in the returned GaussianCloudData
   GaussianCloudData data() const {
     GaussianCloudData data;
     data.numPoints = numPoints;
     data.shDegree = shDegree;
     data.antialiased = antialiased;
+    data.hasSafeOrbit = hasSafeOrbit;
+    data.safeOrbitElevationMin = safeOrbitElevationMin;
+    data.safeOrbitElevationMax = safeOrbitElevationMax;
+    data.safeOrbitRadiusMin = safeOrbitRadiusMin;
     data.positions = copyFloatBuffer(positions);
     data.scales = copyFloatBuffer(scales);
     data.rotations = copyFloatBuffer(rotations);

@@ -17,10 +17,7 @@ export interface PackOptions {
   from: CoordinateSystem;
   sh1Bits: number;
   shRestBits: number;
-  hasSafeOrbit: boolean;
-  safeOrbitElevationMin: number;
-  safeOrbitElevationMax: number;
-  safeOrbitRadiusMin: number;
+  disableSHMinMaxScaling: boolean;
 }
 
 export interface UnpackOptions {
@@ -31,6 +28,10 @@ export class GaussianCloud {
   numPoints: number;
   shDegree: number;
   antialiased: boolean;
+  hasSafeOrbit: boolean;
+  safeOrbitElevationMin: number;
+  safeOrbitElevationMax: number;
+  safeOrbitRadiusMin: number;
   positions: Float32Array;
   scales: Float32Array;
   rotations: Float32Array;

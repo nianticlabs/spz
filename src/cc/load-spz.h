@@ -86,12 +86,6 @@ struct PackOptions {
   uint8_t sh1Bits = 5;      // Bits for SH degree 1 coefficients (max 8)
   uint8_t shRestBits = 4;   // Bits for SH degree 2+ coefficients (max 8)
   bool disableSHMinMaxScaling = false;  // Whether to disable SH min/max scaling, useful for legacy versions.
-
-  // Safe orbit camera parameters
-  bool hasSafeOrbit = false;           // Whether safe orbit data is present
-  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
-  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
-  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
 };
 
 struct UnpackOptions {
