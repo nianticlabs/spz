@@ -788,7 +788,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
       break;
 
     // Check for safe orbit elements
-    if (line == "element safe_orbit_camera_elevation_min_max 2") {
+    if (line == "element safe_orbit_camera_elevation_min_max_radians 2") {
       hasSafeOrbitElevation = true;
       continue;
     }
@@ -796,7 +796,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
       hasSafeOrbitRadius = true;
       continue;
     }
-    if (line == "property float safe_orbit_camera_elevation_min_max" ||
+    if (line == "property float safe_orbit_camera_elevation_min_max_radians" ||
         line == "property float safe_orbit_camera_radius_min") {
       continue;
     }
@@ -1017,8 +1017,8 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
 
   // Add safe orbit elements if present
   if (data.hasSafeOrbit) {
-    out << "element safe_orbit_camera_elevation_min_max 2\n";
-    out << "property float safe_orbit_camera_elevation_min_max\n";
+    out << "element safe_orbit_camera_elevation_min_max_radians 2\n";
+    out << "property float safe_orbit_camera_elevation_min_max_radians\n";
     out << "element safe_orbit_camera_radius_min 1\n";
     out << "property float safe_orbit_camera_radius_min\n";
   }
