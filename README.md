@@ -1,3 +1,6 @@
+THIS IS A TEST FOR CODEOWNERS FILE
+
+
 # spz
 
 `.spz` is a file format for compressed 3D gaussian splats. This directory contains a C++ library
