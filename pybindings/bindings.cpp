@@ -100,13 +100,11 @@ PYBIND11_MODULE(spz_bindings, m) {
   // Bind PackOptions
   py::class_<PackOptions>(m, "PackOptions")
       .def(py::init<>())
+      .def_readwrite("version", &PackOptions::version)
       .def_readwrite("from", &PackOptions::from)
       .def_readwrite("sh1Bits", &PackOptions::sh1Bits)
       .def_readwrite("shRestBits", &PackOptions::shRestBits)
-      .def_readwrite("hasSafeOrbit", &PackOptions::hasSafeOrbit)
-      .def_readwrite("safeOrbitElevationMin", &PackOptions::safeOrbitElevationMin)
-      .def_readwrite("safeOrbitElevationMax", &PackOptions::safeOrbitElevationMax)
-      .def_readwrite("safeOrbitRadiusMin", &PackOptions::safeOrbitRadiusMin);
+      .def_readwrite("disableSHMinMaxScaling", &PackOptions::disableSHMinMaxScaling);
 
   // Bind UnpackOptions
   py::class_<UnpackOptions>(m, "UnpackOptions")
@@ -133,6 +131,7 @@ PYBIND11_MODULE(spz_bindings, m) {
   // Bind PackedGaussians
   py::class_<PackedGaussians>(m, "PackedGaussians")
       .def(py::init<>())
+      .def_readwrite("version", &PackedGaussians::version)
       .def_readwrite("numPoints", &PackedGaussians::numPoints)
       .def_readwrite("shDegree", &PackedGaussians::shDegree)
       .def_readwrite("fractionalBits", &PackedGaussians::fractionalBits)
@@ -167,6 +166,10 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def_readwrite("numPoints", &GaussianCloudData::numPoints)
       .def_readwrite("shDegree", &GaussianCloudData::shDegree)
       .def_readwrite("antialiased", &GaussianCloudData::antialiased)
+      .def_readwrite("hasSafeOrbit", &GaussianCloudData::hasSafeOrbit)
+      .def_readwrite("safeOrbitElevationMin", &GaussianCloudData::safeOrbitElevationMin)
+      .def_readwrite("safeOrbitElevationMax", &GaussianCloudData::safeOrbitElevationMax)
+      .def_readwrite("safeOrbitRadiusMin", &GaussianCloudData::safeOrbitRadiusMin)
       .def_readwrite("positions", &GaussianCloudData::positions)
       .def_readwrite("scales", &GaussianCloudData::scales)
       .def_readwrite("rotations", &GaussianCloudData::rotations)
@@ -180,6 +183,10 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def_readwrite("numPoints", &GaussianCloud::numPoints)
       .def_readwrite("shDegree", &GaussianCloud::shDegree)
       .def_readwrite("antialiased", &GaussianCloud::antialiased)
+      .def_readwrite("hasSafeOrbit", &GaussianCloud::hasSafeOrbit)
+      .def_readwrite("safeOrbitElevationMin", &GaussianCloud::safeOrbitElevationMin)
+      .def_readwrite("safeOrbitElevationMax", &GaussianCloud::safeOrbitElevationMax)
+      .def_readwrite("safeOrbitRadiusMin", &GaussianCloud::safeOrbitRadiusMin)
       .def_readwrite("positions", &GaussianCloud::positions)
       .def_readwrite("scales", &GaussianCloud::scales)
       .def_readwrite("rotations", &GaussianCloud::rotations)
@@ -235,4 +242,6 @@ PYBIND11_MODULE(spz_bindings, m) {
 
   // Bind compressGzipped
   m.def("compressGzipped", &compressGzippedFromBytes, py::arg("data"));
+
+  m.attr("LATEST_SPZ_HEADER_VERSION") = spz::LATEST_SPZ_HEADER_VERSION;
 }

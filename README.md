@@ -157,15 +157,15 @@ struct PackedGaussiansHeader {
   // Version 3 additions
   uint8_t sh1Bits;                   // Bits for SH degree 1 coefficients
   uint8_t shRestBits;                // Bits for SH degree 2+ coefficients  
+  uint8_t v3Padding[2];              // Padding to ensure version 3 end at 28 bytes
   float shMin;                       // Minimum SH coefficient value for quantization
   float shMax;                       // Maximum SH coefficient value for quantization
-  uint8_t v3Padding[2];              // Padding to make version 3 end at 28 bytes
   // Version 4 additions
   uint8_t hasSafeOrbit;              // Whether safe orbit data is present
+  uint8_t v4Padding[3];              // Padding to ensure version 4 end at 44 bytes
   float safeOrbitElevationMin;       // Minimum elevation for safe orbit (radians)
   float safeOrbitElevationMax;       // Maximum elevation for safe orbit (radians)
   float safeOrbitRadiusMin;          // Minimum radius for safe orbit
-  uint8_t v4Padding[1];              // Padding
 };
 ```
 

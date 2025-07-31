@@ -13,13 +13,11 @@ export enum CoordinateSystem {
 }
 
 export interface PackOptions {
+  version: number;
   from: CoordinateSystem;
   sh1Bits: number;
   shRestBits: number;
-  hasSafeOrbit: boolean;
-  safeOrbitElevationMin: number;
-  safeOrbitElevationMax: number;
-  safeOrbitRadiusMin: number;
+  disableSHMinMaxScaling: boolean;
 }
 
 export interface UnpackOptions {
@@ -30,6 +28,10 @@ export class GaussianCloud {
   numPoints: number;
   shDegree: number;
   antialiased: boolean;
+  hasSafeOrbit: boolean;
+  safeOrbitElevationMin: number;
+  safeOrbitElevationMax: number;
+  safeOrbitRadiusMin: number;
   positions: Float32Array;
   scales: Float32Array;
   rotations: Float32Array;
@@ -46,6 +48,8 @@ export interface SpzModule {
   // Loaders / Savers
   loadSpzFromBuffer(data: Uint8Array, options: UnpackOptions): GaussianCloud;
   saveSpzToBuffer(cloud: GaussianCloud, options: PackOptions): Uint8Array;
+
+  LATEST_SPZ_HEADER_VERSION: number;
 }
 
 export default function createSpzModule(overrides?: any): Promise<SpzModule>;

@@ -17,6 +17,10 @@ typedef struct {
   int32_t numPoints;
   int32_t shDegree;
   bool antialiased;
+  bool hasSafeOrbit;
+  float safeOrbitElevationMin;
+  float safeOrbitElevationMax;
+  float safeOrbitRadiusMin;
   SpzFloatBuffer positions;
   SpzFloatBuffer scales;
   SpzFloatBuffer rotations;

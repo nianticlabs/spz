@@ -152,6 +152,9 @@ bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
 
 constexpr uint8_t FlagAntialiased = 0x1;
 
+// We always pad the attributes in this header explicitly to the 4-byte boundary to ensure compatibility when
+// reading from files that may have been written with different compilers or settings.
+// Otherwise, some compilers may align a float or uint32_t to 4 bytes (and some may not) and break the compatibility.
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
   uint32_t version = 4;
@@ -164,16 +167,16 @@ struct PackedGaussiansHeader {
   // Version 3+ fields: SH quantization parameters
   uint8_t sh1Bits = 5;        // Bits for SH degree 1 coefficients
   uint8_t shRestBits = 4;     // Bits for SH degree 2+ coefficients
+  uint8_t v3Padding[2] = {0}; // Padding
   float shMin = -1.0f;        // Minimum SH coefficient value for quantization
   float shMax = 1.0f;         // Maximum SH coefficient value for quantization
-  uint8_t v3Padding[2] = {0}; // Padding
 
   // Version 4+ fields: Safe orbit camera parameters
   uint8_t hasSafeOrbit = 0;              // Whether safe orbit data is present
+  uint8_t v4Padding[3] = {0};            // Padding
   float safeOrbitElevationMin = 0.0f;    // Minimum elevation for safe orbit (radians)
   float safeOrbitElevationMax = 0.0f;    // Maximum elevation for safe orbit (radians)
   float safeOrbitRadiusMin = 0.0f;       // Minimum radius for safe orbit
-  uint8_t v4Padding = 0;                 // Padding
 
   // Helper methods for version-aware I/O
   size_t getHeaderSize() const {
@@ -273,11 +276,16 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
+  if (o.version < 3 && g.shDegree > 3) {
+    SpzLog("[SPZ WARNING] SPZ with SH degrees %d will not be loadable in a legacy loader of version %d",
+        g.shDegree, o.version);
+  }
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
 
   // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
   // we can use different values on a per-splat basis and still be compatible with the decoder.
   PackedGaussians packed;
+  packed.version = o.version;
   packed.numPoints = g.numPoints;
   packed.shDegree = g.shDegree;
   packed.fractionalBits = 12;
@@ -286,13 +294,13 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.shRestBits = o.shRestBits;
 
   // Copy safe orbit parameters from options
-  packed.hasSafeOrbit = o.hasSafeOrbit;
-  packed.safeOrbitElevationMin = o.safeOrbitElevationMin;
-  packed.safeOrbitElevationMax = o.safeOrbitElevationMax;
-  packed.safeOrbitRadiusMin = o.safeOrbitRadiusMin;
+  packed.hasSafeOrbit = g.hasSafeOrbit;
+  packed.safeOrbitElevationMin = g.safeOrbitElevationMin;
+  packed.safeOrbitElevationMax = g.safeOrbitElevationMax;
+  packed.safeOrbitRadiusMin = g.safeOrbitRadiusMin;
 
   // Compute min/max of SH coefficients for optimal quantization
-  if (g.shDegree > 0 && !g.sh.empty()) {
+  if (!o.disableSHMinMaxScaling && g.shDegree > 0 && !g.sh.empty()) {
     float minSH = *std::min_element(g.sh.begin(), g.sh.end());
     float maxSH = *std::max_element(g.sh.begin(), g.sh.end());
 
@@ -478,6 +486,10 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   result.numPoints = packed.numPoints;
   result.shDegree = packed.shDegree;
   result.antialiased = packed.antialiased;
+  result.hasSafeOrbit = packed.hasSafeOrbit;
+  result.safeOrbitElevationMin = packed.safeOrbitElevationMin;
+  result.safeOrbitElevationMax = packed.safeOrbitElevationMax;
+  result.safeOrbitRadiusMin = packed.safeOrbitRadiusMin;
   result.positions.resize(numPoints * 3);
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 4);
@@ -543,21 +555,28 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) {
   PackedGaussiansHeader header;
+  header.version = packed.version;
   header.numPoints = static_cast<uint32_t>(packed.numPoints);
   header.shDegree = static_cast<uint8_t>(packed.shDegree);
   header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
   header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0);
-  header.sh1Bits = packed.sh1Bits;
-  header.shRestBits = packed.shRestBits;
-  header.shMin = packed.shMin;
-  header.shMax = packed.shMax;
 
+  // Write SH quantization parameters (version 3+)
+  if (header.version >= 3) {
+    // Write SH quantization parameters
+    header.sh1Bits = packed.sh1Bits;
+    header.shRestBits = packed.shRestBits;
+    header.shMin = packed.shMin;
+    header.shMax = packed.shMax;
+  }
   // Write safe orbit parameters (version 4+)
-  header.hasSafeOrbit = static_cast<uint8_t>(packed.hasSafeOrbit ? 1 : 0);
-  header.safeOrbitElevationMin = packed.safeOrbitElevationMin;
-  header.safeOrbitElevationMax = packed.safeOrbitElevationMax;
-  header.safeOrbitRadiusMin = packed.safeOrbitRadiusMin;
-  out->write(reinterpret_cast<const char *>(&header), sizeof(header));
+  if (header.version >= 4) {
+    header.hasSafeOrbit = static_cast<uint8_t>(packed.hasSafeOrbit ? 1 : 0);
+    header.safeOrbitElevationMin = packed.safeOrbitElevationMin;
+    header.safeOrbitElevationMax = packed.safeOrbitElevationMax;
+    header.safeOrbitRadiusMin = packed.safeOrbitRadiusMin;
+  }
+  out->write(reinterpret_cast<const char *>(&header), header.getHeaderSize());
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
   out->write(reinterpret_cast<const char *>(packed.colors.data()), countBytes(packed.colors));
@@ -610,6 +629,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const bool usesFloat16 = header.version == 1;
 
   PackedGaussians result;
+  result.version = header.version;
   result.numPoints = numPoints;
   result.shDegree = header.shDegree;
   result.fractionalBits = header.fractionalBits;
@@ -768,7 +788,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
       break;
 
     // Check for safe orbit elements
-    if (line == "element safe_orbit_camera_elevation_min_max 2") {
+    if (line == "element safe_orbit_camera_elevation_min_max_radians 2") {
       hasSafeOrbitElevation = true;
       continue;
     }
@@ -776,7 +796,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
       hasSafeOrbitRadius = true;
       continue;
     }
-    if (line == "property float safe_orbit_camera_elevation_min_max" ||
+    if (line == "property float safe_orbit_camera_elevation_min_max_radians" ||
         line == "property float safe_orbit_camera_radius_min") {
       continue;
     }
@@ -858,6 +878,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   // Read safe orbit data if present
   float safeOrbitElevationMin = 0.0f, safeOrbitElevationMax = 0.0f, safeOrbitRadiusMin = 0.0f;
+  bool hasSafeOrbit = false;
   if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
     float safeOrbitData[3];
     in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
@@ -868,11 +889,16 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
       SpzLog("[SPZ] Loaded safe orbit data: elevation [%f, %f], radius min %f",
              safeOrbitElevationMin, safeOrbitElevationMax, safeOrbitRadiusMin);
     }
+    hasSafeOrbit = true;
   }
 
   in.close();
 
   GaussianCloud result;
+  result.hasSafeOrbit = hasSafeOrbit;
+  result.safeOrbitElevationMin = safeOrbitElevationMin;
+  result.safeOrbitElevationMax = safeOrbitElevationMax;
+  result.safeOrbitRadiusMin = safeOrbitRadiusMin;
   result.numPoints = numPoints;
   result.shDegree = degreeForDim(shDim);
   result.positions.reserve(numPoints * 3);
@@ -990,9 +1016,9 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out << "property float rot_3\n";
 
   // Add safe orbit elements if present
-  if (o.hasSafeOrbit) {
-    out << "element safe_orbit_camera_elevation_min_max 2\n";
-    out << "property float safe_orbit_camera_elevation_min_max\n";
+  if (data.hasSafeOrbit) {
+    out << "element safe_orbit_camera_elevation_min_max_radians 2\n";
+    out << "property float safe_orbit_camera_elevation_min_max_radians\n";
     out << "element safe_orbit_camera_radius_min 1\n";
     out << "property float safe_orbit_camera_radius_min\n";
   }
@@ -1001,11 +1027,11 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
 
   // Write safe orbit data if present
-  if (o.hasSafeOrbit) {
+  if (data.hasSafeOrbit) {
     float safeOrbitData[3] = {
-      o.safeOrbitElevationMin,
-      o.safeOrbitElevationMax,
-      o.safeOrbitRadiusMin
+      data.safeOrbitElevationMin,
+      data.safeOrbitElevationMax,
+      data.safeOrbitRadiusMin
     };
     out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
   }

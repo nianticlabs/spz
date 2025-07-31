@@ -22,6 +22,10 @@ struct EmGaussianCloud {
   int32_t         numPoints;
   int32_t         shDegree;
   bool            antialiased;
+  bool            hasSafeOrbit;
+  float           safeOrbitElevationMin;
+  float           safeOrbitElevationMax;
+  float           safeOrbitRadiusMin;
   emscripten::val positions;
   emscripten::val scales;
   emscripten::val rotations;
@@ -67,6 +71,10 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   emCloud.numPoints = cloud.numPoints;
   emCloud.shDegree = cloud.shDegree;
   emCloud.antialiased = cloud.antialiased;
+  emCloud.hasSafeOrbit = cloud.hasSafeOrbit;
+  emCloud.safeOrbitElevationMin = cloud.safeOrbitElevationMin;
+  emCloud.safeOrbitElevationMax = cloud.safeOrbitElevationMax;
+  emCloud.safeOrbitRadiusMin = cloud.safeOrbitRadiusMin;
   emCloud.positions = jsFloat32ArrayFromVector(cloud.positions);
   emCloud.scales = jsFloat32ArrayFromVector(cloud.scales);
   emCloud.rotations = jsFloat32ArrayFromVector(cloud.rotations);
@@ -82,6 +90,10 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   cloud.numPoints = emCloud.numPoints;
   cloud.shDegree = emCloud.shDegree;
   cloud.antialiased = emCloud.antialiased;
+  cloud.hasSafeOrbit = emCloud.hasSafeOrbit;
+  cloud.safeOrbitElevationMin = emCloud.safeOrbitElevationMin;
+  cloud.safeOrbitElevationMax = emCloud.safeOrbitElevationMax;
+  cloud.safeOrbitRadiusMin = emCloud.safeOrbitRadiusMin;
 
   vectorFromJsArray(emCloud.positions, cloud.positions);
   vectorFromJsArray(emCloud.scales, cloud.scales);
@@ -114,13 +126,11 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .value("RUF", spz::CoordinateSystem::RUF);
 
   emscripten::value_object<spz::PackOptions>("PackOptions")
+      .field("version", &spz::PackOptions::version)
       .field("from", &spz::PackOptions::from)
       .field("sh1Bits", &spz::PackOptions::sh1Bits)
       .field("shRestBits", &spz::PackOptions::shRestBits)
-      .field("hasSafeOrbit", &spz::PackOptions::hasSafeOrbit)
-      .field("safeOrbitElevationMin", &spz::PackOptions::safeOrbitElevationMin)
-      .field("safeOrbitElevationMax", &spz::PackOptions::safeOrbitElevationMax)
-      .field("safeOrbitRadiusMin", &spz::PackOptions::safeOrbitRadiusMin);
+      .field("disableSHMinMaxScaling", &spz::PackOptions::disableSHMinMaxScaling);
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 
@@ -128,6 +138,10 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("numPoints", &EmGaussianCloud::numPoints)
       .field("shDegree", &EmGaussianCloud::shDegree)
       .field("antialiased", &EmGaussianCloud::antialiased)
+      .field("hasSafeOrbit", &EmGaussianCloud::hasSafeOrbit)
+      .field("safeOrbitElevationMin", &EmGaussianCloud::safeOrbitElevationMin)
+      .field("safeOrbitElevationMax", &EmGaussianCloud::safeOrbitElevationMax)
+      .field("safeOrbitRadiusMin", &EmGaussianCloud::safeOrbitRadiusMin)
       .field("positions", &EmGaussianCloud::positions)
       .field("scales", &EmGaussianCloud::scales)
       .field("rotations", &EmGaussianCloud::rotations)
@@ -137,4 +151,5 @@ EMSCRIPTEN_BINDINGS(spz_module) {
 
   emscripten::function("loadSpzFromBuffer", &loadSpzFromBuffer);
   emscripten::function("saveSpzToBuffer", &saveSpzToBuffer);
+  emscripten::constant("LATEST_SPZ_HEADER_VERSION", spz::LATEST_SPZ_HEADER_VERSION);
 }

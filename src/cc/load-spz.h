@@ -12,6 +12,9 @@ namespace spz {
 constexpr int SH_MAX_DEGREE = 4;
 constexpr int SH_MAX_COEFFS = 24;
 
+// Latest version of the packed format, update this when changing the format.
+constexpr int LATEST_SPZ_HEADER_VERSION = 4;
+
 // Represents a single inflated gaussian. Each gaussian has 236 bytes. Although the data is easier
 // to intepret in this format, it is not more precise than the packed format, since it was inflated.
 struct UnpackedGaussian {
@@ -45,6 +48,7 @@ struct PackedGaussian {
 // Represents a full splat with lower precision. Each splat has at most 64 bytes, although splats
 // with fewer spherical harmonics degrees will have less. The data is stored non-interleaved.
 struct PackedGaussians {
+  uint32_t version = LATEST_SPZ_HEADER_VERSION;  // Version of the packed format
   int32_t numPoints = 0;       // Total number of points (gaussians)
   int32_t shDegree = 0;        // Degree of spherical harmonics
   int32_t fractionalBits = 0;  // Number of bits used for fractional part of fixed-point coords
@@ -75,16 +79,13 @@ struct PackedGaussians {
 };
 
 struct PackOptions {
+  uint32_t version = LATEST_SPZ_HEADER_VERSION;  // Version of the packed format
+
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
   // Spherical harmonics quantization parameters
   uint8_t sh1Bits = 5;      // Bits for SH degree 1 coefficients (max 8)
   uint8_t shRestBits = 4;   // Bits for SH degree 2+ coefficients (max 8)
-
-  // Safe orbit camera parameters
-  bool hasSafeOrbit = false;           // Whether safe orbit data is present
-  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
-  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
-  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
+  bool disableSHMinMaxScaling = false;  // Whether to disable SH min/max scaling, useful for legacy versions.
 };
 
 struct UnpackOptions {
