@@ -1,6 +1,6 @@
 {
   "name": "@3di/spz",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "description": "WebAssembly module for loading Gaussian splat (SPZ) files",
   "main": "dist/spz.js",
   "types": "dist/spz.d.ts",
