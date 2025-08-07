@@ -2,7 +2,6 @@
 
 @Library('algpipeline') _
 
-// This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
 def setRunOnMain() {
   if (env.BRANCH_NAME in ['main']) {
     return [githubPush()]

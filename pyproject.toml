@@ -56,7 +56,7 @@ tests = [
 ]
 
 [project.urls]
-repository = "https://git.corp.adobe.com/AdobeShared/python-scaffold"
+repository = "https://github.com/nianticlabs/spz"
 
 [project.scripts]
 spz = "spz.commands.main:main_cmd"

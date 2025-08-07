@@ -14,7 +14,7 @@ mb.cxx_library(
     ],
 )
 
-mb.set_root_directory("$(project_root)/../pybindings")
+mb.set_root_directory("$(project_root)/../src/pybindings")
 
 mb.cxx_library(
     name = "spz_bindings_pyd",

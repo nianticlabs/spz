@@ -1,7 +1,6 @@
 """
 Run all linting tools simultaneously on the code.
 """
-# This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
 
 import argparse
 import asyncio

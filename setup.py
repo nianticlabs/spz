@@ -12,23 +12,23 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
-class MetabuildExtension(Extension):
-    """Metabuild Extension to specify the source directory."""
+class CMakeExtension(Extension):
+    """CMake Extension to specify the source directory."""
 
     def __init__(self, name, sourcedir="."):
         super().__init__(name, sources=[])
         self.sourcedir = Path(sourcedir).resolve()
 
 
-class MetabuildSpzBindings(build_ext):
-    """Metabuild build_ext command for building SPZ bindings."""
+class CMakeSpzBindings(build_ext):
+    """CMake build_ext command for building SPZ bindings."""
 
     def run(self):
-        # Ensure Metabuild is installed
+        # Ensure CMake is installed
         try:
-            subprocess.check_call(["metabuild", "version"])
+            subprocess.check_call(["cmake", "--version"])
         except OSError as exc:
-            raise RuntimeError("Metabuild must be installed to build this extension") from exc
+            raise RuntimeError("CMake must be installed to build this extension") from exc
 
         # Build spz library
         for ext in self.extensions:
@@ -37,19 +37,28 @@ class MetabuildSpzBindings(build_ext):
     def build_extension(self, ext):
         build_temp = Path(self.build_temp).resolve()
         build_temp.mkdir(parents=True, exist_ok=True)
+        config = "Release"
 
         # Run Metabuild steps
-        subprocess.check_call(["metabuild", "prepare", "--verbose"], cwd=ext.sourcedir)
-        subprocess.check_call(["metabuild", "build", "-c", "Release", "--verbose"], cwd=ext.sourcedir)
+        subprocess.check_call([
+            "cmake", 
+            "-B", 
+            "build", 
+            "-S", 
+            ".",
+            "-DSPZ_BUILD_PYTHON_BINDINGS=ON",
+            f"-DCMAKE_BUILD_TYPE={config}"
+        ], cwd=ext.sourcedir)
+        subprocess.check_call(["cmake", "--build", "build", "--config", config], cwd=ext.sourcedir)
 
         # Determine the output file
         system = platform.system()
         if system == "Darwin":
-            output_file = ext.sourcedir / "build_mb/xcode_macos/Release/universal/build/spz/spz/spz_bindings_so/spz_bindings.so"
+            output_file = ext.sourcedir / "build" / "spz_bindings.so"
         elif system == "Windows":
-            output_file = ext.sourcedir / "build_mb/msvs_win32/Release/x64/build/spz/spz/spz_bindings_pyd/spz_bindings.pyd"
+            output_file = ext.sourcedir / "build" / "spz_bindings.pyd"
         elif system == "Linux":
-            output_file = ext.sourcedir / "build_mb/cmake_linux/Release/x64/build/spz/spz/spz_bindings_so/spz_bindings.so"
+            output_file = ext.sourcedir / "build" / "spz_bindings.so"
         else:
             raise RuntimeError(f"Unsupported platform: {system}")
 
@@ -64,8 +73,8 @@ class MetabuildSpzBindings(build_ext):
 
 if __name__ == "__main__":
     setup(
-        ext_modules=[MetabuildExtension("spz.spz_bindings", sourcedir=".")],
-        cmdclass={"build_ext": MetabuildSpzBindings},
+        ext_modules=[CMakeExtension("spz.spz_bindings", sourcedir=".")],
+        cmdclass={"build_ext": CMakeSpzBindings},
         include_package_data=True,
         package_data={
             "spz.spz": ["*.so", "*.pyd"],

@@ -7,7 +7,10 @@ project(spz
 
 include(GNUInstallDirs)
 
+option(SPZ_BUILD_PYTHON_BINDINGS "Build Python bindings using pybind11" OFF)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  set(SPZ_BUILD_PYTHON_BINDINGS OFF CACHE BOOL "Build Python bindings using pybind11" FORCE)
   set(SPZ_BUILD_WASM ON)
   set(SPZ_USE_EMSCRIPTEN_ZLIB ON)
 endif()
@@ -15,6 +18,25 @@ endif()
 # zlib is required to build the project
 if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
   find_package(ZLIB REQUIRED)
+endif()
+
+if(SPZ_BUILD_PYTHON_BINDINGS)
+  find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
+
+  # Try to find pybind11, otherwise fetch it
+  find_package(pybind11 CONFIG QUIET)
+  if(NOT pybind11_FOUND)
+    message(STATUS "pybind11 not found, using FetchContent to download it.")
+    include(FetchContent)
+    FetchContent_Declare(
+      pybind11
+      GIT_REPOSITORY https://github.com/pybind/pybind11.git
+      GIT_TAG        v2.13.1
+    )
+    FetchContent_MakeAvailable(pybind11)
+  else()
+    message(STATUS "Using system-installed pybind11")
+  endif()
 endif()
 
 set(spz_sources
@@ -91,6 +113,38 @@ if(SPZ_BUILD_WASM)
   )
 endif()
 
+if(SPZ_BUILD_PYTHON_BINDINGS)
+  file(GLOB_RECURSE SPZ_PYBIND_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/pybindings/*.cpp"
+  )
+
+  pybind11_add_module(spz_bindings MODULE ${SPZ_PYBIND_SOURCES})
+
+  target_link_libraries(spz_bindings
+    PRIVATE spz
+    PRIVATE pybind11::module
+  )
+
+  set_target_properties(spz_bindings PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+  )
+
+  if(WIN32)
+    # Windows (.pyd)
+    set_target_properties(spz_bindings PROPERTIES SUFFIX ".pyd")
+  else()
+    # Unix (.so)
+    set_target_properties(spz_bindings PROPERTIES SUFFIX ".so")
+  endif()
+
+  if(APPLE)
+    set_target_properties(spz_bindings PROPERTIES
+      XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.nianticlabs.spz.spz_bindings"
+    )
+  endif()
+endif()
+
 # Installation
 
 ## Install spzConfig.cmake spz::spz target can be found when calling find_package(spz)
@@ -123,3 +177,10 @@ install(EXPORT spzTargets
   NAMESPACE spz::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/spz"
 )
+
+if(SPZ_BUILD_PYTHON_BINDINGS)
+  install(TARGETS spz_bindings
+    LIBRARY DESTINATION "${Python3_SITEARCH}"
+    RUNTIME DESTINATION "${Python3_SITEARCH}"  # For Windows .pyd
+  )
+endif()
