@@ -41,10 +41,10 @@ class CMakeSpzBindings(build_ext):
 
         # Run Metabuild steps
         subprocess.check_call([
-            "cmake", 
-            "-B", 
-            "build", 
-            "-S", 
+            "cmake",
+            "-B",
+            "build",
+            "-S",
             ".",
             "-DSPZ_BUILD_PYTHON_BINDINGS=ON",
             f"-DCMAKE_BUILD_TYPE={config}"
