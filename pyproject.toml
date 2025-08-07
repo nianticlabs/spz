@@ -4,7 +4,6 @@ requires = [
     "setuptools>=62",
     "setuptools_scm[toml]>=6.2",
     "wheel",
-    "metabuild @ git+ssh://git@git.corp.adobe.com/meta-build/meta-build.git@2.9.0",
 ]
 build-backend = "setuptools.build_meta"
 
