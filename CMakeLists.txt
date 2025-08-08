@@ -15,9 +15,28 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(SPZ_USE_EMSCRIPTEN_ZLIB ON)
 endif()
 
+set(SPZ_SHOULD_INSTALL TRUE)
+
 # zlib is required to build the project
 if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
-  find_package(ZLIB REQUIRED)
+  find_package(ZLIB QUIET)
+
+  if (NOT ZLIB_FOUND)
+    message(STATUS "pybind11 not found, using FetchContent to download it.")
+    include(FetchContent)
+    FetchContent_Declare(
+      zlib
+      URL https://zlib.net/zlib-1.3.1.tar.gz
+      URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+    )
+    FetchContent_MakeAvailable(zlib)
+    set(zlib_linkage_target zlib)
+
+    # Skipping install of SPZ target because zlib was fetched from the source and non-exportable
+    set(SPZ_SHOULD_INSTALL FALSE)
+  else()
+    set(zlib_linkage_target ZLIB::ZLIB)
+  endif()
 endif()
 
 if(SPZ_BUILD_PYTHON_BINDINGS)
@@ -55,7 +74,7 @@ set(spz_headers
 add_library(spz ${spz_sources})
 
 if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
-  target_link_libraries(spz PRIVATE ZLIB::ZLIB)
+  target_link_libraries(spz PRIVATE ${zlib_linkage_target})
 else()
   target_compile_options(spz PRIVATE --use-port=zlib)
   target_link_options(spz PRIVATE --use-port=zlib)
@@ -165,18 +184,20 @@ install(
     "${CMAKE_INSTALL_LIBDIR}/cmake/spz"
 )
 
-install(TARGETS spz
-  EXPORT spzTargets
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+if (SPZ_SHOULD_INSTALL)
+  install(TARGETS spz
+    EXPORT spzTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
 
-install(EXPORT spzTargets
-  NAMESPACE spz::
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/spz"
-)
+  install(EXPORT spzTargets
+    NAMESPACE spz::
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/spz"
+  )
+endif()
 
 if(SPZ_BUILD_PYTHON_BINDINGS)
   install(TARGETS spz_bindings

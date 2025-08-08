@@ -56,7 +56,7 @@ class CMakeSpzBindings(build_ext):
         if system == "Darwin":
             output_file = ext.sourcedir / "build" / "spz_bindings.so"
         elif system == "Windows":
-            output_file = ext.sourcedir / "build" / "spz_bindings.pyd"
+            output_file = ext.sourcedir / "build" / config / "spz_bindings.pyd"
         elif system == "Linux":
             output_file = ext.sourcedir / "build" / "spz_bindings.so"
         else:
