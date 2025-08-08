@@ -1,5 +1,3 @@
-# This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
-
 # Setup pypi index urls
 $env:PIP_EXTRA_INDEX_URL="https://" + $env:ARTIFACTORY_UW2_USER + ":" + $env:ARTIFACTORY_UW2_API_KEY + "@artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-release/simple " + `
 "https://" + $env:ARTIFACTORY_UW2_USER + ":" + $env:ARTIFACTORY_UW2_API_KEY + "@artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release/simple "

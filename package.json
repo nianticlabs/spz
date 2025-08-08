@@ -24,9 +24,9 @@
     "gaussian-splatting",
     "3d"
   ],
-  "author": "Adobe Inc.",
+  "author": "Niantic Labs",
   "license": "ISC",
-  "homepage": "https://git.corp.adobe.com/thirdparty/spz",
+  "homepage": "https://github.com/nianticlabs/spz",
   "publishConfig": {
     "@3di:registry": "https://artifactory.corp.adobe.com/artifactory/api/npm/npm-adobe-release-local"
   }

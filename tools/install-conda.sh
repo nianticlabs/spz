@@ -1,5 +1,3 @@
-# This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
-
 if [ $# -eq 0 ]
   then
     echo "No arguments supplied. Usage 'bash install_conda.sh installation-directory'"

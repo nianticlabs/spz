@@ -2,7 +2,6 @@
 
 @Library('algpipeline') _
 
-// This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
 properties([
   buildDiscarder(logRotator(daysToKeepStr: '15', numToKeepStr: '75'))
 ])
@@ -26,7 +25,7 @@ smartStage("Load utils.groovy") {
     }
 }
 
-def build_py_project_scaffold(profile) {
+def build_spz(profile) {
   smartStage(profile.name) {
     nodeTimeout(profile.label, [time: profile.timeout, unit: profile.timeout_unit]) {
       withCredentials([
@@ -81,7 +80,7 @@ timestamps {
   abortPreviousBuild(isPRBuild())
   parallel profiles.collectEntries { profile ->
     [ "${profile.name}" : {
-        build_py_project_scaffold(profile)
+        build_spz(profile)
     } ]
   }
 

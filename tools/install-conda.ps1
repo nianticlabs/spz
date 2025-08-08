@@ -1,4 +1,3 @@
-# This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
 $install_dir = $args[0]
 
 if ($args.Count -ne 1) {

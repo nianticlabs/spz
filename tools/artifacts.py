@@ -1,4 +1,3 @@
-# This file is adapted from https://git.corp.adobe.com/euclid/python-project-scaffold
 # This is for storing your large data outside of git.
 
 import pathlib

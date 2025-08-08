@@ -1,5 +1,3 @@
-# This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
-
 from spz.spz_test_case import SpzTestCase
 
 
