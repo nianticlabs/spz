@@ -130,6 +130,8 @@ if(SPZ_BUILD_WASM)
   add_custom_target(copy_spz_dts ALL
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
   )
+else()
+  set_target_properties(spz PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
 if(SPZ_BUILD_PYTHON_BINDINGS)
@@ -147,6 +149,7 @@ if(SPZ_BUILD_PYTHON_BINDINGS)
   set_target_properties(spz_bindings PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
+    POSITION_INDEPENDENT_CODE ON
   )
 
   if(WIN32)
