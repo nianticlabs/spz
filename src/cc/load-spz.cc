@@ -143,7 +143,7 @@ bool decompressGzippedImpl(
   std::vector<uint8_t> buffer(8192);
   z_stream stream = {};
   stream.next_in = const_cast<Bytef *>(compressed);
-  stream.avail_in = size;
+  stream.avail_in = static_cast<uInt>(size);
   if (inflateInit2(&stream, windowSize) != Z_OK) {
     return false;
   }
@@ -151,7 +151,7 @@ bool decompressGzippedImpl(
   bool success = false;
   while (true) {
     stream.next_out = buffer.data();
-    stream.avail_out = buffer.size();
+    stream.avail_out = static_cast<uInt>(buffer.size());
     int32_t res = inflate(&stream, Z_NO_FLUSH);
     if (res != Z_OK && res != Z_STREAM_END) {
       break;
@@ -194,11 +194,11 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   out->clear();
   out->reserve(size / 4);
   stream.next_in = const_cast<Bytef *>(reinterpret_cast<const Bytef *>(data));
-  stream.avail_in = size;
+  stream.avail_in = static_cast<uInt>(size);
   bool success = false;
   while (true) {
     stream.next_out = buffer.data();
-    stream.avail_out = buffer.size();
+    stream.avail_out = static_cast<uInt>(buffer.size());
     int32_t res = deflate(&stream, Z_FINISH);
     if (res != Z_OK && res != Z_STREAM_END) {
       break;
@@ -578,7 +578,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
   result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
-  result.rotations.resize(numPoints * (usesQuaternionSmallestThree ? 4 : 3));  
+  result.rotations.resize(numPoints * (usesQuaternionSmallestThree ? 4 : 3));
   result.alphas.resize(numPoints);
   result.colors.resize(numPoints * 3);
   result.sh.resize(numPoints * shDim * 3);
