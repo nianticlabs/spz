@@ -8,7 +8,7 @@ concurrency:
 
 jobs:
   build:
-    name: OS ${{ matrix.os }} with BUILD_SHARED_LIBS=${{matrix.shared}}
+    name: ${{ matrix.os }} with BUILD_SHARED_LIBS=${{matrix.shared}}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -61,6 +61,12 @@ jobs:
        shell: bash -l {0}
        run: |
           ninja
+       working-directory: ./build
+
+     - name: Install
+       shell: bash -l {0}
+       run: |
+          ninja install
        working-directory: ./build
 
      - name: "There are no tests :spoon:"
