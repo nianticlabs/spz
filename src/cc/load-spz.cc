@@ -278,7 +278,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.sh.resize(numPoints * shDim * 3);
 
   // Store coordinates as 24-bit fixed point values.
-  const float scale = (1 << packed.fractionalBits);
+  const float scale = (float)(1 << packed.fractionalBits);
   for (size_t i = 0; i < numPoints * 3; i++) {
     const int32_t fixed32 =
       static_cast<int32_t>(std::round(c.flipP[i % 3] * g.positions[i] * scale));
@@ -391,7 +391,7 @@ UnpackedGaussian PackedGaussian::unpack(
     }
   } else {
     // Decode 24-bit fixed point coordinates
-    float scale = 1.0 / (1 << fractionalBits);
+    float scale = 1.0 / (float)(1 << fractionalBits);
     for (size_t i = 0; i < 3; i++) {
       int32_t fixed32 = position[i * 3 + 0];
       fixed32 |= position[i * 3 + 1] << 8;
@@ -492,7 +492,7 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
     }
   } else {
     // Decode 24-bit fixed point coordinates
-    float scale = 1.0 / (1 << packed.fractionalBits);
+    float scale = 1.0 / (float)(1 << packed.fractionalBits);
     for (size_t i = 0; i < numPoints * 3; i++) {
       int32_t fixed32 = packed.positions[i * 3 + 0];
       fixed32 |= packed.positions[i * 3 + 1] << 8;
