@@ -6,4 +6,5 @@ dependencies:
   - compilers
   - ninja
   - cmake
+  - zlib
 
