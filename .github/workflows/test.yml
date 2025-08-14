@@ -27,8 +27,6 @@ jobs:
            init-shell: bash
            environment-file: .github/environment.yml
            environment-name: "build"
-           cache-environment: true
-           cache-downloads: true
 
      - name: Setup
        shell: bash -l {0}
