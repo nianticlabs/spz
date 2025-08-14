@@ -72,6 +72,6 @@ jobs:
      - name: "There are no tests :spoon:"
        shell: bash -l {0}
        run: |
-          "There are no tests"
+          echo "There are no tests"
        working-directory: ./build
 
