@@ -45,6 +45,6 @@ mb.cxx_library(
     filter=~mb.target.windows,
     product_extension=".so",
     xcode_flags={
-        "PRODUCT_BUNDLE_IDENTIFIER": "com.adobe.spz.spz_bindings",
+        "PRODUCT_BUNDLE_IDENTIFIER": "com.nianticlabs.spz.spz_bindings",
     },
 )

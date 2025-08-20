@@ -62,12 +62,14 @@ set(spz_sources
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-types.cc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-extensions.cc"
 )
 
 set(spz_headers
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-types.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-extensions.h"
 )
 
 # create the library and configure it

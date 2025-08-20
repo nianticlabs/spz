@@ -38,20 +38,23 @@ typedef struct {
   float *data;
 } SpzFloatBuffer;
 
+typedef struct SpzExtensionNode {
+  uint32_t type;
+  void* data;
+  SpzExtensionNode* next;
+} SpzExtensionNode;
+
 typedef struct {
   int32_t numPoints;
   int32_t shDegree;
   bool antialiased;
-  bool hasSafeOrbit;
-  float safeOrbitElevationMin;
-  float safeOrbitElevationMax;
-  float safeOrbitRadiusMin;
   SpzFloatBuffer positions;
   SpzFloatBuffer scales;
   SpzFloatBuffer rotations;
   SpzFloatBuffer alphas;
   SpzFloatBuffer colors;
   SpzFloatBuffer sh;
+  SpzExtensionNode* extensions;
 } GaussianCloudData;
 
 #endif  // SPZ_SPLAT_C_TYPES_H_

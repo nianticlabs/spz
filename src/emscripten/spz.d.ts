@@ -34,12 +34,39 @@ export enum CoordinateSystem {
   RUF,
 }
 
+export enum SpzExtensionType {
+  SPZ_ADOBE_sh_quantization = 0xADBE0001,
+  SPZ_ADOBE_safe_orbit_camera = 0xADBE0002,
+}
+
+export class SpzExtensionBase {
+  readonly extensionType: SpzExtensionType;
+}
+
+export class SpzExtensionSHQuantizationAdobe extends SpzExtensionBase {
+  sh1Bits: number;
+  shRestBits: number;
+  shMin: number;
+  shMax: number;
+  constructor();
+  static type(): SpzExtensionType;
+}
+
+export class SpzExtensionSafeOrbitCameraAdobe extends SpzExtensionBase {
+  hasSafeOrbit: boolean;
+  safeOrbitElevationMin: number;
+  safeOrbitElevationMax: number;
+  safeOrbitRadiusMin: number;
+  constructor();
+  static type(): SpzExtensionType;
+}
+
 export interface PackOptions {
   version: number;
   from: CoordinateSystem;
   sh1Bits: number;
   shRestBits: number;
-  disableSHMinMaxScaling: boolean;
+  enableSHMinMaxScaling: boolean;
 }
 
 export interface UnpackOptions {
@@ -50,10 +77,7 @@ export class GaussianCloud {
   numPoints: number;
   shDegree: number;
   antialiased: boolean;
-  hasSafeOrbit: boolean;
-  safeOrbitElevationMin: number;
-  safeOrbitElevationMax: number;
-  safeOrbitRadiusMin: number;
+  extensions: SpzExtensionBase[];
   positions: Float32Array;
   scales: Float32Array;
   rotations: Float32Array;

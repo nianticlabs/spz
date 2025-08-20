@@ -26,19 +26,42 @@ SOFTWARE.
 #pragma once
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
 #include "splat-types.h"
+#include "splat-extensions.h"
 
 namespace spz {
+#ifdef ANDROID
+static constexpr char LOG_TAG[] = "SPZ";
+template <class... Args>
+static void SpzLog(const char *fmt, Args &&...args) {
+  __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt, std::forward<Args>(args)...);
+}
+#else
+template <class... Args>
+static void SpzLog(const char *fmt, Args &&...args) {
+  printf(fmt, std::forward<Args>(args)...);
+  printf("\n");
+  fflush(stdout);
+}
+#endif  // ANDROID
+
+template <class... Args>
+static void SpzLog(const char *fmt) {
+  SpzLog("%s", fmt);
+}
 
 // Maximum degree supported
 constexpr int SH_MAX_DEGREE = 4;
 constexpr int SH_MAX_COEFFS = 24;
+constexpr int DEFAULT_SH1_BITS = 5;
+constexpr int DEFAULT_SH_REST_BITS = 4;
 
 // Latest version of the packed format, update this when changing the format.
-constexpr int LATEST_SPZ_HEADER_VERSION = 4;
+constexpr int LATEST_SPZ_HEADER_VERSION = 2;
 
 // Represents a single inflated gaussian. Each gaussian has 236 bytes. Although the data is easier
 // to intepret in this format, it is not more precise than the packed format, since it was inflated.
@@ -79,24 +102,14 @@ struct PackedGaussians {
   int32_t fractionalBits = 0;  // Number of bits used for fractional part of fixed-point coords
   bool antialiased = false;    // Whether gaussians should be rendered with mip-splat antialiasing
 
-  // SH quantization parameters
-  uint8_t sh1Bits = 5;      // Bits for SH degree 1 coefficients
-  uint8_t shRestBits = 4;   // Bits for SH degree 2+ coefficients
-  float shMin = -1.0f;      // Minimum SH coefficient value used for quantization
-  float shMax = 1.0f;       // Maximum SH coefficient value used for quantization
-
-  // Safe orbit camera parameters
-  bool hasSafeOrbit = false;           // Whether safe orbit data is present
-  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
-  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
-  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
-
   std::vector<uint8_t> positions;
   std::vector<uint8_t> scales;
   std::vector<uint8_t> rotations;
   std::vector<uint8_t> alphas;
   std::vector<uint8_t> colors;
   std::vector<uint8_t> sh;
+
+  std::vector<SpzExtensionBasePtr> extensions;  // List of extensions, if any
 
   bool usesFloat16() const;
   PackedGaussian at(int32_t i) const;
@@ -108,9 +121,9 @@ struct PackOptions {
 
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
   // Spherical harmonics quantization parameters
-  uint8_t sh1Bits = 5;      // Bits for SH degree 1 coefficients (max 8)
-  uint8_t shRestBits = 4;   // Bits for SH degree 2+ coefficients (max 8)
-  bool disableSHMinMaxScaling = false;  // Whether to disable SH min/max scaling, useful for legacy versions.
+  uint8_t sh1Bits = DEFAULT_SH1_BITS;      // Bits for SH degree 1 coefficients (max 8)
+  uint8_t shRestBits = DEFAULT_SH_REST_BITS;   // Bits for SH degree 2+ coefficients (max 8)
+  bool enableSHMinMaxScaling = false;  // Whether to enable SH min/max scaling, useful for legacy versions.
 };
 
 struct UnpackOptions {
