@@ -24,75 +24,77 @@ SOFTWARE.
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>  // For STL containers like std::vector
+
 #include <sstream>  // For std::ostringstream
 
 #include "load-spz.h"
 #include "splat-c-types.h"
+#include "splat-extensions.h"
 #include "splat-types.h"
 
 namespace py = pybind11;
 using namespace spz;
 
 py::bytes saveSpzToBytes(const GaussianCloud& g, const PackOptions& options) {
-    std::vector<uint8_t> buffer;
-    if (!saveSpz(g, options, &buffer)) {
-        throw std::runtime_error("saveSpz failed");
-    }
-    return py::bytes(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+  std::vector<uint8_t> buffer;
+  if (!saveSpz(g, options, &buffer)) {
+    throw std::runtime_error("saveSpz failed");
+  }
+  return py::bytes(reinterpret_cast<const char*>(buffer.data()), buffer.size());
 }
 
 // Overload with default options
 py::bytes saveSpzToBytesDefault(const GaussianCloud& g) {
-    PackOptions options;
-    return saveSpzToBytes(g, options);
+  PackOptions options;
+  return saveSpzToBytes(g, options);
 }
 
 // Wrapper functions with default options
 bool saveSpzDefault(const GaussianCloud& g, const std::string& filename) {
-    PackOptions options;
-    return saveSpz(g, options, filename);
+  PackOptions options;
+  return saveSpz(g, options, filename);
 }
 
 bool saveSpzVectorDefault(const GaussianCloud& g, std::vector<uint8_t>* output) {
-    PackOptions options;
-    return saveSpz(g, options, output);
+  PackOptions options;
+  return saveSpz(g, options, output);
 }
 
 GaussianCloud loadSpzDefault(const std::string& filename) {
-    UnpackOptions options;
-    return loadSpz(filename, options);
+  UnpackOptions options;
+  return loadSpz(filename, options);
 }
 
 GaussianCloud loadSpzVectorDefault(const std::vector<uint8_t>& data) {
-    UnpackOptions options;
-    return loadSpz(data, options);
+  UnpackOptions options;
+  return loadSpz(data, options);
 }
 
 void saveSplatToPlyDefault(const GaussianCloud& gaussians, const std::string& filename) {
-    PackOptions options;
-    saveSplatToPly(gaussians, options, filename);
+  PackOptions options;
+  saveSplatToPly(gaussians, options, filename);
 }
 
 GaussianCloud loadSplatFromPlyDefault(const std::string& filename) {
-    UnpackOptions options;
-    return loadSplatFromPly(filename, options);
+  UnpackOptions options;
+  return loadSplatFromPly(filename, options);
 }
 
-py::bytes serializePackedGaussiansToBytes(const PackedGaussians &packed) {
-    std::ostringstream oss;
-    serializePackedGaussians(packed, &oss);
-    std::string str = oss.str();
-    return py::bytes(str);
+py::bytes serializePackedGaussiansToBytes(const PackedGaussians& packed) {
+  std::ostringstream oss;
+  serializePackedGaussians(packed, &oss);
+  std::string str = oss.str();
+  return py::bytes(str);
 }
 
-py::bytes compressGzippedFromBytes(const py::bytes &data) {
-    std::string str = data;
-    std::vector<uint8_t> output;
-    bool success = compressGzipped(reinterpret_cast<const uint8_t*>(str.data()), str.size(), &output);
-    if (!success) {
-        throw std::runtime_error("compressGzipped failed");
-    }
-    return py::bytes(reinterpret_cast<const char*>(output.data()), output.size());
+py::bytes compressGzippedFromBytes(const py::bytes& data) {
+  std::string str = data;
+  std::vector<uint8_t> output;
+  bool success = compressGzipped(reinterpret_cast<const uint8_t*>(str.data()), str.size(), &output);
+  if (!success) {
+    throw std::runtime_error("compressGzipped failed");
+  }
+  return py::bytes(reinterpret_cast<const char*>(output.data()), output.size());
 }
 
 PYBIND11_MODULE(spz_bindings, m) {
@@ -111,6 +113,28 @@ PYBIND11_MODULE(spz_bindings, m) {
       .value("RUF", CoordinateSystem::RUF)  // Right Up Front, Unity coordinate system
       .export_values();
 
+  py::enum_<SpzExtensionType>(m, "SpzExtensionType", py::arithmetic())
+      .value("SPZ_ADOBE_sh_quantization", SpzExtensionType::SPZ_ADOBE_sh_quantization)
+      .value("SPZ_ADOBE_safe_orbit_camera", SpzExtensionType::SPZ_ADOBE_safe_orbit_camera)
+      .export_values();
+
+  py::class_<SpzExtensionBase, std::shared_ptr<SpzExtensionBase>>(m, "SpzExtensionBase");
+
+  py::class_<SpzExtensionSHQuantizationAdobe, SpzExtensionBase, std::shared_ptr<SpzExtensionSHQuantizationAdobe>>(m, "SpzExtensionSHQuantizationAdobe")
+      .def(py::init<>())
+      .def_readwrite("sh1Bits", &SpzExtensionSHQuantizationAdobe::sh1Bits)
+      .def_readwrite("shRestBits", &SpzExtensionSHQuantizationAdobe::shRestBits)
+      .def_readwrite("shMin", &SpzExtensionSHQuantizationAdobe::shMin)
+      .def_readwrite("shMax", &SpzExtensionSHQuantizationAdobe::shMax)
+      .def_static("type", &SpzExtensionSHQuantizationAdobe::type);
+
+  py::class_<SpzExtensionSafeOrbitCameraAdobe, SpzExtensionBase, std::shared_ptr<SpzExtensionSafeOrbitCameraAdobe>>(m, "SpzExtensionSafeOrbitCameraAdobe")
+      .def(py::init<>())
+      .def_readwrite("safeOrbitElevationMin", &SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMin)
+      .def_readwrite("safeOrbitElevationMax", &SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
+      .def_readwrite("safeOrbitRadiusMin", &SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)
+      .def_static("type", &SpzExtensionSafeOrbitCameraAdobe::type);
+
   // Bind CoordinateConverter
   py::class_<CoordinateConverter>(m, "CoordinateConverter")
       .def(py::init<>())
@@ -128,12 +152,10 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def_readwrite("from", &PackOptions::from)
       .def_readwrite("sh1Bits", &PackOptions::sh1Bits)
       .def_readwrite("shRestBits", &PackOptions::shRestBits)
-      .def_readwrite("disableSHMinMaxScaling", &PackOptions::disableSHMinMaxScaling);
+      .def_readwrite("enableSHMinMaxScaling", &PackOptions::enableSHMinMaxScaling);
 
   // Bind UnpackOptions
-  py::class_<UnpackOptions>(m, "UnpackOptions")
-      .def(py::init<>())
-      .def_readwrite("to", &UnpackOptions::to);
+  py::class_<UnpackOptions>(m, "UnpackOptions").def(py::init<>()).def_readwrite("to", &UnpackOptions::to);
 
   // Bind UnpackedGaussian
   py::class_<UnpackedGaussian>(m, "UnpackedGaussian")
@@ -150,7 +172,13 @@ PYBIND11_MODULE(spz_bindings, m) {
   // Bind PackedGaussian
   py::class_<PackedGaussian>(m, "PackedGaussian")
       .def(py::init<>())
-      .def("unpack", &PackedGaussian::unpack, py::arg("usesFloat16"), py::arg("fractionalBits"), py::arg("c"), py::arg("shMin") = -1.0f, py::arg("shMax") = 1.0f);
+      .def("unpack",
+           &PackedGaussian::unpack,
+           py::arg("usesFloat16"),
+           py::arg("fractionalBits"),
+           py::arg("c"),
+           py::arg("shMin") = -1.0f,
+           py::arg("shMax") = 1.0f);
 
   // Bind PackedGaussians
   py::class_<PackedGaussians>(m, "PackedGaussians")
@@ -160,14 +188,7 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def_readwrite("shDegree", &PackedGaussians::shDegree)
       .def_readwrite("fractionalBits", &PackedGaussians::fractionalBits)
       .def_readwrite("antialiased", &PackedGaussians::antialiased)
-      .def_readwrite("sh1Bits", &PackedGaussians::sh1Bits)
-      .def_readwrite("shRestBits", &PackedGaussians::shRestBits)
-      .def_readwrite("shMin", &PackedGaussians::shMin)
-      .def_readwrite("shMax", &PackedGaussians::shMax)
-      .def_readwrite("hasSafeOrbit", &PackedGaussians::hasSafeOrbit)
-      .def_readwrite("safeOrbitElevationMin", &PackedGaussians::safeOrbitElevationMin)
-      .def_readwrite("safeOrbitElevationMax", &PackedGaussians::safeOrbitElevationMax)
-      .def_readwrite("safeOrbitRadiusMin", &PackedGaussians::safeOrbitRadiusMin)
+      .def_readwrite("extensions", &PackedGaussians::extensions)
       .def_readwrite("positions", &PackedGaussians::positions)
       .def_readwrite("scales", &PackedGaussians::scales)
       .def_readwrite("rotations", &PackedGaussians::rotations)
@@ -179,10 +200,12 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def("unpack", &PackedGaussians::unpack, py::arg("i"), py::arg("c"));
 
   // Bind SpzFloatBuffer
-  py::class_<SpzFloatBuffer>(m, "SpzFloatBuffer")
-      .def(py::init<>())
-      .def_readwrite("count", &SpzFloatBuffer::count)
-      .def_readwrite("data", &SpzFloatBuffer::data);
+  py::class_<SpzFloatBuffer>(m, "SpzFloatBuffer").def(py::init<>()).def_readwrite("count", &SpzFloatBuffer::count).def_readwrite("data", &SpzFloatBuffer::data);
+
+  py::class_<SpzExtensionNode>(m, "SpzExtensionNode")
+      .def_property_readonly("type", [](SpzExtensionNode& self) { return self.type; })
+      .def_property_readonly("next", [](SpzExtensionNode& self) -> SpzExtensionNode* { return self.next; })
+      .def_property_readonly("dataAddr", [](SpzExtensionNode& self) { return reinterpret_cast<std::uintptr_t>(self.data); });
 
   // Bind GaussianCloudData
   py::class_<GaussianCloudData>(m, "GaussianCloudData")
@@ -190,16 +213,13 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def_readwrite("numPoints", &GaussianCloudData::numPoints)
       .def_readwrite("shDegree", &GaussianCloudData::shDegree)
       .def_readwrite("antialiased", &GaussianCloudData::antialiased)
-      .def_readwrite("hasSafeOrbit", &GaussianCloudData::hasSafeOrbit)
-      .def_readwrite("safeOrbitElevationMin", &GaussianCloudData::safeOrbitElevationMin)
-      .def_readwrite("safeOrbitElevationMax", &GaussianCloudData::safeOrbitElevationMax)
-      .def_readwrite("safeOrbitRadiusMin", &GaussianCloudData::safeOrbitRadiusMin)
       .def_readwrite("positions", &GaussianCloudData::positions)
       .def_readwrite("scales", &GaussianCloudData::scales)
       .def_readwrite("rotations", &GaussianCloudData::rotations)
       .def_readwrite("alphas", &GaussianCloudData::alphas)
       .def_readwrite("colors", &GaussianCloudData::colors)
-      .def_readwrite("sh", &GaussianCloudData::sh);
+      .def_readwrite("sh", &GaussianCloudData::sh)
+      .def_property_readonly("extensions", [](GaussianCloudData& self) -> SpzExtensionNode* { return self.extensions; });
 
   // Bind GaussianCloud
   py::class_<GaussianCloud>(m, "GaussianCloud")
@@ -207,10 +227,7 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def_readwrite("numPoints", &GaussianCloud::numPoints)
       .def_readwrite("shDegree", &GaussianCloud::shDegree)
       .def_readwrite("antialiased", &GaussianCloud::antialiased)
-      .def_readwrite("hasSafeOrbit", &GaussianCloud::hasSafeOrbit)
-      .def_readwrite("safeOrbitElevationMin", &GaussianCloud::safeOrbitElevationMin)
-      .def_readwrite("safeOrbitElevationMax", &GaussianCloud::safeOrbitElevationMax)
-      .def_readwrite("safeOrbitRadiusMin", &GaussianCloud::safeOrbitRadiusMin)
+      .def_readwrite("extensions", &GaussianCloud::extensions)
       .def_readwrite("positions", &GaussianCloud::positions)
       .def_readwrite("scales", &GaussianCloud::scales)
       .def_readwrite("rotations", &GaussianCloud::rotations)
@@ -223,29 +240,33 @@ PYBIND11_MODULE(spz_bindings, m) {
       .def("medianVolume", &GaussianCloud::medianVolume);
 
   // Bind saveSpz with PackOptions (existing)
-  m.def("saveSpz", py::overload_cast<const GaussianCloud &, const PackOptions &, std::vector<uint8_t> *>(&saveSpz),
-        py::arg("g"), py::arg("options"), py::arg("output"));
-  m.def("saveSpz", py::overload_cast<const GaussianCloud &, const PackOptions &, const std::string &>(&saveSpz),
-        py::arg("g"), py::arg("options"), py::arg("filename"));
+  m.def("saveSpz",
+        py::overload_cast<const GaussianCloud&, const PackOptions&, std::vector<uint8_t>*>(&saveSpz),
+        py::arg("g"),
+        py::arg("options"),
+        py::arg("output"));
+  m.def("saveSpz",
+        py::overload_cast<const GaussianCloud&, const PackOptions&, const std::string&>(&saveSpz),
+        py::arg("g"),
+        py::arg("options"),
+        py::arg("filename"));
 
   // Bind saveSpz with default options (new)
   m.def("saveSpz", &saveSpzDefault, py::arg("g"), py::arg("filename"));
   m.def("saveSpz", &saveSpzVectorDefault, py::arg("g"), py::arg("output"));
 
   // Bind loadSpz with UnpackOptions (existing)
-  m.def("loadSpz", py::overload_cast<const std::vector<uint8_t> &, const UnpackOptions &>(&loadSpz),
-        py::arg("data"), py::arg("options"));
-  m.def("loadSpz", py::overload_cast<const std::string &, const UnpackOptions &>(&loadSpz),
-        py::arg("filename"), py::arg("options"));
+  m.def("loadSpz", py::overload_cast<const std::vector<uint8_t>&, const UnpackOptions&>(&loadSpz), py::arg("data"), py::arg("options"));
+  m.def("loadSpz", py::overload_cast<const std::string&, const UnpackOptions&>(&loadSpz), py::arg("filename"), py::arg("options"));
 
   // Bind loadSpz with default options (new)
   m.def("loadSpz", &loadSpzDefault, py::arg("filename"));
   m.def("loadSpz", &loadSpzVectorDefault, py::arg("data"));
 
   // Bind loadSpzPacked
-  m.def("loadSpzPacked", py::overload_cast<const std::string &>(&loadSpzPacked), py::arg("filename"));
-  m.def("loadSpzPacked", py::overload_cast<const uint8_t *, int32_t>(&loadSpzPacked), py::arg("data"), py::arg("size"));
-  m.def("loadSpzPacked", py::overload_cast<const std::vector<uint8_t> &>(&loadSpzPacked), py::arg("data"));
+  m.def("loadSpzPacked", py::overload_cast<const std::string&>(&loadSpzPacked), py::arg("filename"));
+  m.def("loadSpzPacked", py::overload_cast<const uint8_t*, int32_t>(&loadSpzPacked), py::arg("data"), py::arg("size"));
+  m.def("loadSpzPacked", py::overload_cast<const std::vector<uint8_t>&>(&loadSpzPacked), py::arg("data"));
 
   // Bind saveSplatToPly and loadSplatFromPly with options (existing)
   m.def("saveSplatToPly", &saveSplatToPly, py::arg("gaussians"), py::arg("options"), py::arg("filename"));

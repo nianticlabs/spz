@@ -43,13 +43,10 @@ namespace {
 // A counterpart to the C++ GaussianCloud structure, used to
 // transfer data between C++ and JavaScript.
 struct EmGaussianCloud {
-  int32_t         numPoints;
-  int32_t         shDegree;
-  bool            antialiased;
-  bool            hasSafeOrbit;
-  float           safeOrbitElevationMin;
-  float           safeOrbitElevationMax;
-  float           safeOrbitRadiusMin;
+  int32_t numPoints;
+  int32_t shDegree;
+  bool antialiased;
+  emscripten::val extensions;
   emscripten::val positions;
   emscripten::val scales;
   emscripten::val rotations;
@@ -77,6 +74,15 @@ inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer
 }
 
 template <typename T>
+inline emscripten::val jsArrayFromVector(const std::vector<T>& vec) {
+  emscripten::val array = emscripten::val::array();
+  for (const auto& item : vec) {
+    array.call<void>("push", item);
+  }
+  return array;
+}
+
+template <typename T>
 inline void vectorFromJsArray(const emscripten::val& array, std::vector<T>& out) {
   const size_t length = array["length"].as<size_t>();
   out.resize(length);
@@ -95,10 +101,7 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   emCloud.numPoints = cloud.numPoints;
   emCloud.shDegree = cloud.shDegree;
   emCloud.antialiased = cloud.antialiased;
-  emCloud.hasSafeOrbit = cloud.hasSafeOrbit;
-  emCloud.safeOrbitElevationMin = cloud.safeOrbitElevationMin;
-  emCloud.safeOrbitElevationMax = cloud.safeOrbitElevationMax;
-  emCloud.safeOrbitRadiusMin = cloud.safeOrbitRadiusMin;
+  emCloud.extensions = jsArrayFromVector(cloud.extensions);
   emCloud.positions = jsFloat32ArrayFromVector(cloud.positions);
   emCloud.scales = jsFloat32ArrayFromVector(cloud.scales);
   emCloud.rotations = jsFloat32ArrayFromVector(cloud.rotations);
@@ -114,11 +117,8 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   cloud.numPoints = emCloud.numPoints;
   cloud.shDegree = emCloud.shDegree;
   cloud.antialiased = emCloud.antialiased;
-  cloud.hasSafeOrbit = emCloud.hasSafeOrbit;
-  cloud.safeOrbitElevationMin = emCloud.safeOrbitElevationMin;
-  cloud.safeOrbitElevationMax = emCloud.safeOrbitElevationMax;
-  cloud.safeOrbitRadiusMin = emCloud.safeOrbitRadiusMin;
 
+  vectorFromJsArray(emCloud.extensions, cloud.extensions);
   vectorFromJsArray(emCloud.positions, cloud.positions);
   vectorFromJsArray(emCloud.scales, cloud.scales);
   vectorFromJsArray(emCloud.rotations, cloud.rotations);
@@ -149,12 +149,20 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .value("LUF", spz::CoordinateSystem::LUF)
       .value("RUF", spz::CoordinateSystem::RUF);
 
+  emscripten::enum_<spz::SpzExtensionType>("SpzExtensionType")
+      .value("SPZ_ADOBE_sh_quantization", spz::SpzExtensionType::SPZ_ADOBE_sh_quantization)
+      .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera);
+
+  emscripten::class_<spz::SpzExtensionBase>("SpzExtensionBase")
+      .smart_ptr<std::shared_ptr<spz::SpzExtensionBase>>("SpzExtensionBasePtr")
+      .property("extensionType", &spz::SpzExtensionBase::extensionType);
+
   emscripten::value_object<spz::PackOptions>("PackOptions")
       .field("version", &spz::PackOptions::version)
       .field("from", &spz::PackOptions::from)
       .field("sh1Bits", &spz::PackOptions::sh1Bits)
       .field("shRestBits", &spz::PackOptions::shRestBits)
-      .field("disableSHMinMaxScaling", &spz::PackOptions::disableSHMinMaxScaling);
+      .field("enableSHMinMaxScaling", &spz::PackOptions::enableSHMinMaxScaling);
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 
@@ -162,16 +170,28 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("numPoints", &EmGaussianCloud::numPoints)
       .field("shDegree", &EmGaussianCloud::shDegree)
       .field("antialiased", &EmGaussianCloud::antialiased)
-      .field("hasSafeOrbit", &EmGaussianCloud::hasSafeOrbit)
-      .field("safeOrbitElevationMin", &EmGaussianCloud::safeOrbitElevationMin)
-      .field("safeOrbitElevationMax", &EmGaussianCloud::safeOrbitElevationMax)
-      .field("safeOrbitRadiusMin", &EmGaussianCloud::safeOrbitRadiusMin)
+      .field("extensions", &EmGaussianCloud::extensions)
       .field("positions", &EmGaussianCloud::positions)
       .field("scales", &EmGaussianCloud::scales)
       .field("rotations", &EmGaussianCloud::rotations)
       .field("alphas", &EmGaussianCloud::alphas)
       .field("colors", &EmGaussianCloud::colors)
       .field("sh", &EmGaussianCloud::sh);
+
+  emscripten::class_<spz::SpzExtensionSHQuantizationAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSHQuantizationAdobe")
+      .constructor<>()
+      .property("sh1Bits", &spz::SpzExtensionSHQuantizationAdobe::sh1Bits)
+      .property("shRestBits", &spz::SpzExtensionSHQuantizationAdobe::shRestBits)
+      .property("shMin", &spz::SpzExtensionSHQuantizationAdobe::shMin)
+      .property("shMax", &spz::SpzExtensionSHQuantizationAdobe::shMax)
+      .class_function("type", &spz::SpzExtensionSHQuantizationAdobe::type);
+
+  emscripten::class_<spz::SpzExtensionSafeOrbitCameraAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSafeOrbitCameraAdobe")
+      .constructor<>()
+      .property("safeOrbitElevationMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMin)
+      .property("safeOrbitElevationMax", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
+      .property("safeOrbitRadiusMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)
+      .class_function("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type);
 
   emscripten::function("loadSpzFromBuffer", &loadSpzFromBuffer);
   emscripten::function("saveSpzToBuffer", &saveSpzToBuffer);

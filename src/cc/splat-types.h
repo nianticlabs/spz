@@ -33,6 +33,7 @@ SOFTWARE.
 #include <vector>
 
 #include "splat-c-types.h"
+#include "splat-extensions.h"
 
 namespace spz {
 
@@ -44,6 +45,27 @@ inline SpzFloatBuffer copyFloatBuffer(const std::vector<float> &vector) {
     std::memcpy(buffer.data, vector.data(), buffer.count * sizeof(float));
   }
   return buffer;
+}
+
+inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
+  SpzExtensionNode* head = nullptr;
+  SpzExtensionNode* tail = nullptr;
+
+  for (const auto& ext : extensions) {
+    if (!ext) continue;  // Skip null extensions
+
+    SpzExtensionNode* node = new SpzExtensionNode{static_cast<uint32_t>(ext->extensionType), ext->copyAsRawData(), nullptr};
+
+    if (!head) {
+      head = node;
+      tail = node;
+    } else {
+      tail->next = node;
+      tail = node;
+    }
+  }
+
+  return head;
 }
 
 enum class CoordinateSystem {
@@ -155,11 +177,7 @@ struct GaussianCloud {
   //   sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
   std::vector<float> sh;
 
-  // Safe orbit camera parameters
-  bool hasSafeOrbit = false;           // Whether safe orbit data is present
-  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
-  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
-  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
+  std::vector<SpzExtensionBasePtr> extensions;  // List of extensions, if any
 
   // The caller is responsible for freeing the pointers in the returned GaussianCloudData
   GaussianCloudData data() const {
@@ -167,16 +185,13 @@ struct GaussianCloud {
     data.numPoints = numPoints;
     data.shDegree = shDegree;
     data.antialiased = antialiased;
-    data.hasSafeOrbit = hasSafeOrbit;
-    data.safeOrbitElevationMin = safeOrbitElevationMin;
-    data.safeOrbitElevationMax = safeOrbitElevationMax;
-    data.safeOrbitRadiusMin = safeOrbitRadiusMin;
     data.positions = copyFloatBuffer(positions);
     data.scales = copyFloatBuffer(scales);
     data.rotations = copyFloatBuffer(rotations);
     data.alphas = copyFloatBuffer(alphas);
     data.colors = copyFloatBuffer(colors);
     data.sh = copyFloatBuffer(sh);
+    data.extensions = copyExtensions(extensions);
     return data;
   }
 

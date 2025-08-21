@@ -1,6 +1,7 @@
 """Type stubs for SPZ Python bindings."""
 
-from typing import List, overload
+from abc import ABC, abstractmethod
+from typing import IO, Iterable, List, Optional, overload
 
 # Coordinate System Enum
 class CoordinateSystem:
@@ -26,6 +27,58 @@ LUF: int
 RUF: int
 LATEST_SPZ_HEADER_VERSION: int
 
+class SpzExtensionType:
+    SPZ_ADOBE_sh_quantization: int
+    SPZ_ADOBE_safe_orbit_camera: int
+
+SPZ_ADOBE_sh_quantization: int
+SPZ_ADOBE_safe_orbit_camera: int
+
+class SpzExtensionBase(ABC):
+    extensionType: SpzExtensionType
+
+    def __init__(self, t: SpzExtensionType) -> None: ...
+    @abstractmethod
+    def write(self, os: IO[bytes]) -> None: ...
+    @abstractmethod
+    def copyAsRawData(self) -> SpzExtensionBase: ...
+
+    @classmethod
+    @abstractmethod
+    def read(cls, is_: IO[bytes]) -> Optional[SpzExtensionBase]: ...
+    @classmethod
+    @abstractmethod
+    def type(cls) -> SpzExtensionType: ...
+
+class SpzExtensionSHQuantizationAdobe(SpzExtensionBase):
+    sh1Bits: int
+    shRestBits: int
+    shMin: float
+    shMax: float
+
+    def __init__(self) -> None: ...
+    def write(self, os: IO[bytes]) -> None: ...
+    def copyAsRawData(self) -> SpzExtensionBase: ...
+
+    @classmethod
+    def read(cls, is_: IO[bytes]) -> Optional[SpzExtensionBase]: ...
+    @classmethod
+    def type(cls) -> SpzExtensionType: ...
+
+class SpzExtensionSafeOrbitCameraAdobe(SpzExtensionBase):
+    safeOrbitElevationMin: float
+    safeOrbitElevationMax: float
+    safeOrbitRadiusMin: float
+
+    def __init__(self) -> None: ...
+    def write(self, os: IO[bytes]) -> None: ...
+    def copyAsRawData(self) -> SpzExtensionBase: ...
+
+    @classmethod
+    def read(cls, is_: IO[bytes]) -> Optional[SpzExtensionBase]: ...
+    @classmethod
+    def type(cls) -> SpzExtensionType: ...
+
 class CoordinateConverter:
     def __init__(self) -> None: ...
     flipP: bool
@@ -38,7 +91,7 @@ class PackOptions:
     from_: int  # Note: 'from' is a Python keyword in the C++ binding
     sh1Bits: int  # Bits for SH degree 1 coefficients
     shRestBits: int  # Bits for SH degree 2+ coefficients
-    disableSHMinMaxScaling: bool  # Disable SH min/max scaling for quantization
+    enableSHMinMaxScaling: bool  # Enable SH min/max scaling for quantization
 
 class UnpackOptions:
     def __init__(self) -> None: ...
@@ -65,14 +118,7 @@ class PackedGaussians:
     shDegree: int
     fractionalBits: int
     antialiased: bool
-    sh1Bits: int  # Bits for SH degree 1 coefficients
-    shRestBits: int  # Bits for SH degree 2+ coefficients
-    shMin: float  # Minimum SH coefficient value used for quantization
-    shMax: float  # Maximum SH coefficient value used for quantization
-    hasSafeOrbit: bool  # Whether safe orbit data is present
-    safeOrbitElevationMin: float  # Minimum elevation for safe orbit (radians)
-    safeOrbitElevationMax: float  # Maximum elevation for safe orbit (radians)
-    safeOrbitRadiusMin: float  # Minimum radius for safe orbit
+    extensions: Iterable[SpzExtensionBase]
     positions: List[float]
     scales: List[float]
     rotations: List[float]
@@ -89,6 +135,13 @@ class SpzFloatBuffer:
     count: int
     data: List[float]
 
+class SpzExtensionNode:
+    type: SpzExtensionType
+    data: object
+    next: Optional[SpzExtensionNode]
+
+    def __init__(self) -> None: ...
+
 class GaussianCloudData:
     def __init__(self) -> None: ...
     numPoints: int
@@ -100,16 +153,14 @@ class GaussianCloudData:
     alphas: List[float]
     colors: List[float]
     sh: List[float]
+    extensions: Optional[SpzExtensionNode]
 
 class GaussianCloud:
     def __init__(self) -> None: ...
     numPoints: int
     shDegree: int
     antialiased: bool
-    hasSafeOrbit: bool
-    safeOrbitElevationMin: float  # Minimum elevation for safe orbit (radians)
-    safeOrbitElevationMax: float  # Maximum elevation for safe orbit (radians)
-    safeOrbitRadiusMin: float  # Minimum radius for safe orbit
+    extensions: Iterable[SpzExtensionBase]
     positions: List[float]
     scales: List[float]
     rotations: List[float]
@@ -123,6 +174,8 @@ class GaussianCloud:
     def medianVolume(self) -> float: ...
 
 def coordinateConverter(from_system: int, to_system: int) -> CoordinateConverter: ...
+def readAllExtensions(is_: IO[bytes]) -> List[SpzExtensionBase]: ...
+def writeAllExtensions(list_: Iterable[SpzExtensionBase], os: IO[bytes]) -> None: ...
 
 # saveSpz overloads
 @overload
