@@ -90,6 +90,12 @@ export class GaussianCloud {
 export interface SpzModule {
   // Enum
   CoordinateSystem: typeof CoordinateSystem;
+  SpzExtensionType: typeof SpzExtensionType;
+
+  // Extension classes
+  SpzExtensionBase: typeof SpzExtensionBase;
+  SpzExtensionSHQuantizationAdobe: typeof SpzExtensionSHQuantizationAdobe;
+  SpzExtensionSafeOrbitCameraAdobe: typeof SpzExtensionSafeOrbitCameraAdobe;
 
   // Loaders / Savers
   loadSpzFromBuffer(data: Uint8Array, options: UnpackOptions): GaussianCloud;
