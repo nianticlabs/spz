@@ -92,7 +92,7 @@ class TestPly(SpzTestCase):
         gt_file = self.input_test_path() / "ply/shoe_sh3_float32.ply"
         gaussian_cloud_ply = read_ply_to_gaussian_cloud(gt_file)
         spz_file = self.output_test_path() / "shoe_sh3_float32.spz"
-        gaussian_cloud_to_spz_file(gaussian_cloud_ply, spz_file, disable_sh_min_max_scaling=True)
+        gaussian_cloud_to_spz_file(gaussian_cloud_ply, spz_file, enable_sh_min_max_scaling=False)
         gaussian_cloud_spz = read_spz_to_gaussian_cloud(spz_file)
         gaussian_cloud_to_ply_file(gaussian_cloud_spz, self.output_test_path() / "shoe_sh3_float32_reconstructed.ply")
         _assert_gaussian_cloud_equal(self, gaussian_cloud_ply, gaussian_cloud_spz)
@@ -110,7 +110,7 @@ class TestPly(SpzTestCase):
         gt_file = self.input_test_path() / "ply/tree_sh3_uint16.ply"
         gaussian_cloud_ply = read_ply_to_gaussian_cloud(gt_file)
         spz_file = self.output_test_path() / "tree_sh3_uint16.spz"
-        gaussian_cloud_to_spz_file(gaussian_cloud_ply, spz_file, disable_sh_min_max_scaling=True)
+        gaussian_cloud_to_spz_file(gaussian_cloud_ply, spz_file, enable_sh_min_max_scaling=False)
         gaussian_cloud_spz = read_spz_to_gaussian_cloud(spz_file)
         gaussian_cloud_to_ply_file(gaussian_cloud_spz, self.output_test_path() / "tree_sh3_uint16_reconstructed.ply")
         _assert_gaussian_cloud_equal(self, gaussian_cloud_ply, gaussian_cloud_spz)
