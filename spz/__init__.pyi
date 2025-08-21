@@ -66,7 +66,6 @@ class SpzExtensionSHQuantizationAdobe(SpzExtensionBase):
     def type(cls) -> SpzExtensionType: ...
 
 class SpzExtensionSafeOrbitCameraAdobe(SpzExtensionBase):
-    hasSafeOrbit: bool
     safeOrbitElevationMin: float
     safeOrbitElevationMax: float
     safeOrbitRadiusMin: float

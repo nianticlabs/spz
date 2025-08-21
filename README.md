@@ -21,16 +21,6 @@ and what coordinate system their rendering system uses when loading. These are s
 PackOptions and UnpackOptions respectively.  If the coordinate system is `UNSPECIFIED`, data will
 be saved and loaded without conversion, which may harm interoperability.
 
-### Spherical Harmonics Quantization
-
-Starting with version 3, SPZ supports configurable spherical harmonics quantization with the following improvements:
-
-1. **Adaptive Range Scaling**: Instead of assuming SH coefficients are in the [-1, 1] range, the format now computes the actual min/max values from the data and uses the full quantization range for optimal precision.
-
-2. **Configurable Bit Precision**: The number of quantization bits for SH degree 1 and higher degree coefficients can be configured (1-8 bits), allowing users to trade off between file size and quality.
-
-3. **Backward Compatibility**: The library maintains full backward compatibility with versions 1 and 2, automatically detecting and using legacy quantization methods for older files.
-
 ## Implementations
 
 ### C++
@@ -129,12 +119,9 @@ Check [src/emscripten/spz.d.ts](src/emscripten/spz.d.ts) for the Typescript inte
 The `PackOptions` struct supports the following fields:
 
 - `from`: Source coordinate system (default: `UNSPECIFIED`)
+- `version`: Version of the packed format
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
-- `hasSafeOrbit`: Whether safe orbit camera data is present (default: false)
-- `safeOrbitElevationMin`: Minimum elevation for safe orbit in radians (default: 0.0)
-- `safeOrbitElevationMax`: Maximum elevation for safe orbit in radians (default: 0.0)
-- `safeOrbitRadiusMin`: Minimum radius for safe orbit (default: 0.0)
 
 ## File Format
 
@@ -144,7 +131,7 @@ alphas, colors, scales, rotations, spherical harmonics.
 
 ### Header
 
-**Version 4 (current):**
+**Version 2 (current):**
 ```c
 struct PackedGaussiansHeader {
   uint32_t magic;
@@ -154,18 +141,6 @@ struct PackedGaussiansHeader {
   uint8_t fractionalBits;
   uint8_t flags;
   uint8_t v2Padding;
-  // Version 3 additions
-  uint8_t sh1Bits;                   // Bits for SH degree 1 coefficients
-  uint8_t shRestBits;                // Bits for SH degree 2+ coefficients  
-  uint8_t v3Padding[2];              // Padding to ensure version 3 end at 28 bytes
-  float shMin;                       // Minimum SH coefficient value for quantization
-  float shMax;                       // Maximum SH coefficient value for quantization
-  // Version 4 additions
-  uint8_t hasSafeOrbit;              // Whether safe orbit data is present
-  uint8_t v4Padding[3];              // Padding to ensure version 4 end at 44 bytes
-  float safeOrbitElevationMin;       // Minimum elevation for safe orbit (radians)
-  float safeOrbitElevationMax;       // Maximum elevation for safe orbit (radians)
-  float safeOrbitRadiusMin;          // Minimum radius for safe orbit
 };
 ```
 
@@ -208,12 +183,46 @@ sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
 
 Each coefficient is represented as an 8-bit signed integer. 
 
-**Version 3 Quantization (current):**
-- Uses adaptive min/max scaling based on the actual range of SH coefficients in the data
-- Configurable quantization bits for degree 1 (default: 5 bits) and higher degrees (default: 4 bits)
-- Stores quantization parameters in the file header for accurate reconstruction
+**Quantization:**
 
-**Legacy Quantization (versions 1-2):**
+By default, a fixed-precision quantization is adopted, where we
 - Assumes SH coefficients are in the [-1, 1] range
 - Fixed 5 bits of precision for degree 1 and 4 bits for degrees 2, 3, and 4
 - Maintained for backward compatibility
+
+### Extensions
+
+### Spherical Harmonics Quantization
+
+With extension `SPZ_ADOBE_sh_quantization`, SPZ supports configurable spherical harmonics quantization with the following improvements:
+
+1. **Adaptive Range Scaling**: Instead of assuming SH coefficients are in the [-1, 1] range, the format now computes the actual min/max values from the data and uses the full quantization range for optimal precision.
+
+2. **Configurable Bit Precision**: The number of quantization bits for SH degree 1 and higher degree coefficients can be configured (1-8 bits), allowing users to trade off between file size and quality. Default bits are 5 for SH degree 1 and 4 for higher ones.
+
+3. **Backward Compatibility**: The library maintains full backward compatibility when this extension is unused.
+
+**Attributes**
+
+This extension has the following attributes and default values:
+
+```
+  uint8_t sh1Bits = 5;     // Bits for SH degree 1 coefficients
+  uint8_t shRestBits = 4;  // Bits for SH degree 2+ coefficients
+  float shMin = -1.0f;     // Minimum SH coefficient value used for quantization
+  float shMax = 1.0f;      // Maximum SH coefficient value used for quantization
+```
+
+### Camera Orbit Limitation
+
+With extension `SPZ_ADOBE_safe_orbit_camera`, SPZ supports storing camera limits which can be used to restrict the view in a render. This extension includes:
+
+**Attributes**
+
+This extension has the following attributes and default values:
+
+```
+  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
+  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
+  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
+```

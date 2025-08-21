@@ -895,7 +895,6 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
   GaussianCloud result;
   if (hasSafeOrbit) {
     auto extSafeOrbit = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>();
-    extSafeOrbit->hasSafeOrbit = hasSafeOrbit;
     extSafeOrbit->safeOrbitElevationMin = safeOrbitElevationMin;
     extSafeOrbit->safeOrbitElevationMax = safeOrbitElevationMax;
     extSafeOrbit->safeOrbitRadiusMin = safeOrbitRadiusMin;
@@ -1019,7 +1018,7 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
 
   // Add safe orbit elements if present
   auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(data.extensions);
-  if (extSafeOrbit && extSafeOrbit->hasSafeOrbit) {
+  if (extSafeOrbit) {
     out << "element safe_orbit_camera_elevation_min_max_radians 2\n";
     out << "property float safe_orbit_camera_elevation_min_max_radians\n";
     out << "element safe_orbit_camera_radius_min 1\n";
@@ -1030,7 +1029,7 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
 
   // Write safe orbit data if present
-  if (extSafeOrbit && extSafeOrbit->hasSafeOrbit) {
+  if (extSafeOrbit) {
     float safeOrbitData[3] = {
       extSafeOrbit->safeOrbitElevationMin,
       extSafeOrbit->safeOrbitElevationMax,

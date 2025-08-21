@@ -53,7 +53,6 @@ export class SpzExtensionSHQuantizationAdobe extends SpzExtensionBase {
 }
 
 export class SpzExtensionSafeOrbitCameraAdobe extends SpzExtensionBase {
-  hasSafeOrbit: boolean;
   safeOrbitElevationMin: number;
   safeOrbitElevationMax: number;
   safeOrbitRadiusMin: number;

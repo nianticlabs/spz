@@ -42,7 +42,6 @@ struct SpzExtensionSHQuantizationAdobe : public SpzExtensionBase {
 };
 
 struct SpzExtensionSafeOrbitCameraAdobe : public SpzExtensionBase {
-  bool hasSafeOrbit = false;           // Whether safe orbit data is present
   float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
   float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
   float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit

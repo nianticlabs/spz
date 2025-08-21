@@ -89,7 +89,6 @@ void SpzExtensionSafeOrbitCameraAdobe::write(std::ostream& os) const {
   const uint32_t t = static_cast<uint32_t>(extensionType);
   SpzLog("[SPZ] Writing extension: SafeOrbitCameraAdobe");
   os.write(reinterpret_cast<const char*>(&t), sizeof(t));
-  os.write(reinterpret_cast<const char*>(&hasSafeOrbit), sizeof(hasSafeOrbit));
   os.write(reinterpret_cast<const char*>(&safeOrbitElevationMin), sizeof(safeOrbitElevationMin));
   os.write(reinterpret_cast<const char*>(&safeOrbitElevationMax), sizeof(safeOrbitElevationMax));
   os.write(reinterpret_cast<const char*>(&safeOrbitRadiusMin), sizeof(safeOrbitRadiusMin));
@@ -99,8 +98,7 @@ std::optional<SpzExtensionBasePtr> SpzExtensionSafeOrbitCameraAdobe::read(std::i
   StreamMark mark(is);
   SpzLog("[SPZ] Found extension: SafeOrbitCameraAdobe");
   auto rec = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>();
-  if (!readExact(is, rec->hasSafeOrbit) || !readExact(is, rec->safeOrbitElevationMin) || !readExact(is, rec->safeOrbitElevationMax) ||
-      !readExact(is, rec->safeOrbitRadiusMin)) {
+  if (!readExact(is, rec->safeOrbitElevationMin) || !readExact(is, rec->safeOrbitElevationMax) || !readExact(is, rec->safeOrbitRadiusMin)) {
     SpzLog("[SPZ ERROR] Failed to read all fields for SafeOrbitCameraAdobe");
     return std::nullopt;
   }

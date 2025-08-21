@@ -188,7 +188,6 @@ EMSCRIPTEN_BINDINGS(spz_module) {
 
   emscripten::class_<spz::SpzExtensionSafeOrbitCameraAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSafeOrbitCameraAdobe")
       .constructor<>()
-      .property("hasSafeOrbit", &spz::SpzExtensionSafeOrbitCameraAdobe::hasSafeOrbit)
       .property("safeOrbitElevationMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMin)
       .property("safeOrbitElevationMax", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
       .property("safeOrbitRadiusMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)

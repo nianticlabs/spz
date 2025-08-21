@@ -130,7 +130,6 @@ PYBIND11_MODULE(spz_bindings, m) {
 
   py::class_<SpzExtensionSafeOrbitCameraAdobe, SpzExtensionBase, std::shared_ptr<SpzExtensionSafeOrbitCameraAdobe>>(m, "SpzExtensionSafeOrbitCameraAdobe")
       .def(py::init<>())
-      .def_readwrite("hasSafeOrbit", &SpzExtensionSafeOrbitCameraAdobe::hasSafeOrbit)
       .def_readwrite("safeOrbitElevationMin", &SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMin)
       .def_readwrite("safeOrbitElevationMax", &SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
       .def_readwrite("safeOrbitRadiusMin", &SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)

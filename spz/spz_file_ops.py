@@ -18,7 +18,6 @@ def read_spz_safe_orbit_data(filename: Path) -> dict:
 
     Returns:
         Dictionary containing safe orbit data with keys:
-        - has_safe_orbit: bool
         - elevation_min: float (radians)
         - elevation_max: float (radians)
         - radius_min: float
@@ -27,7 +26,6 @@ def read_spz_safe_orbit_data(filename: Path) -> dict:
     for ext in packed_gaussians.extensions:
         if isinstance(ext, spz.SpzExtensionSafeOrbitCameraAdobe):
             return {
-                "has_safe_orbit": ext.hasSafeOrbit,
                 "elevation_min": ext.safeOrbitElevationMin,
                 "elevation_max": ext.safeOrbitElevationMax,
                 "radius_min": ext.safeOrbitRadiusMin,
@@ -45,7 +43,6 @@ def read_spz_sh_quantization_data(filename: Path) -> dict:
         - sh_rest_bits: int
         - sh_min: float
         - sh_max: float
-        - enable_sh_min_max_scaling: bool
     """
     packed_gaussians = spz.loadSpzPacked(str(filename))  # pylint: disable=no-member
     for ext in packed_gaussians.extensions:

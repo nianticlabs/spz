@@ -157,7 +157,6 @@ def read_ply_to_gaussian_cloud(ply_filename, no_sh: bool = False) -> spz.Gaussia
     metadata = _extract_optional_metadata(ply_data)
     if "safe_orbit_camera_elevation_min_max_radians" in metadata and "safe_orbit_camera_radius_min" in metadata:
         ext = spz.SpzExtensionSafeOrbitCameraAdobe()
-        ext.hasSafeOrbit = True
         ext.safeOrbitElevationMin = metadata["safe_orbit_camera_elevation_min_max_radians"][0]
         ext.safeOrbitElevationMax = metadata["safe_orbit_camera_elevation_min_max_radians"][1]
         ext.safeOrbitRadiusMin = metadata["safe_orbit_camera_radius_min"]
