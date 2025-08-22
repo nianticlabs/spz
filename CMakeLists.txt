@@ -74,6 +74,7 @@ set(spz_headers
 
 # create the library and configure it
 add_library(spz ${spz_sources})
+add_library(spz::spz ALIAS spz)
 
 if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
   target_link_libraries(spz PRIVATE ${zlib_linkage_target})
