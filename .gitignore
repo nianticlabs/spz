@@ -1,1 +1,64 @@
+# Temp stuff
+*~
+\#*
 .DS_Store
+*.log
+
+# Libs
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+/.vscode
+
+# Miniconda
+/.miniconda3
+/.venv
+/.node
+
+# Coverage output
+/.coverage
+/.coverage_html
+
+# test output
+/.tmp_test_out
+
+# dynamic version file
+/version.py
+
+# typescript files
+node_modules
+dist/
+npm-debug.log
+tsconfig.tsbuildinfo
+
+# metabuild
+/build_mb
+
+# builds
+/wheelhouse
+
+# eval
+/eval*
+/output*

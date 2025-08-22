@@ -1,0 +1,136 @@
+[build-system]
+# These are the build dependencies
+requires = [
+    "setuptools>=62",
+    "setuptools_scm[toml]>=6.2",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spz"
+authors = [
+    {name = "Raymond Fei", email = "yfei@adobe.com"},
+    {name = "Skylar Wurster", email = "swurster@adobe.com"}
+]
+description = "SPZ source code and python bindings."
+readme = "README.md"
+license = {text = "Proprietary"}
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: Proprietary",
+    "Operating System :: OS Independent",
+    "Private :: Internal Use Only"  # Prevents accidentally publishing to public pypi - pypi won't accept "unknown" classifiers
+]
+# All the packages that your code depends on to run
+# Note that development dependencies should go into the conda yaml file.
+# For deps like boa_toolkit that reside in private repos, you still need
+# to install them manually in conda.yaml, putting them here, just checks
+# that the package is installed already
+dependencies = [
+    "numpy",
+    "pathlib",
+    "plyfile>=1.2.0",
+]
+dynamic = ["version"]
+
+[tool.setuptools_scm]
+write_to = "version.py"
+
+[project.optional-dependencies]
+tests = [
+    "coverage[toml]==5.3",
+    "ruff",
+    "mypy",
+    "unittest-xml-reporting",
+    "lxml",
+    "parameterized",
+    "types-PyYAML",
+    "types-requests",
+    "twine",
+    "importlib_metadata==7.2.1",
+    "boa_toolkit",
+]
+
+[project.urls]
+repository = "https://github.com/nianticlabs/spz"
+
+[project.scripts]
+spz = "spz.commands.main:main_cmd"
+
+[tool.setuptools.packages.find]
+include = ["spz", "spz.*"]
+
+[tool.setuptools.package-data]
+"spz" = ["*.so", "*.pyd", "*.pyi", "py.typed"]
+
+[tool.black]
+line_length = 160
+
+# ===========================[ MYPY ]========================
+
+# see https://mypy.readthedocs.io/en/stable/config_file.html for config file location
+# mypy also accepts per file configuration (comment starting with #mypy: ) https://mypy.readthedocs.io/en/stable/inline_config.html
+# Finally, adding `#type: ignore` after a line, disables mypy checking for that line
+
+[tool.mypy]
+warn_unused_configs = true
+
+# If anything needs to be excluded add them here.
+# exclude=['__fixtures__/']
+
+# Mypy expects typing available for dependencies.
+#
+# - Some dependencies ship with typing info already, for those nothing has to be done.
+# - mypy offers type info for some deps, such as `requests`. For those we have to install a separate package.
+#   these packages should be included in tools/dev-requirements.txt
+# - We can also write type info ourselves. These are knows as stub files and have a .pyi extension.
+#   They can go inside /stubs within the metabuild repo, and we can instruct mypy to look there by setting
+#   the mypy.mypy_path config.
+# - Last resort is just ignoring typing for that package. In that the config below will ask mypy to not
+#   complain about these packages that don't have typing.
+ignore_missing_imports = true
+disable_error_code = [
+    "annotation-unchecked",
+]
+# if need to override for certain modules
+# [[tool.mypy.overrides]]
+# no checking for builtin and vendor
+# module = [
+#    'pantry.vendor.*',
+# ]
+# ignore_errors = true
+
+
+# ===========================[ RUFF ]========================
+
+[tool.ruff]
+# Enable Ruff and configure it
+line-length = 160
+
+[tool.ruff.lint]
+select = ["F", # PyFlakes
+          "E", # PEP 8 Errors
+          "W", # PEP 8 Warnings
+          "I", # Isort
+          "C", # Cyclomatic Complexity
+          "B", # Bugbear,
+          "Q", # Quotes
+          "PL",  # Pylint
+          ]
+ignore = [
+    "E501",  # Line too long
+    "C901",  # Ignore complexity checks
+    "PLR2004",  # Magic value used in comparison.
+    "PLW2901",  # For loop variable overwritten
+    "PLR0911",  # Too many return statements (>6).
+    "PLR0912",  # Too many branches (>12).
+    "PLR0913",  # Too many arguments (>5).
+    "PLR0915",  # Too many statements (>50).
+    "PLR1702",  # Too many nested blocks (>5).
+]
+
+exclude = [
+    "spz/version.py",  # Auto-generated version file
+]

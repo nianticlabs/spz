@@ -1,3 +1,28 @@
+/*
+MIT License
+
+Copyright (c) 2025 Niantic Labs
+Copyright (c) 2025 Adobe Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 #pragma once
 
 #include <algorithm>
@@ -8,6 +33,7 @@
 #include <vector>
 
 #include "splat-c-types.h"
+#include "splat-extensions.h"
 
 namespace spz {
 
@@ -19,6 +45,27 @@ inline SpzFloatBuffer copyFloatBuffer(const std::vector<float> &vector) {
     std::memcpy(buffer.data, vector.data(), buffer.count * sizeof(float));
   }
   return buffer;
+}
+
+inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
+  SpzExtensionNode* head = nullptr;
+  SpzExtensionNode* tail = nullptr;
+
+  for (const auto& ext : extensions) {
+    if (!ext) continue;  // Skip null extensions
+
+    SpzExtensionNode* node = new SpzExtensionNode{static_cast<uint32_t>(ext->extensionType), ext->copyAsRawData(), nullptr};
+
+    if (!head) {
+      head = node;
+      tail = node;
+    } else {
+      tail->next = node;
+      tail = node;
+    }
+  }
+
+  return head;
 }
 
 enum class CoordinateSystem {
@@ -36,8 +83,12 @@ enum class CoordinateSystem {
 struct CoordinateConverter {
   std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};  // x, y, z flips.
   std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};  // x, y, z flips, w is never flipped.
-  std::array<float, 15> flipSh =  // Flips for the 15 spherical harmonics coefficients.
-    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  std::array<float, 24> flipSh =  // Flips for the 24 spherical harmonics coefficients.
+    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 constexpr std::array<bool, 3> axesMatch(CoordinateSystem a, CoordinateSystem b) {
@@ -57,27 +108,38 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
   float x = xMatch ? 1.0f : -1.0f;
   float y = yMatch ? 1.0f : -1.0f;
   float z = zMatch ? 1.0f : -1.0f;
-  return CoordinateConverter{
-    {x, y, z},
-    {y * z, x * z, x * y},
-    {
-      y,          // 0
-      z,          // 1
-      x,          // 2
-      x * y,      // 3
-      y * z,      // 4
-      1.0f,       // 5
-      x * z,      // 6
-      1.0f,       // 7
-      y,          // 8
-      x * y * z,  // 9
-      y,          // 10
-      z,          // 11
-      x,          // 12
-      z,          // 13
-      x           // 14
-    }
-  };
+  CoordinateConverter result;
+  result.flipP = {x, y, z};
+  result.flipQ = {y * z, x * z, x * y};
+  result.flipSh = {
+        y,          // 0
+        z,          // 1
+        x,          // 2
+        x * y,      // 3
+        y * z,      // 4
+        1.0f,       // 5
+        x * z,      // 6
+        1.0f,       // 7
+        y,          // 8
+        x * y * z,  // 9
+        y,          // 10
+        z,          // 11
+        x,          // 12
+        z,          // 13
+        x,          // 14
+        // Used https://github.com/nerfstudio-project/gsplat/blob/main/gsplat/cuda/csrc/SphericalHarmonicsCUDA.cu
+        // to compute these values.
+        x * y,      // 15
+        y * z,      // 16
+        x * y,      // 17
+        y * z,      // 18
+        1.0f,       // 19
+        x * z,      // 20
+        1.0f,       // 21
+        x * z,      // 22
+        y,          // 23
+      };
+  return result;
 }
 
 // A point cloud composed of Gaussians. Each gaussian is represented by:
@@ -86,7 +148,7 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
 //   - xyzw quaternion
 //   - alpha (before sigmoid activation, compute sigmoid(a) to get alpha value between 0 and 1)
 //   - rgb color (as SH DC component, compute 0.5 + 0.282095 * x to get color value between 0 and 1)
-//   - 0 to 45 spherical harmonics coefficients (see comment below)
+//   - 0 to 75 spherical harmonics coefficients (see comment below)
 struct GaussianCloud {
   // Total number of points (gaussians) in this splat.
   int32_t numPoints = 0;
@@ -109,10 +171,13 @@ struct GaussianCloud {
   //   1 -> 9   (3 coeffs x 3 channels)
   //   2 -> 24  (8 coeffs x 3 channels)
   //   3 -> 45  (15 coeffs x 3 channels)
+  //   4 -> 72  (24 coeffs x 3 channels)
   // The color channel is the inner (fastest varying) axis, and the coefficient is the outer
   // (slower varying) axis, i.e. for degree 1, the order of the 9 values is:
   //   sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
   std::vector<float> sh;
+
+  std::vector<SpzExtensionBasePtr> extensions;  // List of extensions, if any
 
   // The caller is responsible for freeing the pointers in the returned GaussianCloudData
   GaussianCloudData data() const {
@@ -126,6 +191,7 @@ struct GaussianCloud {
     data.alphas = copyFloatBuffer(alphas);
     data.colors = copyFloatBuffer(colors);
     data.sh = copyFloatBuffer(sh);
+    data.extensions = copyExtensions(extensions);
     return data;
   }
 
@@ -196,7 +262,10 @@ float norm(const Vec3f &a);
 
 // Quaternion helpers.
 float norm(const Quat4f &q);
-Quat4f normalized(const Quat4f &v);
+inline Quat4f normalized(const Quat4f &v) {
+  float norm = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+  return {v[0] / norm, v[1] / norm, v[2] / norm, v[3] / norm};
+}
 Quat4f axisAngleQuat(const Vec3f &scaledAxis);
 
 // Constexpr helpers.

@@ -1,0 +1,30 @@
+{
+  "name": "@3di/spz",
+  "version": "0.1.4",
+  "description": "WebAssembly module for loading Gaussian splat (SPZ) files",
+  "main": "dist/spz.js",
+  "types": "dist/spz.d.ts",
+  "scripts": {
+    "prebuild": "rm -rf ./dist",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/spz.d.ts",
+      "default": "./dist/spz.js"
+    }
+  },
+  "keywords": [
+    "wasm",
+    "emscripten",
+    "gaussian-splatting",
+    "3d"
+  ],
+  "author": "Niantic Labs",
+  "license": "ISC",
+  "homepage": "https://github.com/nianticlabs/spz",
+  "publishConfig": {}
+}

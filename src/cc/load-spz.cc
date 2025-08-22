@@ -1,4 +1,30 @@
+/*
+MIT License
+
+Copyright (c) 2025 Niantic Labs
+Copyright (c) 2025 Adobe Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 #include "load-spz.h"
+#include "splat-extensions.h"
 
 #include <zlib.h>
 
@@ -8,7 +34,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -18,26 +43,6 @@
 namespace spz {
 
 namespace {
-
-#ifdef ANDROID
-static constexpr char LOG_TAG[] = "SPZ";
-template <class... Args>
-static void SpzLog(const char *fmt, Args &&...args) {
-  __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt, std::forward<Args>(args)...);
-}
-#else
-template <class... Args>
-static void SpzLog(const char *fmt, Args &&...args) {
-  printf(fmt, std::forward<Args>(args)...);
-  printf("\n");
-  fflush(stdout);
-}
-#endif  // ANDROID
-
-template <class... Args>
-static void SpzLog(const char *fmt) {
-  SpzLog("%s", fmt);
-}
 
 // Scale factor for DC color components. To convert to RGB, we should multiply by 0.282, but it can
 // be useful to represent base colors that are out of range if the higher spherical harmonics bands
@@ -51,7 +56,9 @@ int32_t degreeForDim(int32_t dim) {
     return 1;
   if (dim < 15)
     return 2;
-  return 3;
+  if (dim < 24)
+    return 3;
+  return 4;
 }
 
 int32_t dimForDegree(int32_t degree) {
@@ -64,6 +71,8 @@ int32_t dimForDegree(int32_t degree) {
       return 8;
     case 3:
       return 15;
+    case 4:
+      return 24;
     default:
       SpzLog("[SPZ: ERROR] Unsupported SH degree: %d\n", degree);
       return 0;
@@ -72,14 +81,35 @@ int32_t dimForDegree(int32_t degree) {
 
 uint8_t toUint8(float x) { return static_cast<uint8_t>(std::clamp(std::round(x), 0.0f, 255.0f)); }
 
-// Quantizes to 8 bits, the round to nearest bucket center. 0 always maps to a bucket center.
-uint8_t quantizeSH(float x, int32_t bucketSize) {
+// Quantizes to 8 bits using min/max scaling, then round to nearest bucket center. 0 always maps to a bucket center.
+uint8_t quantizeSH(float x, int32_t bucketSize, float minVal, float maxVal) {
+  if (maxVal <= minVal) {
+    return 128;  // Default to middle value if range is invalid
+  }
+  // Scale from [minVal, maxVal] to [0, 255]
+  float normalized = (x - minVal) / (maxVal - minVal);
+  int32_t q = static_cast<int>(std::round(normalized * 255.0f));
+  q = (q + bucketSize / 2) / bucketSize * bucketSize;
+  return static_cast<uint8_t>(std::clamp(q, 0, 255));
+}
+
+float unquantizeSH(uint8_t x, float minVal, float maxVal) {
+  if (maxVal <= minVal) {
+    return 0.0f;  // Default to 0 if range is invalid
+  }
+  // Scale from [0, 255] to [minVal, maxVal]
+  float normalized = static_cast<float>(x) / 255.0f;
+  return minVal + normalized * (maxVal - minVal);
+}
+
+// Legacy quantization functions for backward compatibility with older formats
+uint8_t quantizeSHLegacy(float x, int32_t bucketSize) {
   int32_t q = static_cast<int>(std::round(x * 128.0f) + 128.0f);
   q = (q + bucketSize / 2) / bucketSize * bucketSize;
   return static_cast<uint8_t>(std::clamp(q, 0, 255));
 }
 
-float unquantizeSH(uint8_t x) { return (static_cast<float>(x) - 128.0f) / 128.0f; }
+float unquantizeSHLegacy(uint8_t x) { return (static_cast<float>(x) - 128.0f) / 128.0f; }
 
 float sigmoid(float x) { return 1 / (1 + std::exp(-x)); }
 
@@ -105,7 +135,7 @@ size_t countBytes(std::vector<T> vec) {
 bool checkSizes(const GaussianCloud &g) {
   CHECK_GE(g.numPoints, 0);
   CHECK_GE(g.shDegree, 0);
-  CHECK_LE(g.shDegree, 3);
+  CHECK_LE(g.shDegree, SH_MAX_DEGREE);
   CHECK_EQ(g.positions.size(), g.numPoints * 3);
   CHECK_EQ(g.scales.size(), g.numPoints * 3);
   CHECK_EQ(g.rotations.size(), g.numPoints * 4);
@@ -126,7 +156,11 @@ bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
 }
 
 constexpr uint8_t FlagAntialiased = 0x1;
+constexpr uint8_t FlagHasExtensions = 0x2;
 
+// We always pad the attributes in this header explicitly to the 4-byte boundary to ensure compatibility when
+// reading from files that may have been written with different compilers or settings.
+// Otherwise, some compilers may align a float or uint32_t to 4 bytes (and some may not) and break the compatibility.
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
   uint32_t version = 2;
@@ -134,7 +168,13 @@ struct PackedGaussiansHeader {
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
   uint8_t flags = 0;
-  uint8_t reserved = 0;
+  uint8_t v2Padding = 0;
+
+  // Helper methods for version-aware I/O
+  size_t getHeaderSize() const {
+    if (version >= 1) return sizeof(PackedGaussiansHeader);
+    return sizeof(uint32_t) * 2;  // Minimum to get the magic and version
+  }
 };
 
 bool decompressGzippedImpl(
@@ -216,17 +256,58 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (!checkSizes(g)) {
     return {};
   }
+
+  // Validate SH quantization bit parameters
+  if (o.sh1Bits > 8 || o.shRestBits > 8) {
+    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
+           o.sh1Bits, o.shRestBits);
+    return {};
+  }
+
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
+  if (o.version < 3 && g.shDegree > 3) {
+    SpzLog("[SPZ WARNING] SPZ with SH degrees %d will not be loadable in a legacy loader of version %d",
+        g.shDegree, o.version);
+  }
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
 
   // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
   // we can use different values on a per-splat basis and still be compatible with the decoder.
   PackedGaussians packed;
+  packed.version = o.version;
   packed.numPoints = g.numPoints;
   packed.shDegree = g.shDegree;
   packed.fractionalBits = 12;
   packed.antialiased = g.antialiased;
+
+  float minSH = -1.0f;
+  float maxSH = 1.0f;
+  if (o.sh1Bits != DEFAULT_SH1_BITS || o.shRestBits != DEFAULT_SH_REST_BITS || o.enableSHMinMaxScaling) {
+    auto ext = std::make_shared<SpzExtensionSHQuantizationAdobe>();
+    ext->sh1Bits = o.sh1Bits;
+    ext->shRestBits = o.shRestBits;
+
+    // Compute min/max of SH coefficients for optimal quantization
+    if (o.enableSHMinMaxScaling && g.shDegree > 0 && !g.sh.empty()) {
+      minSH = *std::min_element(g.sh.begin(), g.sh.end());
+      maxSH = *std::max_element(g.sh.begin(), g.sh.end());
+
+      // Ensure we have a valid range
+      if (maxSH <= minSH) {
+        minSH = -1.0f;
+        maxSH = 1.0f;
+       }
+
+       ext->shMin = minSH;
+       ext->shMax = maxSH;
+    }
+    packed.extensions.push_back(ext);
+  }
+
+  // other extensions in GaussianCloud
+  packed.extensions.insert(packed.extensions.end(), g.extensions.begin(), g.extensions.end());
+
   packed.positions.resize(numPoints * 3 * 3);
   packed.scales.resize(numPoints * 3);
   packed.rotations.resize(numPoints * 3);
@@ -273,22 +354,19 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
 
   if (g.shDegree > 0) {
-    // Spherical harmonics quantization parameters. The data format uses 8 bits per coefficient, but
-    // when packing, we can quantize to fewer bits for better compression.
-    constexpr int32_t sh1Bits = 5;
-    constexpr int32_t shRestBits = 4;
+    // Use configurable spherical harmonics quantization parameters
     const int32_t shPerPoint = dimForDegree(g.shDegree) * 3;
     for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
       size_t j = 0, k = 0;
       for (; j < 9; j += 3, k++) {  // There are 9 (3 * 3) coefficients for degree 1
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - sh1Bits));
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - sh1Bits));
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - sh1Bits));
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - o.sh1Bits), minSH, maxSH);
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - o.sh1Bits), minSH, maxSH);
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - o.sh1Bits), minSH, maxSH);
       }
       for (; j < shPerPoint; j += 3, k++) {
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - shRestBits));
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - shRestBits));
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - shRestBits));
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - o.shRestBits), minSH, maxSH);
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - o.shRestBits), minSH, maxSH);
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - o.shRestBits), minSH, maxSH);
       }
     }
   }
@@ -297,7 +375,8 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 }
 
 UnpackedGaussian PackedGaussian::unpack(
-  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c) const {
+  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c,
+  float shMin, float shMax) const {
   UnpackedGaussian result;
   if (usesFloat16) {
     // Decode legacy float16 format. We can remove this at some point as it was never released.
@@ -339,10 +418,18 @@ UnpackedGaussian PackedGaussian::unpack(
     result.color[i] = ((color[i] / 255.0f) - 0.5f) / colorScale;
   }
 
-  for (size_t i = 0; i < 15; i++) {
-    result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i]);
-    result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i]);
-    result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i]);
+  for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
+    if (shMin == -1.0f && shMax == 1.0f) {
+      // Use legacy unquantization for backward compatibility
+      result.shR[i] = c.flipSh[i] * unquantizeSHLegacy(shR[i]);
+      result.shG[i] = c.flipSh[i] * unquantizeSHLegacy(shG[i]);
+      result.shB[i] = c.flipSh[i] * unquantizeSHLegacy(shB[i]);
+    } else {
+      // Use new min/max scaled unquantization
+      result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i], shMin, shMax);
+      result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i], shMin, shMax);
+      result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i], shMin, shMax);
+    }
   }
 
   return result;
@@ -366,7 +453,7 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
     result.shG[j] = sh[1];
     result.shB[j] = sh[2];
   }
-  for (int32_t j = shDim; j < 15; ++j) {
+  for (int32_t j = shDim; j < SH_MAX_COEFFS; ++j) {
     result.shR[j] = 128;
     result.shG[j] = 128;
     result.shB[j] = 128;
@@ -376,7 +463,13 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
 }
 
 UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c) const {
-  return at(i).unpack(usesFloat16(), fractionalBits, c);
+  float shMin = -1.0f;
+  float shMax = 1.0f;
+  if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(extensions)) {
+    shMin = extQuant->shMin;
+    shMax = extQuant->shMax;
+  }
+  return at(i).unpack(usesFloat16(), fractionalBits, c, shMin, shMax);
 }
 
 bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }
@@ -393,6 +486,19 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   result.numPoints = packed.numPoints;
   result.shDegree = packed.shDegree;
   result.antialiased = packed.antialiased;
+
+  // We pick the extensions that should be stored in GaussianCloud while ignoring the others.
+  for (auto ext : packed.extensions) {
+    switch (ext->extensionType)
+    {
+    case SpzExtensionType::SPZ_ADOBE_safe_orbit_camera:
+        result.extensions.push_back(ext);
+        break;
+    default:
+        break;
+    }
+  }
+
   result.positions.resize(numPoints * 3);
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 4);
@@ -442,8 +548,23 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
     result.colors[i] = ((packed.colors[i] / 255.0f) - 0.5f) / colorScale;
   }
 
+  float shMin = -1.0f;
+  float shMax = 1.0f;
+
+  if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(packed.extensions)) {
+    // Use SH quantization parameters from the extension
+    shMin = extQuant->shMin;
+    shMax = extQuant->shMax;
+  }
+
   for (size_t i = 0; i < packed.sh.size(); i++) {
-    result.sh[i] = unquantizeSH(packed.sh[i]);
+    if (shMin == -1.0f && shMax == 1.0f) {
+      // Use legacy unquantization for backward compatibility
+      result.sh[i] = unquantizeSHLegacy(packed.sh[i]);
+    } else {
+      // Use new min/max scaled unquantization
+      result.sh[i] = unquantizeSH(packed.sh[i], shMin, shMax);
+    }
   }
 
   result.convertCoordinates(CoordinateSystem::RUB, o.to);
@@ -452,11 +573,16 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) {
   PackedGaussiansHeader header;
+  header.version = packed.version;
   header.numPoints = static_cast<uint32_t>(packed.numPoints);
   header.shDegree = static_cast<uint8_t>(packed.shDegree);
   header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
-  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0);
-  out->write(reinterpret_cast<const char *>(&header), sizeof(header));
+  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0) | static_cast<uint8_t>(packed.extensions.empty() ? 0 : FlagHasExtensions);
+  out->write(reinterpret_cast<const char *>(&header), header.getHeaderSize());
+
+  // Write extensions
+  writeAllExtensions(packed.extensions, *out);
+
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
   out->write(reinterpret_cast<const char *>(packed.colors.data()), countBytes(packed.colors));
@@ -469,31 +595,65 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   constexpr int32_t maxPointsToRead = 10000000;
 
   PackedGaussiansHeader header;
-  in.read(reinterpret_cast<char *>(&header), sizeof(header));
+  header.version = 0;
+
+  // Read just the magic and version to see how much we need to read
+  size_t minHeaderSize = header.getHeaderSize();
+  in.read(reinterpret_cast<char *>(&header), minHeaderSize);
   if (!in || header.magic != PackedGaussiansHeader().magic) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (header.version < 1 || header.version > 2) {
+  if (header.version < 1 || header.version > 4) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
+
+  // Read remaining header data based on actual version
+  uint32_t actualVersion = header.version;
+  header.version = actualVersion;
+  size_t totalHeaderSize = header.getHeaderSize();
+  size_t remainingSize = totalHeaderSize - minHeaderSize;
+  if (remainingSize > 0) {
+    in.read(reinterpret_cast<char *>(&header) + minHeaderSize, remainingSize);
+    if (!in) {
+      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version %d header", actualVersion);
+      return {};
+    }
+  }
+
   if (header.numPoints > maxPointsToRead) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
     return {};
   }
-  if (header.shDegree > 3) {
+  if (header.shDegree > SH_MAX_DEGREE) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Unsupported SH degree: %d", header.shDegree);
     return {};
   }
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
+
   PackedGaussians result;
+  result.version = header.version;
   result.numPoints = numPoints;
   result.shDegree = header.shDegree;
   result.fractionalBits = header.fractionalBits;
   result.antialiased = (header.flags & FlagAntialiased) != 0;
+
+  const bool hasExtensions = (header.flags & FlagHasExtensions) != 0;
+  if (hasExtensions)
+    readAllExtensions(in, result.extensions);
+
+  // Validate SH quantization bit parameters
+  if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(result.extensions)) {
+    if (extQuant->sh1Bits > 8 || extQuant->shRestBits > 8) {
+        SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
+            extQuant->sh1Bits, extQuant->shRestBits);
+        return {};
+    }
+  }
+
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 3);
@@ -617,10 +777,27 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   SpzLog("[SPZ] Loading %d points", numPoints);
   std::unordered_map<std::string, int> fields;  // name -> index
+  bool hasSafeOrbitElevation = false;
+  bool hasSafeOrbitRadius = false;
+
   for (int32_t i = 0;; i++) {
     std::getline(in, line);
     if (line == "end_header")
       break;
+
+    // Check for safe orbit elements
+    if (line == "element safe_orbit_camera_elevation_min_max_radians 2") {
+      hasSafeOrbitElevation = true;
+      continue;
+    }
+    if (line == "element safe_orbit_camera_radius_min 1") {
+      hasSafeOrbitRadius = true;
+      continue;
+    }
+    if (line == "property float safe_orbit_camera_elevation_min_max_radians" ||
+        line == "property float safe_orbit_camera_radius_min") {
+      continue;
+    }
 
     if (line.find("property float ") != 0) {
       SpzLog("[SPZ ERROR] %s: unsupported property data type: %s", filename.c_str(), line.c_str());
@@ -696,9 +873,33 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     in.close();
     return {};
   }
+
+  // Read safe orbit data if present
+  float safeOrbitElevationMin = 0.0f, safeOrbitElevationMax = 0.0f, safeOrbitRadiusMin = 0.0f;
+  bool hasSafeOrbit = false;
+  if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
+    float safeOrbitData[3];
+    in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
+    if (in.good()) {
+      safeOrbitElevationMin = safeOrbitData[0];
+      safeOrbitElevationMax = safeOrbitData[1];
+      safeOrbitRadiusMin = safeOrbitData[2];
+      SpzLog("[SPZ] Loaded safe orbit data: elevation [%f, %f], radius min %f",
+             safeOrbitElevationMin, safeOrbitElevationMax, safeOrbitRadiusMin);
+    }
+    hasSafeOrbit = true;
+  }
+
   in.close();
 
   GaussianCloud result;
+  if (hasSafeOrbit) {
+    auto extSafeOrbit = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>();
+    extSafeOrbit->safeOrbitElevationMin = safeOrbitElevationMin;
+    extSafeOrbit->safeOrbitElevationMax = safeOrbitElevationMax;
+    extSafeOrbit->safeOrbitRadiusMin = safeOrbitRadiusMin;
+    result.extensions.push_back(extSafeOrbit);
+  }
   result.numPoints = numPoints;
   result.shDegree = degreeForDim(shDim);
   result.positions.reserve(numPoints * 3);
@@ -814,8 +1015,29 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out << "property float rot_1\n";
   out << "property float rot_2\n";
   out << "property float rot_3\n";
+
+  // Add safe orbit elements if present
+  auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(data.extensions);
+  if (extSafeOrbit) {
+    out << "element safe_orbit_camera_elevation_min_max_radians 2\n";
+    out << "property float safe_orbit_camera_elevation_min_max_radians\n";
+    out << "element safe_orbit_camera_radius_min 1\n";
+    out << "property float safe_orbit_camera_radius_min\n";
+  }
+
   out << "end_header\n";
   out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
+
+  // Write safe orbit data if present
+  if (extSafeOrbit) {
+    float safeOrbitData[3] = {
+      extSafeOrbit->safeOrbitElevationMin,
+      extSafeOrbit->safeOrbitElevationMax,
+      extSafeOrbit->safeOrbitRadiusMin
+    };
+    out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
+  }
+
   out.close();
   if (!out.good()) {
     SpzLog("[SPZ ERROR] Failed to write to: %s", filename.c_str());
