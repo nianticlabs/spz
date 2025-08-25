@@ -1,0 +1,11 @@
+#pragma once
+
+
+/*
+ * version settings
+ */
+#define SPZ_VERSION_MAJOR @spz_VERSION_MAJOR@
+#define SPZ_VERSION_MINOR @spz_VERSION_MINOR@
+#define SPZ_VERSION_PATCH @spz_VERSION_PATCH@
+
+
