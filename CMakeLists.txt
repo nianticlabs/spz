@@ -29,6 +29,9 @@ add_library(spz ${spz_sources})
 add_library(spz::spz ALIAS spz)
 
 target_link_libraries(spz PRIVATE ZLIB::ZLIB)
+if(ANDROID)
+  target_link_libraries(spz PRIVATE log)
+endif()
 
 target_include_directories(spz
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/cc>
