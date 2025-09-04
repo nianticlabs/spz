@@ -7,8 +7,6 @@ project(spz
 
 include(GNUInstallDirs)
 
-option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
-
 # zlib is required to build the project
 find_package(ZLIB REQUIRED)
 
@@ -93,3 +91,54 @@ target_include_directories(spz_info PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 install(TARGETS ply_to_spz spz_to_ply spz_info
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+# --- Python Bindings Option ---
+option(BUILD_PYTHON_BINDINGS "Build Python bindings using nanobind" OFF)
+
+# --- Python Bindings (nanobind) ---
+if(BUILD_PYTHON_BINDINGS)
+  # Find Python with the Development component, which is required by nanobind.
+  find_package(Python 3.8
+    REQUIRED COMPONENTS Interpreter Development.Module
+    OPTIONAL_COMPONENTS Development.SABIModule)
+
+  # Detect the installed nanobind package and import it into CMake
+  execute_process(
+    COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_DIR)
+  find_package(nanobind CONFIG REQUIRED)
+
+
+  nanobind_add_module(
+    # Name of the extension
+    spz_py
+
+    # Target the stable ABI for Python 3.12+, which reduces
+    # the number of binary wheels that must be built. This
+    # does nothing on older Python versions
+    STABLE_ABI
+
+    # Build libnanobind statically and merge it into the
+    # extension (which itself remains a shared library)
+    NB_STATIC
+
+    # Source code
+    src/python/spz/spz.cc
+  )
+
+  # Rename the output file to "spz" (no prefix/lib, correct extension)
+  # This is necessary for the Python module to be recognized correctly
+  # by Python's import system.
+  set_target_properties(spz_py PROPERTIES
+      OUTPUT_NAME spz
+  )
+
+  # Add the project root to the include path for the python module
+  target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # Link the python module against the spz library
+  target_link_libraries(spz_py PRIVATE spz::spz)
+
+  # Install directive for scikit-build-core
+  install(TARGETS spz_py LIBRARY DESTINATION spz)
+endif()

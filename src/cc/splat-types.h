@@ -132,6 +132,10 @@ struct GaussianCloud {
   // Convert between two coordinate systems, for example from RDF (ply format) to RUB (used by spz).
   // This is performed in-place.
   void convertCoordinates(CoordinateSystem from, CoordinateSystem to) {
+    if (numPoints == 0) {
+      // There is nothing to convert.
+      return;
+    }
     CoordinateConverter c = coordinateConverter(from, to);
     for (size_t i = 0; i < positions.size(); i += 3) {
       positions[i + 0] *= c.flipP[0];
