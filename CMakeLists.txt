@@ -27,6 +27,9 @@ add_library(spz ${spz_sources})
 add_library(spz::spz ALIAS spz)
 
 target_link_libraries(spz PRIVATE ZLIB::ZLIB)
+if(ANDROID)
+  target_link_libraries(spz PRIVATE log)
+endif()
 
 target_include_directories(spz
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/cc>
@@ -72,11 +75,22 @@ install(EXPORT spzTargets
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/spz"
 )
 
+# CLI Tools
+add_executable(ply_to_spz cli_tools/src/ply_to_spz.cpp)
+target_link_libraries(ply_to_spz PRIVATE spz)
+target_include_directories(ply_to_spz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
-endif()
+add_executable(spz_to_ply cli_tools/src/spz_to_ply.cpp)
+target_link_libraries(spz_to_ply PRIVATE spz)
+target_include_directories(spz_to_ply PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+add_executable(spz_info cli_tools/src/spz_info.cpp)
+target_link_libraries(spz_info PRIVATE spz)
+target_include_directories(spz_info PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+install(TARGETS ply_to_spz spz_to_ply spz_info
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
 # --- Python Bindings Option ---
 option(BUILD_PYTHON_BINDINGS "Build Python bindings using nanobind" OFF)
@@ -128,4 +142,3 @@ if(BUILD_PYTHON_BINDINGS)
   # Install directive for scikit-build-core
   install(TARGETS spz_py LIBRARY DESTINATION spz)
 endif()
-
