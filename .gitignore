@@ -1,1 +1,20 @@
 .DS_Store
+*.pyc
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+*.cmake
+
+# Build directories
+build/
+Build/
+BUILD/
+out/
+_build/
+
+# CMake temporary files
+*.tmp
+*.cmake~
