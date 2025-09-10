@@ -16,7 +16,7 @@ authors = [
 description = "SPZ source code and python bindings."
 readme = "README.md"
 license = {text = "Proprietary"}
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: Proprietary",
@@ -30,7 +30,6 @@ classifiers = [
 # that the package is installed already
 dependencies = [
     "numpy",
-    "pathlib",
     "plyfile>=1.2.0",
 ]
 dynamic = ["version"]
