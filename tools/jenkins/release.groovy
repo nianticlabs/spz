@@ -23,9 +23,16 @@ properties([
 // (if there is no module version bump, pip will keep the stale one around by default)
 def zap_venv = true
 
-// Only build for Linux Python 3.11
+// Build for Linux and macOS across Python 3.10, 3.11, 3.12
 def profiles = [
-  [host:'ubuntu', name: 'Ubuntu-Python3.11', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv],
+  // Linux
+  [host:'ubuntu', name: 'Ubuntu-Python3.10', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, conda_file: './tools/conda310.yaml'],
+  [host:'ubuntu', name: 'Ubuntu-Python3.11', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, conda_file: './tools/conda311.yaml'],
+  [host:'ubuntu', name: 'Ubuntu-Python3.12', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, conda_file: './tools/conda312.yaml'],
+  // macOS
+  [host:'mac', name: 'MacOS-Python3.10', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, conda_file: './tools/conda310.yaml'],
+  [host:'mac', name: 'MacOS-Python3.11', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, conda_file: './tools/conda311.yaml'],
+  [host:'mac', name: 'MacOS-Python3.12', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, conda_file: './tools/conda312.yaml'],
 ]
 
 smartStage("Load utils.groovy") {
@@ -58,11 +65,6 @@ def build_spz_wheel(profile) {
               } // setup
 
               smartStage("Wheel-${profile.name}") {
-                // Compute and push tag
-                env.tag = sh(returnStdout: true, script: "git ls-remote --tags | awk -F'/' '{print \$3}' | sort -V | tail -n 1 | sed 's/^v//' | sed 's/\\^{}\$//'").trim()
-                env.bump_tag = sh(returnStdout: true, script: '''echo "${tag%.*}.$((${tag##*.}+1))"''')
-                sh(script: '''git tag v${bump_tag} && git push --tags''')
-
                 def wheel_version = "v${env.bump_tag}"
                 def release_mode = "release"
                 utils.pythonWheelOps(venv_name, wheel_version, release_mode, profile)
@@ -93,6 +95,16 @@ def build_spz_wheel(profile) {
 timestamps {
   // Cancel old jobs on the same branch
   abortPreviousBuild(isPRBuild())
+  smartStage("Tag release") {
+    node('builder') {
+      withSshCredentials() {
+        checkout scm
+        env.tag = sh(returnStdout: true, script: "git ls-remote --tags | awk -F'/' '{print $3}' | sort -V | tail -n 1 | sed 's/^v//' | sed 's/\^{}$//'").trim()
+        env.bump_tag = sh(returnStdout: true, script: '''echo "${tag%.*}.$((${tag##*.}+1))"''').trim()
+        sh(script: '''git tag v${bump_tag} && git push --tags''')
+      }
+    }
+  }
   parallel profiles.collectEntries { profile ->
     [ "${profile.name}" : {
         build_spz_wheel(profile)
