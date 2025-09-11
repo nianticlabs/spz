@@ -99,7 +99,7 @@ timestamps {
     node('builder') {
       withSshCredentials() {
         checkout scm
-        env.tag = sh(returnStdout: true, script: '''git ls-remote --tags | awk -F'/' '{print $3}' | sort -V | tail -n 1 | sed 's/^v//' | sed 's/\^{}$//' ''').trim()
+        env.tag = sh(returnStdout: true, script: '''git describe --tags --abbrev=0 | sed 's/^v//' ''').trim()
         env.bump_tag = sh(returnStdout: true, script: '''echo "${tag%.*}.$((${tag##*.}+1))"''').trim()
         sh(script: '''git tag v${bump_tag} && git push --tags''')
       }
