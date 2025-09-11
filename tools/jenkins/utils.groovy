@@ -16,7 +16,10 @@ def setupCondaEnvironment(venv_name, profile) {
     // Build conda create command with optional Python version override
     def extra_params = debug_flag
 
-    runInConda.createEnv(name: venv_name, file: "./tools/conda.yaml", extra_params: extra_params)
+    // Allow per-profile conda.yaml override
+    def conda_file = (profile?.conda_file) ? profile.conda_file : "./tools/conda.yaml"
+
+    runInConda.createEnv(name: venv_name, file: conda_file, extra_params: extra_params)
 
     runInConda(name: venv_name, label: "Check tools version",
     script: [
@@ -24,7 +27,8 @@ def setupCondaEnvironment(venv_name, profile) {
             "python --version"
     ])
 
-    def setup_script = nodeUtils.shyIsUnix() ? '. tools/setup.sh' : 'powershell tools\\setup.ps1'
+    // Pass conda file to setup.sh on Unix/mac. Windows keeps existing setup.ps1
+    def setup_script = nodeUtils.shyIsUnix() ? ". tools/setup.sh ${conda_file}" : 'powershell tools\\setup.ps1'
     if (profile.host == 'mac') {
         setup_script = 'source useXcode 16.0 MacOSX && ' + setup_script
     }

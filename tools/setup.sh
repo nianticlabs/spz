@@ -9,7 +9,10 @@ conda config --set env_prompt '({name}) '
 
 # you can set debug conda setup issues by running this way:
 #   CONDA_DEBUG_FLAG=-vvv . tools/setup.sh
-conda env update -q $CONDA_DEBUG_FLAG --prefix .venv/ --file "tools/conda.yaml" || exit -1
+# Optional first argument: path to conda.yaml. Defaults to tools/conda.yaml
+CONDA_FILE_PATH="${1:-tools/conda.yaml}"
+
+conda env update -q $CONDA_DEBUG_FLAG --prefix .venv/ --file "$CONDA_FILE_PATH" || exit -1
 conda activate .venv/ || exit -1
 pip install -e ".[tests]" --upgrade
 conda activate .venv/ || exit -1
