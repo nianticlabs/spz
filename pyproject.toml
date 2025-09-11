@@ -50,7 +50,7 @@ tests = [
     "twine",
     "importlib_metadata==7.2.1",
     "tiny[s3]>=2.1.4",
-    "boa_toolkit",
+    "boa_toolkit>=3.2.6",
 ]
 
 [project.urls]
