@@ -30,7 +30,7 @@ classifiers = [
 # that the package is installed already
 dependencies = [
     "numpy",
-    "plyfile>=1.2.0",
+    "plyfile>=1.1.2",
 ]
 dynamic = ["version"]
 
