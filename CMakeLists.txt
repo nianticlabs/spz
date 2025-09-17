@@ -113,6 +113,7 @@ if(SPZ_BUILD_WASM)
     "-sALLOW_MEMORY_GROWTH=1"
     "-sENVIRONMENT=web"
     "-sEXPORT_ES6=1"
+    "-sSINGLE_FILE=1"
     "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
   )
 
