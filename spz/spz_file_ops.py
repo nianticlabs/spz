@@ -112,9 +112,13 @@ def gaussian_cloud_from_numpy(
     assert rgb.shape[1] == 3, "RGB must have shape [N,3]"
     assert sh_degree >= 0, "SH degree must be non-negative"
 
+    # Normalize rotations
     norms = np.linalg.norm(rotation, axis=1, keepdims=True)
     norms[norms == 0.0] = 1.0
     rotation = rotation / norms
+
+    # Flatten in case its [N,1]
+    opacities = opacities.flatten()
     return spz.createGaussianCloudFromNumpy(  # type: ignore[attr-defined]
         np.asarray(xyz, dtype=np.float32),
         np.asarray(opacities, dtype=np.float32),

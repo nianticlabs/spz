@@ -335,31 +335,8 @@ PYBIND11_MODULE(spz_bindings, m) {
         g.positions.assign(xyz.data(), xyz.data() + xyz.size());
         g.scales.assign(scales.data(), scales.data() + scales.size());
         g.colors.assign(rgb.data(), rgb.data() + rgb.size());
-
-        // Handle opacities possibly shaped [N,1]
-        if (op_info.ndim == 2) {
-          // Flatten [N,1] to [N]
-          g.alphas.resize(static_cast<size_t>(n));
-          const float* src = static_cast<const float*>(op_info.ptr);
-          for (int32_t i = 0; i < n; ++i) {
-            g.alphas[static_cast<size_t>(i)] = src[static_cast<size_t>(i) * static_cast<size_t>(op_info.shape[1])];
-          }
-        } else {
-          g.alphas.assign(opacities.data(), opacities.data() + opacities.size());
-        }
-
-        // Normalize rotations per-row and copy
-        g.rotations.resize(static_cast<size_t>(n) * 4);
-        const float* r = rotations.data();
-        for (int32_t i = 0; i < n; ++i) {
-          const float* q = r + static_cast<size_t>(i) * 4;
-          float s = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-          if (s == 0.0f) s = 1.0f;
-          g.rotations[static_cast<size_t>(i) * 4 + 0] = q[0] / s;
-          g.rotations[static_cast<size_t>(i) * 4 + 1] = q[1] / s;
-          g.rotations[static_cast<size_t>(i) * 4 + 2] = q[2] / s;
-          g.rotations[static_cast<size_t>(i) * 4 + 3] = q[3] / s;
-        }
+        g.rotations.assign(rotations.data(), rotations.data() + rotations.size());
+        g.alphas.assign(opacities.data(), opacities.data() + opacities.size());
 
         if (!f_rest.is_none()) {
           auto f = py::cast<py::array_t<float, py::array::c_style | py::array::forcecast>>(f_rest);
