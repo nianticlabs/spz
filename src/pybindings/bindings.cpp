@@ -24,6 +24,7 @@ SOFTWARE.
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>  // For STL containers like std::vector
+#include <pybind11/numpy.h>
 
 #include <sstream>  // For std::ostringstream
 
@@ -287,6 +288,70 @@ PYBIND11_MODULE(spz_bindings, m) {
 
   // Bind compressGzipped
   m.def("compressGzipped", &compressGzippedFromBytes, py::arg("data"));
+
+  // Fast factory to build GaussianCloud directly from NumPy arrays without Python boxing
+  m.def(
+      "createGaussianCloudFromNumpy",
+      [](py::array_t<float, py::array::c_style | py::array::forcecast> xyz,
+         py::array_t<float, py::array::c_style | py::array::forcecast> opacities,
+         py::array_t<float, py::array::c_style | py::array::forcecast> scales,
+         py::array_t<float, py::array::c_style | py::array::forcecast> rotations,
+         py::array_t<float, py::array::c_style | py::array::forcecast> rgb,
+         py::object f_rest,
+         int sh_degree) {
+        // Basic shape validation
+        auto xyz_info = xyz.request();
+        auto op_info = opacities.request();
+        auto sc_info = scales.request();
+        auto rot_info = rotations.request();
+        auto rgb_info = rgb.request();
+
+        if (xyz_info.ndim != 2 || xyz_info.shape[1] != 3) {
+          throw std::invalid_argument("xyz must have shape [N,3]");
+        }
+        if (!((op_info.ndim == 1) || (op_info.ndim == 2 && op_info.shape[1] == 1))) {
+          throw std::invalid_argument("opacities must have shape [N] or [N,1]");
+        }
+        if (sc_info.ndim != 2 || sc_info.shape[1] != 3) {
+          throw std::invalid_argument("scale must have shape [N,3]");
+        }
+        if (rot_info.ndim != 2 || rot_info.shape[1] != 4) {
+          throw std::invalid_argument("rotation must have shape [N,4]");
+        }
+        if (rgb_info.ndim != 2 || rgb_info.shape[1] != 3) {
+          throw std::invalid_argument("rgb must have shape [N,3]");
+        }
+
+        const int32_t n = static_cast<int32_t>(xyz_info.shape[0]);
+        if (op_info.shape[0] != n || sc_info.shape[0] != n || rot_info.shape[0] != n || rgb_info.shape[0] != n) {
+          throw std::invalid_argument("all inputs must have the same length N");
+        }
+
+        GaussianCloud g;
+        g.numPoints = n;
+        g.shDegree = sh_degree;
+
+        // Bulk copy contiguous memory
+        g.positions.assign(xyz.data(), xyz.data() + xyz.size());
+        g.scales.assign(scales.data(), scales.data() + scales.size());
+        g.colors.assign(rgb.data(), rgb.data() + rgb.size());
+        g.rotations.assign(rotations.data(), rotations.data() + rotations.size());
+        g.alphas.assign(opacities.data(), opacities.data() + opacities.size());
+
+        if (!f_rest.is_none()) {
+          auto f = py::cast<py::array_t<float, py::array::c_style | py::array::forcecast>>(f_rest);
+          g.sh.assign(f.data(), f.data() + f.size());
+        }
+
+        return g;
+      },
+      py::arg("xyz"),
+      py::arg("opacities"),
+      py::arg("scale"),
+      py::arg("rotation"),
+      py::arg("rgb"),
+      py::arg("f_rest") = py::none(),
+      py::arg("sh_degree") = 0);
 
   m.attr("LATEST_SPZ_HEADER_VERSION") = spz::LATEST_SPZ_HEADER_VERSION;
 }

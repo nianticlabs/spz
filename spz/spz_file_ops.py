@@ -65,6 +65,7 @@ def gaussian_cloud_to_spz_file(
     sh_rest_bits: int = 4,
     enable_sh_min_max_scaling: bool = False,
 ) -> Path:  # pylint: disable=no-member
+    filename.parent.mkdir(parents=True, exist_ok=True)
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
     # use the default values for SH bits in version 2.
@@ -105,17 +106,25 @@ def gaussian_cloud_from_numpy(
     sh_degree: int = 0,
 ) -> spz.GaussianCloud:  # pylint: disable=no-member
 
-    gaussian_cloud = spz.GaussianCloud()  # pylint: disable=no-member
-    gaussian_cloud.numPoints = xyz.shape[0]
-    gaussian_cloud.positions = xyz.flatten().astype(np.float32).tolist()
-    gaussian_cloud.colors = rgb.flatten().astype(np.float32).tolist()
-    gaussian_cloud.alphas = opacities.flatten().astype(np.float32).tolist()
-    gaussian_cloud.scales = scale.flatten().astype(np.float32).tolist()
-    # normalize rotations
-    print("[SPZ] Normalizing rotations")
-    rotation = rotation / np.linalg.norm(rotation, axis=1, keepdims=True)
-    gaussian_cloud.rotations = rotation.flatten().astype(np.float32).tolist()
-    gaussian_cloud.sh = f_rest.flatten().astype(np.float32).tolist() if f_rest is not None else []
-    gaussian_cloud.shDegree = sh_degree
+    assert xyz.shape[0] == opacities.shape[0] == scale.shape[0] == rotation.shape[0] == rgb.shape[0], "All arrays must have the same number of points"
+    assert scale.shape[1] == 3, "Scale must have shape [N,3]"
+    assert rotation.shape[1] == 4, "Rotation must have shape [N,4]"
+    assert rgb.shape[1] == 3, "RGB must have shape [N,3]"
+    assert sh_degree >= 0, "SH degree must be non-negative"
 
-    return gaussian_cloud
+    # Normalize rotations
+    norms = np.linalg.norm(rotation, axis=1, keepdims=True)
+    norms[norms == 0.0] = 1.0
+    rotation = rotation / norms
+
+    # Flatten in case its [N,1]
+    opacities = opacities.flatten()
+    return spz.createGaussianCloudFromNumpy(  # type: ignore[attr-defined]
+        np.asarray(xyz, dtype=np.float32),
+        np.asarray(opacities, dtype=np.float32),
+        np.asarray(scale, dtype=np.float32),
+        np.asarray(rotation, dtype=np.float32),
+        np.asarray(rgb, dtype=np.float32),
+        None if f_rest is None else np.asarray(f_rest, dtype=np.float32),
+        int(sh_degree),
+    )
