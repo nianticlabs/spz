@@ -1,10 +1,9 @@
 import numpy as np
+from test_ply2spz import _assert_gaussian_cloud_equal
 
-from spz import GaussianCloud  # pylint: disable=no-name-in-module
-from spz.ply_file_ops import gaussian_cloud_to_ply_file, read_ply_to_gaussian_cloud
 from spz.spz_file_ops import gaussian_cloud_from_numpy, gaussian_cloud_to_spz_file, read_spz_to_gaussian_cloud
 from spz.spz_test_case import SpzTestCase
-from test_ply2spz import _assert_gaussian_cloud_equal
+
 
 class TestPly(SpzTestCase):
     def test_np_to_spz(self):
