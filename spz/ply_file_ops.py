@@ -170,6 +170,7 @@ def gaussian_cloud_to_ply_file(
     filename: Path,
     coordinate_system: int = spz.CoordinateSystem.UNSPECIFIED,
 ) -> Path:  # pylint: disable=no-member
+    filename.parent.mkdir(parents=True, exist_ok=True)
     pack_options = spz.PackOptions()  # pylint: disable=no-member
     setattr(pack_options, "from", coordinate_system)  # 'from' is a Python keyword, so use setattr
     spz.saveSplatToPly(gaussian_cloud, pack_options, str(filename))  # pylint: disable=no-member

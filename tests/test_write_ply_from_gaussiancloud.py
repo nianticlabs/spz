@@ -69,6 +69,7 @@ class TestPly(SpzTestCase):
         gt_file = self.input_test_path() / "ply/plant_sh4_float32.ply"
         gaussian_cloud = read_ply_to_gaussian_cloud(gt_file)
         ply_file = self.output_test_path() / "plant_sh4_float32.ply"
+        print(ply_file)
         gaussian_cloud_to_ply_file(gaussian_cloud, ply_file)
         gaussian_cloud_ply = read_ply_to_gaussian_cloud(ply_file)
         _assert_gaussian_cloud_equal(self, gaussian_cloud, gaussian_cloud_ply)
