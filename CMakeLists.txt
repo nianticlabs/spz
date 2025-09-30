@@ -7,6 +7,9 @@ project(spz
 
 include(GNUInstallDirs)
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+
 # zlib is required to build the project
 find_package(ZLIB REQUIRED)
 
