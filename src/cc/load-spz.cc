@@ -635,6 +635,10 @@ GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &o) 
   return unpackGaussians(loadSpzPacked(data), o);
 }
 
+GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &o) {
+  return unpackGaussians(loadSpzPacked(data, size), o);
+}
+
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, const std::string &filename) {
   std::vector<uint8_t> data;
   if (!saveSpz(g, o, &data)) {
