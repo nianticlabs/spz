@@ -635,6 +635,10 @@ GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &o) 
   return unpackGaussians(loadSpzPacked(data), o);
 }
 
+GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &o) {
+  return unpackGaussians(loadSpzPacked(data, size), o);
+}
+
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, const std::string &filename) {
   std::vector<uint8_t> data;
   if (!saveSpz(g, o, &data)) {
@@ -663,6 +667,27 @@ GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o) {
   return loadSpz(data, o);
 }
 
+bool getNextHeaderLine(std::ifstream &in, std::string &line) {
+  while (std::getline(in, line)) {
+    // Find the first non-whitespace character
+    size_t start = line.find_first_not_of(" \t\n\r\f\v");
+    // If line is empty or whitespace-only, skip it and continue reading.
+    if (std::string::npos == start) {
+      continue;
+    }
+    // Trim leading whitespace and check for 'comment'
+    std::string trimmed_line = line.substr(start);
+    if (trimmed_line.rfind("comment", 0) == 0) {
+      continue; // Skip comment line
+    }
+    // Found a valid non-comment, non-empty line
+    line = trimmed_line; // Update the reference string with the trimmed line
+    return true;
+  }
+  // Failed to read a line (EOF or error)
+  return false;
+}
+
 GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions &o) {
   SpzLog("[SPZ] Loading: %s", filename.c_str());
   std::ifstream in(filename, std::ios::binary);
@@ -678,14 +703,12 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     in.close();
     return {};
   }
-  std::getline(in, line);
-  if (line != "format binary_little_endian 1.0") {
+  if (!getNextHeaderLine(in, line) || line != "format binary_little_endian 1.0") {
     SpzLog("[SPZ ERROR] %s: unsupported .ply format", filename.c_str());
     in.close();
     return {};
   }
-  std::getline(in, line);
-  if (line.find("element vertex ") != 0) {
+  if (!getNextHeaderLine(in, line) || line.find("element vertex ") != 0) {
     SpzLog("[SPZ ERROR] %s: missing vertex count", filename.c_str());
     in.close();
     return {};
@@ -700,7 +723,11 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
   SpzLog("[SPZ] Loading %d points", numPoints);
   std::unordered_map<std::string, int> fields;  // name -> index
   for (int32_t i = 0;; i++) {
-    std::getline(in, line);
+    if (!getNextHeaderLine(in, line)) {
+      SpzLog("[SPZ ERROR] %s: unexpected EOF while reading header properties.", filename.c_str());
+      in.close();
+      return {};
+    }
     if (line == "end_header")
       break;
 

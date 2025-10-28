@@ -85,6 +85,9 @@ bool saveSpz(
 // Loads Gaussian splat from a file in packed format
 GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o);
 
+// Loads Gaussian splat from a byte pointer in packed format.
+GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &options);
+
 // Saves Gaussian splat data in .ply format
 bool saveSplatToPly(
   const spz::GaussianCloud &gaussians, const PackOptions &options, const std::string &filename);
