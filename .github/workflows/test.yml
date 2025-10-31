@@ -50,6 +50,7 @@ jobs:
               -DBUILD_SHARED_LIBS=$BUILD_SHARED_LIBS \
               -DBUILD_TESTING=ON \
               -DCMAKE_INSTALL_PREFIX=${CONDA_PREFIX} \
+              -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON \
               ..
 
 
