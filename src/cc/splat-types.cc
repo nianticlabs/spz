@@ -10,7 +10,7 @@ float halfToFloat(Half h) {
   auto exponent = ((h >> 10) & 0x1f);
   auto mantissa = h & 0x3ff;
 
-  float signMul = sgn == 1 ? -1.0 : 1.0;
+  float signMul = sgn == 1 ? -1.0f : 1.0f;
   if (exponent == 0) {
     // Subnormal numbers (no exponent, 0 in the mantissa decimal).
     return signMul * std::pow(2.0f, -14.0f) * static_cast<float>(mantissa) / 1024.0f;

@@ -180,8 +180,8 @@ struct GaussianCloud {
       scaleSums.push_back(sum);
     }
     std::sort(scaleSums.begin(), scaleSums.end());
-    float median = scaleSums[scaleSums.size() / 2];
-    return (M_PI * 4 / 3) * exp(median);
+    float median = scaleSums[(int32_t)(scaleSums.size() / 2)];
+    return (float) (M_PI * 4 / 3) * exp(median);
   }
 };
 
