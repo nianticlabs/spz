@@ -1,0 +1,21 @@
+#pragma once
+
+
+/*
+ * version settings
+ */
+#define SPZ_VERSION_MAJOR @spz_VERSION_MAJOR@
+#define SPZ_VERSION_MINOR @spz_VERSION_MINOR@
+#define SPZ_VERSION_PATCH @spz_VERSION_PATCH@
+
+
+/* Copied from GDAL */
+#ifndef SPZ_COMPUTE_VERSION
+#define SPZ_COMPUTE_VERSION(maj,min,rev) ((maj)*1000000+(min)*10000+(rev)*100)
+#endif
+
+#ifndef SPZ_VERSION_NUM
+#  define SPZ_VERSION_NUM      (SPZ_COMPUTE_VERSION(SPZ_VERSION_MAJOR,SPZ_VERSION_MINOR,SPZ_VERSION_REV)+SPZ_VERSION_BUILD)
+#endif
+
+
