@@ -200,7 +200,10 @@ float norm(const Vec3f &a);
 
 // Quaternion helpers.
 float norm(const Quat4f &q);
-Quat4f normalized(const Quat4f &v);
+constexpr Quat4f normalized(const Quat4f &v) {
+  float norm = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+  return {v[0] / norm, v[1] / norm, v[2] / norm, v[3] / norm};
+}
 Quat4f axisAngleQuat(const Vec3f &scaledAxis);
 
 // Constexpr helpers.
