@@ -6,6 +6,9 @@ channels:
 dependencies:
   - python=3.12
   - pip
+  - twine
+  - lxml
+  - unittest-xml-reporting
   - pip:
     - --extra-index-url https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-release/simple
     - --extra-index-url https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release/simple
