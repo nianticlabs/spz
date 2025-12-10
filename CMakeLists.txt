@@ -228,19 +228,11 @@ if(SPZ_BUILD_PYTHON_BINDINGS)
   # Rename the output file to "spz" (no prefix/lib, correct extension)
   # This is necessary for the Python module to be recognized correctly
   # by Python's import system.
+  # The ARCHIVE_OUTPUT_NAME is also set to avoid name clashes on Windows.
   set_target_properties(spz_py PROPERTIES
       OUTPUT_NAME spz
+      ARCHIVE_OUTPUT_NAME spz_py
   )
-
-  # Set the correct suffix for the Python module based on the platform
-  # This is necessary in particular on Windows.
-  if(WIN32)
-    # Windows (.pyd)
-    set_target_properties(spz_py PROPERTIES SUFFIX ".pyd")
-  else()
-    # Unix (.so)
-    set_target_properties(spz_py PROPERTIES SUFFIX ".so")
-  endif()
 
   # Add the project root to the include path for the python module
   target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
