@@ -232,6 +232,16 @@ if(SPZ_BUILD_PYTHON_BINDINGS)
       OUTPUT_NAME spz
   )
 
+  # Set the correct suffix for the Python module based on the platform
+  # This is necessary in particular on Windows.
+  if(WIN32)
+    # Windows (.pyd)
+    set_target_properties(spz_py PROPERTIES SUFFIX ".pyd")
+  else()
+    # Unix (.so)
+    set_target_properties(spz_py PROPERTIES SUFFIX ".so")
+  endif()
+
   # Add the project root to the include path for the python module
   target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
