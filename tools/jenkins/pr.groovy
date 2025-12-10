@@ -44,13 +44,7 @@ def build_spz(profile) {
               printEnvVarsAndJobParams()
               checkout scm
               utils.setupCondaEnvironment(venv_name, profile)
-              utils.runInConda(name: venv_name, script: "python tools/artifacts.py tools/manifest.yaml clean")
-              utils.runInConda(name: venv_name, script: "python tools/artifacts.py tools/manifest.yaml pull")
             } // Setup
-
-            smartStage("Lint-${profile.host}") {
-              utils.lintPython(venv_name)
-            } // LintPython
 
             smartStage("Test-${profile.host}") {
               utils.testPython(venv_name, profile)

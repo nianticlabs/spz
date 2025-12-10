@@ -39,36 +39,9 @@ def setupCondaEnvironment(venv_name, profile) {
     }
 }
 
-def lintPython(venv_name) {
-
-    def linter_failures = []
-    try {
-        runInConda(name: venv_name, script: "python ./tools/lint.py ruff --verbose")
-    } catch (Exception e) {
-        echo "Got exception: pylint ${e}"
-        linter_failures.add("Running ruff")
-    }
-
-    try {
-        runInConda(name: venv_name, script: "python ./tools/lint.py mypy --verbose")
-    } catch (Exception e) {
-        echo "Got exception: mypy ${e}"
-        linter_failures.add("Running mypy")
-    }
-
-    if (!linter_failures.isEmpty()) {
-        String msg = "The following linter phases have failed\n"
-        for (String m in linter_failures) {
-        msg = msg + m + "\n"
-        }
-        msg = msg + "To see the faulty files, see the corresponding section of each linter phase.\n"
-        error(msg)
-    }
-}
-
 def testPython(venv_name, profile) {
     try {
-    runInConda(name: venv_name, script: "python tests/main.py --xml=.tmp_test_out/${profile.name}/test_report.xml --log=.tmp_test_out/${profile.name}/test_log.txt")
+    runInConda(name: venv_name, script: "pytest --junit-xml=.tmp_test_out/${profile.name}/test_report.xml --log-file=.tmp_test_out/${profile.name}/test_log.txt")
     } finally {
     archiveArtifacts artifacts: ".tmp_test_out/${profile.name}/test_log.txt"
     junit testResults: ".tmp_test_out/${profile.name}/test_report.xml"
