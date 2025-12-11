@@ -908,8 +908,38 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   SpzLog("[SPZ] Loading %d points", numPoints);
   std::unordered_map<std::string, int> fields;  // name -> index
-  bool hasSafeOrbitElevation = false;
-  bool hasSafeOrbitRadius = false;
+
+  // Helper function to get property size from PLY type string
+  auto getPropertySize = [](const std::string& line) -> size_t {
+    if (line.find("property float ") == 0 || line.find("property int ") == 0 ||
+        line.find("property uint ") == 0) {
+      return 4;
+    } else if (line.find("property double ") == 0) {
+      return 8;
+    } else if (line.find("property char ") == 0 || line.find("property uchar ") == 0) {
+      return 1;
+    } else if (line.find("property short ") == 0 || line.find("property ushort ") == 0) {
+      return 2;
+    }
+    return 4;  // Default assumption
+  };
+
+  // Track extra elements (non-vertex) to handle their data
+  struct ExtraElement {
+    std::string name;
+    int32_t count;
+    size_t bytesPerElement;
+    bool isKnown;  // true for elements we explicitly handle (like safe_orbit)
+  };
+  std::vector<ExtraElement> extraElements;
+
+  // State machine for parsing header
+  enum class ParseState { IN_VERTEX, IN_EXTRA_ELEMENT };
+  ParseState state = ParseState::IN_VERTEX;
+  std::string currentElementName;
+  int32_t currentElementCount = 0;
+  size_t currentElementBytes = 0;
+  bool currentElementIsKnown = false;
 
   for (int32_t i = 0;; i++) {
     if (!getNextHeaderLine(in, line)) {
@@ -917,30 +947,67 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
       in.close();
       return {};
     }
-    if (line == "end_header")
+    if (line == "end_header") {
+      // Finalize any pending extra element
+      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount > 0) {
+        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes, currentElementIsKnown});
+      }
       break;
-
-    // Check for safe orbit elements
-    if (line == "element safe_orbit_camera_elevation_min_max_radians 2") {
-      hasSafeOrbitElevation = true;
-      continue;
-    }
-    if (line == "element safe_orbit_camera_radius_min 1") {
-      hasSafeOrbitRadius = true;
-      continue;
-    }
-    if (line == "property float safe_orbit_camera_elevation_min_max_radians" ||
-        line == "property float safe_orbit_camera_radius_min") {
-      continue;
     }
 
+    // Check for new element definitions (non-vertex)
+    if (line.find("element ") == 0 && line.find("element vertex ") != 0) {
+      // Finalize previous extra element if any
+      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount > 0) {
+        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes, currentElementIsKnown});
+      }
+
+      // Parse element name and count
+      size_t spacePos = line.find(' ', 8);  // After "element "
+      if (spacePos != std::string::npos) {
+        currentElementName = line.substr(8, spacePos - 8);
+        currentElementCount = std::stoi(line.substr(spacePos + 1));
+        currentElementBytes = 0;
+
+        // Check if this is a known element we handle specially
+        currentElementIsKnown = (currentElementName == "safe_orbit_camera_elevation_min_max_radians" ||
+                                  currentElementName == "safe_orbit_camera_radius_min");
+
+        state = ParseState::IN_EXTRA_ELEMENT;
+        if (!currentElementIsKnown) {
+          SpzLog("[SPZ] Found extra element: %s (%d items)", currentElementName.c_str(), currentElementCount);
+        }
+      }
+      continue;
+    }
+
+    // Handle properties based on current state
+    if (state == ParseState::IN_EXTRA_ELEMENT) {
+      if (line.find("property ") == 0) {
+        currentElementBytes += getPropertySize(line);
+      }
+      continue;
+    }
+
+    // We're in vertex element - only accept float properties
     if (line.find("property float ") != 0) {
-      SpzLog("[SPZ ERROR] %s: unsupported property data type: %s", filename.c_str(), line.c_str());
+      SpzLog("[SPZ ERROR] %s: unsupported vertex property type: %s", filename.c_str(), line.c_str());
       in.close();
       return {};
     }
     std::string name = line.substr(std::strlen("property float "));
     fields[name] = i;
+  }
+
+  // Identify known elements
+  bool hasSafeOrbitElevation = false;
+  bool hasSafeOrbitRadius = false;
+  for (const auto& elem : extraElements) {
+    if (elem.name == "safe_orbit_camera_elevation_min_max_radians") {
+      hasSafeOrbitElevation = true;
+    } else if (elem.name == "safe_orbit_camera_radius_min") {
+      hasSafeOrbitRadius = true;
+    }
   }
 
   // Returns the index for a given field name, ensuring the name exists.
@@ -1024,6 +1091,16 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
              safeOrbitElevationMin, safeOrbitElevationMax, safeOrbitRadiusMin);
     }
     hasSafeOrbit = true;
+  }
+
+  // Skip data for extra elements (they appear after vertex and safe orbit data in the file)
+  for (const auto& elem : extraElements) {
+    if (elem.isKnown) continue;  // Already handled above
+    size_t bytesToSkip = elem.count * elem.bytesPerElement;
+    if (bytesToSkip > 0) {
+      in.seekg(bytesToSkip, std::ios::cur);
+      SpzLog("[SPZ] Skipped %zu bytes for element '%s'", bytesToSkip, elem.name.c_str());
+    }
   }
 
   in.close();
