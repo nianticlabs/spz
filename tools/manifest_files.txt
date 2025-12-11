@@ -1,7 +1,0 @@
-"ply/Furry_Toy_2_sh3_float16.ply" "ply/Furry_Toy_2_sh3_float16.41dfb5d.ply" 41dfb5d9c2ad224535a784a87f9923b9eda6aedacb436685245b2fe4c17c5986
-"ply/Furry_Toy_2_sh3_float32.ply" "ply/Furry_Toy_2_sh3_float32.807aae5.ply" 807aae566a75f4b6c00d6c83c430805421ced004979812dcd5bd38ebf50ec688
-"ply/plant_sh4_float32.ply" "ply/plant_sh4_float32.4b101ed.ply" 4b101ed3fcb3c40843ef88a9aaebe14dad18b678a136d836dcdb602cec9df4ba
-"ply/shoe_sh0_uint16.ply" "ply/shoe_sh0_uint16.f61d99c.ply" f61d99c8b63205da4e5670cac12b901a808804ec9b1f1fe1dc574d59edea6a8b
-"ply/shoe_sh3_float32.ply" "ply/shoe_sh3_float32.2d47198.ply" 2d47198c957630638999483a2bcc91205815d16e27510a2f2fb50ccb4d4b638d
-"ply/tree_sh3_uint16.ply" "ply/tree_sh3_uint16.3d45390.ply" 3d453904e4abc7bd4af9dac4d94a6dd85321a1263bee626d1d2a80c36a4feee3
-"spz/shoe_sh3.spz" "spz/shoe_sh3.7d84853.spz" 7d848530bb151ca2f02abdefb1f19fa469a34c957604cbcf6e16e872141002ab

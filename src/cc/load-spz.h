@@ -61,7 +61,7 @@ constexpr int DEFAULT_SH1_BITS = 5;
 constexpr int DEFAULT_SH_REST_BITS = 4;
 
 // Latest version of the packed format, update this when changing the format.
-constexpr int LATEST_SPZ_HEADER_VERSION = 2;
+constexpr int LATEST_SPZ_HEADER_VERSION = 3;
 
 // Represents a single inflated gaussian. Each gaussian has 236 bytes. Although the data is easier
 // to intepret in this format, it is not more precise than the packed format, since it was inflated.
@@ -76,11 +76,11 @@ struct UnpackedGaussian {
   std::array<float, SH_MAX_COEFFS> shB;
 };
 
-// Represents a single low precision gaussian. Each gaussian has exactly 64 bytes, even if it does
+// Represents a single low precision gaussian. Each gaussian has exactly 65 bytes, even if it does
 // not have full spherical harmonics.
 struct PackedGaussian {
   std::array<uint8_t, 9> position{};
-  std::array<uint8_t, 3> rotation{};
+  std::array<uint8_t, 4> rotation{};
   std::array<uint8_t, 3> scale{};
   std::array<uint8_t, 3> color{};
   uint8_t alpha = 0;
@@ -89,7 +89,7 @@ struct PackedGaussian {
   std::array<uint8_t, SH_MAX_COEFFS> shB{};
 
   UnpackedGaussian unpack(
-    bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c,
+    bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c,
     float shMin = -1.0f, float shMax = 1.0f) const;
 };
 
@@ -101,6 +101,7 @@ struct PackedGaussians {
   int32_t shDegree = 0;        // Degree of spherical harmonics
   int32_t fractionalBits = 0;  // Number of bits used for fractional part of fixed-point coords
   bool antialiased = false;    // Whether gaussians should be rendered with mip-splat antialiasing
+  bool usesQuaternionSmallestThree = true; // Whether gaussians use the smallest three method to store quaternions
 
   std::vector<uint8_t> positions;
   std::vector<uint8_t> scales;
@@ -148,6 +149,9 @@ bool saveSpz(
 
 // Loads Gaussian splat from a file in packed format
 GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o);
+
+// Loads Gaussian splat from a byte pointer in packed format.
+GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &options);
 
 // Saves Gaussian splat data in .ply format
 bool saveSplatToPly(

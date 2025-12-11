@@ -13,38 +13,3 @@ mb.cxx_library(
         "zlib//:zlib",
     ],
 )
-
-mb.set_root_directory("$(project_root)/../src/pybindings")
-
-mb.cxx_library(
-    name = "spz_bindings_pyd",
-    product_name = "spz_bindings",
-    srcs = [
-        mb.cpp_glob("**"),
-    ],
-    exported_deps = [
-        "spz:spz",
-        "pybind11//:module",
-    ],
-    preferred_linkage="shared",
-    filter=mb.target.windows,
-    product_extension=".pyd",
-)
-
-mb.cxx_library(
-    name = "spz_bindings_so",
-    product_name = "spz_bindings",
-    srcs = [
-        mb.cpp_glob("**"),
-    ],
-    exported_deps = [
-        "spz:spz",
-        "pybind11//:module",
-    ],
-    preferred_linkage="shared",
-    filter=~mb.target.windows,
-    product_extension=".so",
-    xcode_flags={
-        "PRODUCT_BUNDLE_IDENTIFIER": "com.nianticlabs.spz.spz_bindings",
-    },
-)
