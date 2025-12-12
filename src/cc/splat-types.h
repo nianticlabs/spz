@@ -148,7 +148,7 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
 //   - xyzw quaternion
 //   - alpha (before sigmoid activation, compute sigmoid(a) to get alpha value between 0 and 1)
 //   - rgb color (as SH DC component, compute 0.5 + 0.282095 * x to get color value between 0 and 1)
-//   - 0 to 75 spherical harmonics coefficients (see comment below)
+//   - 0 to 71 spherical harmonics coefficients (see comment below)
 struct GaussianCloud {
   // Total number of points (gaussians) in this splat.
   int32_t numPoints = 0;
@@ -198,6 +198,10 @@ struct GaussianCloud {
   // Convert between two coordinate systems, for example from RDF (ply format) to RUB (used by spz).
   // This is performed in-place.
   void convertCoordinates(CoordinateSystem from, CoordinateSystem to) {
+    if (numPoints == 0) {
+      // There is nothing to convert.
+      return;
+    }
     CoordinateConverter c = coordinateConverter(from, to);
     for (size_t i = 0; i < positions.size(); i += 3) {
       positions[i + 0] *= c.flipP[0];
@@ -237,12 +241,12 @@ struct GaussianCloud {
     // axis. Scales are stored on a log scale, and exp(x) * exp(y) * exp(z) = exp(x + y + z). So we
     // can sort by value = (x + y + z) and compute volume = 4/3 * pi * exp(value) later.
     std::vector<float> scaleSums;
-    for (int32_t i = 0; i < scales.size(); i += 3) {
+    for (size_t i = 0; i < scales.size(); i += 3) {
       float sum = scales[i] + scales[i + 1] + scales[i + 2];
       scaleSums.push_back(sum);
     }
     std::sort(scaleSums.begin(), scaleSums.end());
-    float median = scaleSums[(int32_t)(scaleSums.size() / 2)];
+    float median = scaleSums[scaleSums.size() / 2];
     return (M_PI * 4 / 3) * exp(median);
   }
 };

@@ -6,9 +6,6 @@ for saving and loading data in the .spz format.
 spz encoded splats are typically around 10x smaller than the corresponding .ply files,
 with minimal visual differences between the two.
 
-### Discord
-Join the [Scaniverse Discord](https://discord.gg/xKtCxvEmxa) to discuss SPZ-related topics with Niantic developers and community contributors. 
-
 ## Internals
 
 ### Coordinate System
@@ -41,6 +38,7 @@ Then one can build through
 cmake --build build-wasm
 ```
 The package will be built and installed into the `dist` folder.
+
 
 ## API
 
@@ -130,9 +128,21 @@ struct PackedGaussiansHeader {
   uint8_t shDegree;
   uint8_t fractionalBits;
   uint8_t flags;
-  uint8_t v2Padding;
+  uint8_t reserved;
 };
 ```
+
+All values are little-endian.
+
+1. **magic**: This is always 0x5053474e
+2. **version**: Currently, the only valid versions are 2 and 3
+3. **numPoints**: The number of gaussians
+4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 3 (inclusive).
+5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
+   the fixed-point encoding.
+6. **flags**: A bit field containing flags.
+   - `0x1`: whether the splat was trained with [antialiasing](https://niujinshuchong.github.io/mip-splatting/).
+7. **reserved**: Reserved for future use. Must be 0.
 
 ### Positions
 
@@ -145,8 +155,12 @@ Scales are represented as `(x, y, z)` components, each represented as an 8-bit l
 
 ### Rotation
 
-Rotations are represented as the `(x, y, z)` components of the normalized rotation quaternion. The
-`w` component can be derived from the others and is not stored. Each components is encoded as an
+In version 3, rotations are represented as the smallest three components of the normalized rotation quaternion, for optimal rotation accuracy.
+The largest component can be derived from the others and is not stored. Its index is stored on 2 bits
+and each of the smallest three components is encoded as a 10-bit signed integer.
+
+In version 2, rotations are represented as the `(x, y, z)` components of the normalized rotation quaternion. The
+`w` component can be derived from the others and is not stored. Each component is encoded as an
 8-bit signed integer.
 
 ### Alphas
@@ -171,7 +185,7 @@ the order of the 9 values is:
 sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
 ```
 
-Each coefficient is represented as an 8-bit signed integer. 
+Each coefficient is represented as an 8-bit signed integer.
 
 **Quantization:**
 
@@ -216,3 +230,17 @@ This extension has the following attributes and default values:
   float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
   float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
 ```
+
+
+## Python Bindings
+
+The SPZ library provides Python bindings built with [nanobind](https://nanobind.readthedocs.io/) that offer a convenient interface for loading, manipulating, and saving 3D Gaussian splats from Python.
+
+### Installation
+```bash
+git clone https://github.com/nianticlabs/spz.git
+cd spz
+pip install .
+```
+
+Please see src/python/README.md for more details and usage examples

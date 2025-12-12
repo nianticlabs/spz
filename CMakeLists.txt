@@ -7,22 +7,29 @@ project(spz
 
 include(GNUInstallDirs)
 
-option(SPZ_BUILD_PYTHON_BINDINGS "Build Python bindings using pybind11" OFF)
+# --- Python Bindings Option ---
+option(SPZ_BUILD_PYTHON_BINDINGS "Build Python bindings using nanobind" OFF)
+
+# --- Command Line Tools Option ---
+option(SPZ_BUILD_TOOLS "Build command line tools" ON)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  set(SPZ_BUILD_PYTHON_BINDINGS OFF CACHE BOOL "Build Python bindings using pybind11" FORCE)
+  set(SPZ_BUILD_PYTHON_BINDINGS OFF CACHE BOOL "Build Python bindings using nanobind" FORCE)
+  set(SPZ_BUILD_TOOLS OFF CACHE BOOL "Build command line tools" FORCE)
   set(SPZ_BUILD_WASM ON)
   set(SPZ_USE_EMSCRIPTEN_ZLIB ON)
 endif()
 
 set(SPZ_SHOULD_INSTALL TRUE)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 
 # zlib is required to build the project
 if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
   find_package(ZLIB QUIET)
 
   if (NOT ZLIB_FOUND)
-    message(STATUS "pybind11 not found, using FetchContent to download it.")
+    message(STATUS "ZLIB not found, using FetchContent to download it.")
     include(FetchContent)
     FetchContent_Declare(
       zlib
@@ -36,25 +43,6 @@ if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
     set(SPZ_SHOULD_INSTALL FALSE)
   else()
     set(zlib_linkage_target ZLIB::ZLIB)
-  endif()
-endif()
-
-if(SPZ_BUILD_PYTHON_BINDINGS)
-  find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
-
-  # Try to find pybind11, otherwise fetch it
-  find_package(pybind11 CONFIG QUIET)
-  if(NOT pybind11_FOUND)
-    message(STATUS "pybind11 not found, using FetchContent to download it.")
-    include(FetchContent)
-    FetchContent_Declare(
-      pybind11
-      GIT_REPOSITORY https://github.com/pybind/pybind11.git
-      GIT_TAG        v2.13.1
-    )
-    FetchContent_MakeAvailable(pybind11)
-  else()
-    message(STATUS "Using system-installed pybind11")
   endif()
 endif()
 
@@ -79,8 +67,12 @@ add_library(spz::spz ALIAS spz)
 if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
   target_link_libraries(spz PRIVATE ${zlib_linkage_target})
 else()
-  target_compile_options(spz PRIVATE --use-port=zlib)
-  target_link_options(spz PRIVATE --use-port=zlib)
+  target_compile_options(spz PUBLIC --use-port=zlib)
+  target_link_options(spz PUBLIC --use-port=zlib)
+endif()
+
+if(ANDROID)
+  target_link_libraries(spz PRIVATE log)
 endif()
 
 target_include_directories(spz
@@ -113,6 +105,7 @@ if(SPZ_BUILD_WASM)
     "-sALLOW_MEMORY_GROWTH=1"
     "-sENVIRONMENT=web"
     "-sEXPORT_ES6=1"
+    "-sSINGLE_FILE=1"
     "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
   )
 
@@ -133,41 +126,6 @@ if(SPZ_BUILD_WASM)
   add_custom_target(copy_spz_dts ALL
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
   )
-else()
-  set_target_properties(spz PROPERTIES POSITION_INDEPENDENT_CODE ON)
-endif()
-
-if(SPZ_BUILD_PYTHON_BINDINGS)
-  file(GLOB_RECURSE SPZ_PYBIND_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/pybindings/*.cpp"
-  )
-
-  pybind11_add_module(spz_bindings MODULE ${SPZ_PYBIND_SOURCES})
-
-  target_link_libraries(spz_bindings
-    PRIVATE spz
-    PRIVATE pybind11::module
-  )
-
-  set_target_properties(spz_bindings PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-    POSITION_INDEPENDENT_CODE ON
-  )
-
-  if(WIN32)
-    # Windows (.pyd)
-    set_target_properties(spz_bindings PROPERTIES SUFFIX ".pyd")
-  else()
-    # Unix (.so)
-    set_target_properties(spz_bindings PROPERTIES SUFFIX ".so")
-  endif()
-
-  if(APPLE)
-    set_target_properties(spz_bindings PROPERTIES
-      XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.nianticlabs.spz.spz_bindings"
-    )
-  endif()
 endif()
 
 # Installation
@@ -205,9 +163,83 @@ if (SPZ_SHOULD_INSTALL)
   )
 endif()
 
-if(SPZ_BUILD_PYTHON_BINDINGS)
-  install(TARGETS spz_bindings
-    LIBRARY DESTINATION "${Python3_SITEARCH}"
-    RUNTIME DESTINATION "${Python3_SITEARCH}"  # For Windows .pyd
+if(SPZ_BUILD_TOOLS)
+  # CLI Tools
+  add_executable(ply_to_spz cli_tools/src/ply_to_spz.cpp)
+  target_link_libraries(ply_to_spz PRIVATE spz)
+  target_include_directories(ply_to_spz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  set_target_properties(ply_to_spz PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
   )
+
+  add_executable(spz_to_ply cli_tools/src/spz_to_ply.cpp)
+  target_link_libraries(spz_to_ply PRIVATE spz)
+  target_include_directories(spz_to_ply PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  set_target_properties(spz_to_ply PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+  )
+
+  add_executable(spz_info cli_tools/src/spz_info.cpp)
+  target_link_libraries(spz_info PRIVATE spz)
+  target_include_directories(spz_info PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  set_target_properties(spz_info PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+  )
+
+  install(TARGETS ply_to_spz spz_to_ply spz_info
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
+endif()
+
+# --- Python Bindings (nanobind) ---
+if(SPZ_BUILD_PYTHON_BINDINGS)
+  # Find Python with the Development component, which is required by nanobind.
+  find_package(Python 3.8
+    REQUIRED COMPONENTS Interpreter Development.Module
+    OPTIONAL_COMPONENTS Development.SABIModule)
+
+  # Detect the installed nanobind package and import it into CMake
+  execute_process(
+    COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_DIR)
+  find_package(nanobind CONFIG REQUIRED)
+
+
+  nanobind_add_module(
+    # Name of the extension
+    spz_py
+
+    # Target the stable ABI for Python 3.12+, which reduces
+    # the number of binary wheels that must be built. This
+    # does nothing on older Python versions
+    STABLE_ABI
+
+    # Build libnanobind statically and merge it into the
+    # extension (which itself remains a shared library)
+    NB_STATIC
+
+    # Source code
+    src/python/spz/spz.cc
+  )
+
+  # Rename the output file to "spz" (no prefix/lib, correct extension)
+  # This is necessary for the Python module to be recognized correctly
+  # by Python's import system.
+  # The ARCHIVE_OUTPUT_NAME is also set to avoid name clashes on Windows.
+  set_target_properties(spz_py PROPERTIES
+      OUTPUT_NAME spz
+      ARCHIVE_OUTPUT_NAME spz_py
+  )
+
+  # Add the project root to the include path for the python module
+  target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # Link the python module against the spz library
+  target_link_libraries(spz_py PRIVATE spz::spz)
+
+  # Install directive for scikit-build-core
+  install(TARGETS spz_py LIBRARY DESTINATION spz)
 endif()

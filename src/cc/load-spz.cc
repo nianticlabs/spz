@@ -48,6 +48,7 @@ namespace {
 // be useful to represent base colors that are out of range if the higher spherical harmonics bands
 // bring them back into range so we multiply by a smaller value.
 constexpr float colorScale = 0.15f;
+constexpr float sqrt1_2 = (float)0.707106781186547524401; // 1/sqrt(2)
 
 int32_t degreeForDim(int32_t dim) {
   if (dim < 3)
@@ -148,7 +149,7 @@ bool checkSizes(const GaussianCloud &g) {
 bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim, bool usesFloat16) {
   CHECK_EQ(packed.positions.size(), numPoints * 3 * (usesFloat16 ? 2 : 3));
   CHECK_EQ(packed.scales.size(), numPoints * 3);
-  CHECK_EQ(packed.rotations.size(), numPoints * 3);
+  CHECK_EQ(packed.rotations.size(), numPoints * (packed.usesQuaternionSmallestThree ? 4 : 3));
   CHECK_EQ(packed.alphas.size(), numPoints);
   CHECK_EQ(packed.colors.size(), numPoints * 3);
   CHECK_EQ(packed.sh.size(), numPoints * shDim * 3);
@@ -163,18 +164,12 @@ constexpr uint8_t FlagHasExtensions = 0x2;
 // Otherwise, some compilers may align a float or uint32_t to 4 bytes (and some may not) and break the compatibility.
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
-  uint32_t version = 2;
+  uint32_t version = LATEST_SPZ_HEADER_VERSION;
   uint32_t numPoints = 0;
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
   uint8_t flags = 0;
-  uint8_t v2Padding = 0;
-
-  // Helper methods for version-aware I/O
-  size_t getHeaderSize() const {
-    if (version >= 1) return sizeof(PackedGaussiansHeader);
-    return sizeof(uint32_t) * 2;  // Minimum to get the magic and version
-  }
+  uint8_t reserved = 0;
 };
 
 bool decompressGzippedImpl(
@@ -252,6 +247,61 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   return success;
 }
 
+void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const CoordinateConverter& c) {
+    // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
+    // NOTE: These are already in xyzw order.
+    Quat4f q = normalized(quat4f(rotation));
+    q[0] *= c.flipQ[0];
+    q[1] *= c.flipQ[1];
+    q[2] *= c.flipQ[2];
+    q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
+    q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
+    r[0] = toUint8(q[0]);
+    r[1] = toUint8(q[1]);
+    r[2] = toUint8(q[2]);
+}
+
+void packQuaternionSmallestThree(uint8_t r[4], const float rotation[4], const CoordinateConverter& c) {
+  // Normalize the quaternion
+  Quat4f q = normalized(quat4f(&rotation[0]));
+  q[0] *= c.flipQ[0];
+  q[1] *= c.flipQ[1];
+  q[2] *= c.flipQ[2];
+
+  // Find largest component
+  unsigned iLargest = 0;
+  for (unsigned i = 1; i < 4; ++i)
+  {
+    if (std::abs(q[i]) > std::abs(q[iLargest]))
+    {
+      iLargest = i;
+    }
+  }
+
+  // since -q represents the same rotation as q, transform the quaternion so the largest element
+  // is positive. This avoids having to send its sign bit.
+  unsigned negate = q[iLargest] < 0;
+
+  // Do compression using sign bit and 9-bit precision per element.
+  uint32_t comp = iLargest;
+  for (unsigned i = 0; i < 4; ++i)
+  {
+      if (i != iLargest)
+      {
+          uint32_t negbit = (q[i] < 0) ^ negate;
+          uint32_t mag =
+              (uint32_t)(float((1u << 9u) - 1u) * (std::fabs(q[i]) / sqrt1_2) + 0.5f);
+          comp = (comp << 10u) | (negbit << 9u) | mag;
+      }
+  }
+
+  // Ensure little-endianness on all platforms
+  r[0] = comp & 0xff;
+  r[1] = (comp >> 8) & 0xff;
+  r[2] = (comp >> 16) & 0xff;
+  r[3] = (comp >> 24) & 0xff;
+}
+
 PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (!checkSizes(g)) {
     return {};
@@ -308,9 +358,16 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   // other extensions in GaussianCloud
   packed.extensions.insert(packed.extensions.end(), g.extensions.begin(), g.extensions.end());
 
+  if (o.version >= 3) {
+    packed.usesQuaternionSmallestThree = true;
+    packed.rotations.resize(numPoints * 4);
+  } else {
+    // Backward compatibility for older versions.
+    packed.usesQuaternionSmallestThree = false;
+    packed.rotations.resize(numPoints * 3);
+  }
   packed.positions.resize(numPoints * 3 * 3);
   packed.scales.resize(numPoints * 3);
-  packed.rotations.resize(numPoints * 3);
   packed.alphas.resize(numPoints);
   packed.colors.resize(numPoints * 3);
   packed.sh.resize(numPoints * shDim * 3);
@@ -329,18 +386,16 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     packed.scales[i] = toUint8((g.scales[i] + 10.0f) * 16.0f);
   }
 
-  for (size_t i = 0; i < numPoints; i++) {
-    // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
-    // NOTE: These are already in xyzw order.
-    Quat4f q = normalized(quat4f(&g.rotations[i * 4]));
-    q[0] *= c.flipQ[0];
-    q[1] *= c.flipQ[1];
-    q[2] *= c.flipQ[2];
-    q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
-    q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
-    packed.rotations[i * 3 + 0] = toUint8(q[0]);
-    packed.rotations[i * 3 + 1] = toUint8(q[1]);
-    packed.rotations[i * 3 + 2] = toUint8(q[2]);
+  if (packed.usesQuaternionSmallestThree) {
+    for (size_t i = 0; i < numPoints; i++)
+    {
+      packQuaternionSmallestThree(&packed.rotations[4 * i], &g.rotations[4 * i], c);
+    }
+  } else {
+    for (size_t i = 0; i < numPoints; i++)
+    {
+      packQuaternionFirstThree(&packed.rotations[3 * i], &g.rotations[4 * i], c);
+    }
   }
 
   for (size_t i = 0; i < numPoints; i++) {
@@ -374,8 +429,58 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   return packed;
 }
 
+void unpackQuaternionFirstThree(float rotation[4], const uint8_t r[3], const CoordinateConverter& c = CoordinateConverter())
+{
+  Vec3f xyz = times(
+    plus(
+      times(
+        Vec3f{ static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2]) },
+        1.0f / 127.5f),
+      Vec3f{ -1, -1, -1 }),
+    c.flipQ);
+  std::copy(xyz.data(), xyz.data() + 3, &rotation[0]);
+  // Compute the real component - we know the quaternion is normalized and w is non-negative
+  rotation[3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
+}
+
+void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const CoordinateConverter& c = CoordinateConverter())
+{
+  uint32_t comp =
+    r[0] +
+    (r[1] << 8) +
+    (r[2] << 16) +
+    (r[3] << 24);
+
+  constexpr uint32_t c_mask = (1u << 9u) - 1u;
+
+  const int i_largest = comp >> 30;
+  float sum_squares = 0;
+  // [unroll]
+  for (int i = 3; i >= 0; --i)
+  {
+    if (i != i_largest)
+    {
+      uint32_t mag    = comp & c_mask;
+      uint32_t negbit = (comp >> 9u) & 0x1u;
+      comp            = comp >> 10u;
+      rotation[i]     = sqrt1_2 * ((float)mag) / float(c_mask);
+      if (negbit == 1)
+      {
+        rotation[i] = -rotation[i];
+      }
+      sum_squares += rotation[i] * rotation[i];
+    }
+  }
+  rotation[i_largest] = sqrt(1.0f - sum_squares);
+
+  for (int i = 0; i < 3; i++)
+  {
+    rotation[i] *= c.flipQ[i];
+  }
+}
+
 UnpackedGaussian PackedGaussian::unpack(
-  bool usesFloat16, int32_t fractionalBits, const CoordinateConverter &c,
+  bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c,
   float shMin, float shMax) const {
   UnpackedGaussian result;
   if (usesFloat16) {
@@ -400,17 +505,14 @@ UnpackedGaussian PackedGaussian::unpack(
     result.scale[i] = (scale[i] / 16.0f - 10.0f);
   }
 
-  const uint8_t *r = &rotation[0];
-  Vec3f xyz = times(
-    plus(
-      times(
-        Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
-        1.0f / 127.5f),
-      Vec3f{-1, -1, -1}),
-    c.flipQ);
-  std::copy(xyz.data(), xyz.data() + 3, &result.rotation[0]);
-  // Compute the real component - we know the quaternion is normalized and w is non-negative
-  result.rotation[3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
+  if (usesQuaternionSmallestThree)
+  {
+      unpackQuaternionSmallestThree(&result.rotation[0], &rotation[0], c);
+  }
+  else
+  {
+      unpackQuaternionFirstThree(&result.rotation[0], &rotation[0], c);
+  }
 
   result.alpha = invSigmoid(alpha / 255.0f);
 
@@ -437,12 +539,14 @@ UnpackedGaussian PackedGaussian::unpack(
 
 PackedGaussian PackedGaussians::at(int32_t i) const {
   PackedGaussian result;
-  int32_t positionBits = usesFloat16() ? 6 : 9;
+  int32_t positionBytes = usesFloat16() ? 6 : 9;
   int32_t start3 = i * 3;
-  const auto *p = &positions[i * positionBits];
-  std::copy(p, p + positionBits, result.position.data());
+  const auto *p = &positions[i * positionBytes];
+  std::copy(p, p + positionBytes, result.position.data());
   std::copy(&scales[start3], &scales[start3] + 3, result.scale.data());
-  std::copy(&rotations[start3], &rotations[start3] + 3, result.rotation.data());
+  int32_t rotationBytes = usesQuaternionSmallestThree ? 4 : 3;
+  const auto& r = &rotations[i * rotationBytes];
+  std::copy(r, r + rotationBytes, result.rotation.data());
   std::copy(&colors[start3], &colors[start3] + 3, result.color.data());
   result.alpha = alphas[i];
 
@@ -469,7 +573,7 @@ UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c
     shMin = extQuant->shMin;
     shMax = extQuant->shMax;
   }
-  return at(i).unpack(usesFloat16(), fractionalBits, c, shMin, shMax);
+  return at(i).unpack(usesFloat16(), usesQuaternionSmallestThree, fractionalBits, c, shMin, shMax);
 }
 
 bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }
@@ -478,6 +582,7 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   const int32_t numPoints = packed.numPoints;
   const int32_t shDim = dimForDegree(packed.shDegree);
   const bool usesFloat16 = packed.usesFloat16();
+  const bool usesQuaternionSmallestThree = packed.usesQuaternionSmallestThree;
   if (!checkSizes(packed, numPoints, shDim, usesFloat16)) {
     return {};
   }
@@ -529,15 +634,11 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   }
 
   for (size_t i = 0; i < numPoints; i++) {
-    const uint8_t *r = &packed.rotations[i * 3];
-    Vec3f xyz = plus(
-      times(
-        Vec3f{static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2])},
-        1.0f / 127.5f),
-      Vec3f{-1, -1, -1});
-    std::copy(xyz.data(), xyz.data() + 3, &result.rotations[i * 4]);
-    // Compute the real component - we know the quaternion is normalized and w is non-negative
-    result.rotations[i * 4 + 3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
+    if (usesQuaternionSmallestThree) {
+      unpackQuaternionSmallestThree(&result.rotations[4 * i], &packed.rotations[4 * i]);
+    } else {
+      unpackQuaternionFirstThree(&result.rotations[4 * i], &packed.rotations[3 * i]);
+    }
   }
 
   for (size_t i = 0; i < numPoints; i++) {
@@ -578,7 +679,7 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
   header.shDegree = static_cast<uint8_t>(packed.shDegree);
   header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
   header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0) | static_cast<uint8_t>(packed.extensions.empty() ? 0 : FlagHasExtensions);
-  out->write(reinterpret_cast<const char *>(&header), header.getHeaderSize());
+  out->write(reinterpret_cast<const char *>(&header), sizeof(header));
 
   // Write extensions
   writeAllExtensions(packed.extensions, *out);
@@ -595,33 +696,15 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   constexpr int32_t maxPointsToRead = 10000000;
 
   PackedGaussiansHeader header;
-  header.version = 0;
-
-  // Read just the magic and version to see how much we need to read
-  size_t minHeaderSize = header.getHeaderSize();
-  in.read(reinterpret_cast<char *>(&header), minHeaderSize);
+  in.read(reinterpret_cast<char *>(&header), sizeof(header));
   if (!in || header.magic != PackedGaussiansHeader().magic) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (header.version < 1 || header.version > 4) {
+  if (header.version < 1 || header.version > LATEST_SPZ_HEADER_VERSION) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
-
-  // Read remaining header data based on actual version
-  uint32_t actualVersion = header.version;
-  header.version = actualVersion;
-  size_t totalHeaderSize = header.getHeaderSize();
-  size_t remainingSize = totalHeaderSize - minHeaderSize;
-  if (remainingSize > 0) {
-    in.read(reinterpret_cast<char *>(&header) + minHeaderSize, remainingSize);
-    if (!in) {
-      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version %d header", actualVersion);
-      return {};
-    }
-  }
-
   if (header.numPoints > maxPointsToRead) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
     return {};
@@ -633,7 +716,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
-
+  const bool usesQuaternionSmallestThree = header.version >= 3;
   PackedGaussians result;
   result.version = header.version;
   result.numPoints = numPoints;
@@ -656,7 +739,8 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
 
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
-  result.rotations.resize(numPoints * 3);
+  result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
+  result.rotations.resize(numPoints * (usesQuaternionSmallestThree ? 4 : 3));
   result.alphas.resize(numPoints);
   result.colors.resize(numPoints * 3);
   result.sh.resize(numPoints * shDim * 3);
@@ -713,6 +797,10 @@ GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &o) 
   return unpackGaussians(loadSpzPacked(data), o);
 }
 
+GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &o) {
+  return unpackGaussians(loadSpzPacked(data, size), o);
+}
+
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, const std::string &filename) {
   std::vector<uint8_t> data;
   if (!saveSpz(g, o, &data)) {
@@ -741,6 +829,27 @@ GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o) {
   return loadSpz(data, o);
 }
 
+bool getNextHeaderLine(std::ifstream &in, std::string &line) {
+  while (std::getline(in, line)) {
+    // Find the first non-whitespace character
+    size_t start = line.find_first_not_of(" \t\n\r\f\v");
+    // If line is empty or whitespace-only, skip it and continue reading.
+    if (std::string::npos == start) {
+      continue;
+    }
+    // Trim leading whitespace and check for 'comment'
+    std::string trimmed_line = line.substr(start);
+    if (trimmed_line.rfind("comment", 0) == 0) {
+      continue; // Skip comment line
+    }
+    // Found a valid non-comment, non-empty line
+    line = trimmed_line; // Update the reference string with the trimmed line
+    return true;
+  }
+  // Failed to read a line (EOF or error)
+  return false;
+}
+
 GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions &o) {
   SpzLog("[SPZ] Loading: %s", filename.c_str());
   std::ifstream in(filename, std::ios::binary);
@@ -756,14 +865,12 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     in.close();
     return {};
   }
-  std::getline(in, line);
-  if (line != "format binary_little_endian 1.0") {
+  if (!getNextHeaderLine(in, line) || line != "format binary_little_endian 1.0") {
     SpzLog("[SPZ ERROR] %s: unsupported .ply format", filename.c_str());
     in.close();
     return {};
   }
-  std::getline(in, line);
-  if (line.find("element vertex ") != 0) {
+  if (!getNextHeaderLine(in, line) || line.find("element vertex ") != 0) {
     SpzLog("[SPZ ERROR] %s: missing vertex count", filename.c_str());
     in.close();
     return {};
@@ -777,35 +884,106 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   SpzLog("[SPZ] Loading %d points", numPoints);
   std::unordered_map<std::string, int> fields;  // name -> index
-  bool hasSafeOrbitElevation = false;
-  bool hasSafeOrbitRadius = false;
+
+  // Helper function to get property size from PLY type string
+  auto getPropertySize = [](const std::string& line) -> size_t {
+    if (line.find("property float ") == 0 || line.find("property int ") == 0 ||
+        line.find("property uint ") == 0) {
+      return 4;
+    } else if (line.find("property double ") == 0) {
+      return 8;
+    } else if (line.find("property char ") == 0 || line.find("property uchar ") == 0) {
+      return 1;
+    } else if (line.find("property short ") == 0 || line.find("property ushort ") == 0) {
+      return 2;
+    }
+    return 4;  // Default assumption
+  };
+
+  // Track extra elements (non-vertex) to handle their data
+  struct ExtraElement {
+    std::string name;
+    int32_t count;
+    size_t bytesPerElement;
+    bool isKnown;  // true for elements we explicitly handle (like safe_orbit)
+  };
+  std::vector<ExtraElement> extraElements;
+
+  // State machine for parsing header
+  enum class ParseState { IN_VERTEX, IN_EXTRA_ELEMENT };
+  ParseState state = ParseState::IN_VERTEX;
+  std::string currentElementName;
+  int32_t currentElementCount = 0;
+  size_t currentElementBytes = 0;
+  bool currentElementIsKnown = false;
 
   for (int32_t i = 0;; i++) {
-    std::getline(in, line);
-    if (line == "end_header")
+    if (!getNextHeaderLine(in, line)) {
+      SpzLog("[SPZ ERROR] %s: unexpected EOF while reading header properties.", filename.c_str());
+      in.close();
+      return {};
+    }
+    if (line == "end_header") {
+      // Finalize any pending extra element
+      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount > 0) {
+        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes, currentElementIsKnown});
+      }
       break;
-
-    // Check for safe orbit elements
-    if (line == "element safe_orbit_camera_elevation_min_max_radians 2") {
-      hasSafeOrbitElevation = true;
-      continue;
-    }
-    if (line == "element safe_orbit_camera_radius_min 1") {
-      hasSafeOrbitRadius = true;
-      continue;
-    }
-    if (line == "property float safe_orbit_camera_elevation_min_max_radians" ||
-        line == "property float safe_orbit_camera_radius_min") {
-      continue;
     }
 
+    // Check for new element definitions (non-vertex)
+    if (line.find("element ") == 0 && line.find("element vertex ") != 0) {
+      // Finalize previous extra element if any
+      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount > 0) {
+        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes, currentElementIsKnown});
+      }
+
+      // Parse element name and count
+      size_t spacePos = line.find(' ', 8);  // After "element "
+      if (spacePos != std::string::npos) {
+        currentElementName = line.substr(8, spacePos - 8);
+        currentElementCount = std::stoi(line.substr(spacePos + 1));
+        currentElementBytes = 0;
+
+        // Check if this is a known element we handle specially
+        currentElementIsKnown = (currentElementName == "safe_orbit_camera_elevation_min_max_radians" ||
+                                  currentElementName == "safe_orbit_camera_radius_min");
+
+        state = ParseState::IN_EXTRA_ELEMENT;
+        if (!currentElementIsKnown) {
+          SpzLog("[SPZ] Found extra element: %s (%d items)", currentElementName.c_str(), currentElementCount);
+        }
+      }
+      continue;
+    }
+
+    // Handle properties based on current state
+    if (state == ParseState::IN_EXTRA_ELEMENT) {
+      if (line.find("property ") == 0) {
+        currentElementBytes += getPropertySize(line);
+      }
+      continue;
+    }
+
+    // We're in vertex element - only accept float properties
     if (line.find("property float ") != 0) {
-      SpzLog("[SPZ ERROR] %s: unsupported property data type: %s", filename.c_str(), line.c_str());
+      SpzLog("[SPZ ERROR] %s: unsupported vertex property type: %s", filename.c_str(), line.c_str());
       in.close();
       return {};
     }
     std::string name = line.substr(std::strlen("property float "));
     fields[name] = i;
+  }
+
+  // Identify known elements
+  bool hasSafeOrbitElevation = false;
+  bool hasSafeOrbitRadius = false;
+  for (const auto& elem : extraElements) {
+    if (elem.name == "safe_orbit_camera_elevation_min_max_radians") {
+      hasSafeOrbitElevation = true;
+    } else if (elem.name == "safe_orbit_camera_radius_min") {
+      hasSafeOrbitRadius = true;
+    }
   }
 
   // Returns the index for a given field name, ensuring the name exists.
@@ -858,7 +1036,8 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   // Spherical harmonics are optional and variable in size (depending on degree)
   std::vector<int> shIdx;
-  for (int32_t i = 0; i < 45; i++) {
+  const int32_t shMaxCoeffsRGB = SH_MAX_COEFFS * 3;
+  for (int32_t i = 0; i < shMaxCoeffsRGB; i++) {
     const auto &itr = fields.find("f_rest_" + std::to_string(i));
     if (itr == fields.end())
       break;
@@ -888,6 +1067,16 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
              safeOrbitElevationMin, safeOrbitElevationMax, safeOrbitRadiusMin);
     }
     hasSafeOrbit = true;
+  }
+
+  // Skip data for extra elements (they appear after vertex and safe orbit data in the file)
+  for (const auto& elem : extraElements) {
+    if (elem.isKnown) continue;  // Already handled above
+    size_t bytesToSkip = elem.count * elem.bytesPerElement;
+    if (bytesToSkip > 0) {
+      in.seekg(bytesToSkip, std::ios::cur);
+      SpzLog("[SPZ] Skipped %zu bytes for element '%s'", bytesToSkip, elem.name.c_str());
+    }
   }
 
   in.close();
