@@ -137,7 +137,7 @@ struct PackedGaussiansHeader {
   uint8_t shDegree;
   uint8_t fractionalBits;
   uint8_t flags;
-  uint8_t v2Padding;
+  uint8_t reserved;
 };
 ```
 

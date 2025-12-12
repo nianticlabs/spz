@@ -169,13 +169,7 @@ struct PackedGaussiansHeader {
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
   uint8_t flags = 0;
-  uint8_t v2Padding = 0;
-
-  // Helper methods for version-aware I/O
-  size_t getHeaderSize() const {
-    if (version >= 1) return sizeof(PackedGaussiansHeader);
-    return sizeof(uint32_t) * 2;  // Minimum to get the magic and version
-  }
+  uint8_t reserved = 0;
 };
 
 bool decompressGzippedImpl(
@@ -685,7 +679,7 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
   header.shDegree = static_cast<uint8_t>(packed.shDegree);
   header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
   header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0) | static_cast<uint8_t>(packed.extensions.empty() ? 0 : FlagHasExtensions);
-  out->write(reinterpret_cast<const char *>(&header), header.getHeaderSize());
+  out->write(reinterpret_cast<const char *>(&header), sizeof(header));
 
   // Write extensions
   writeAllExtensions(packed.extensions, *out);
@@ -702,11 +696,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   constexpr int32_t maxPointsToRead = 10000000;
 
   PackedGaussiansHeader header;
-  header.version = 0;
-
-  // Read just the magic and version to see how much we need to read
-  size_t minHeaderSize = header.getHeaderSize();
-  in.read(reinterpret_cast<char *>(&header), minHeaderSize);
+  in.read(reinterpret_cast<char *>(&header), sizeof(header));
   if (!in || header.magic != PackedGaussiansHeader().magic) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
@@ -715,20 +705,6 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
-
-  // Read remaining header data based on actual version
-  uint32_t actualVersion = header.version;
-  header.version = actualVersion;
-  size_t totalHeaderSize = header.getHeaderSize();
-  size_t remainingSize = totalHeaderSize - minHeaderSize;
-  if (remainingSize > 0) {
-    in.read(reinterpret_cast<char *>(&header) + minHeaderSize, remainingSize);
-    if (!in) {
-      SpzLog("[SPZ ERROR] deserializePackedGaussians: failed to read version %d header", actualVersion);
-      return {};
-    }
-  }
-
   if (header.numPoints > maxPointsToRead) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
     return {};

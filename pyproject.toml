@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Python bindings for SPZ file format library that compiles bindings using nanobind and scikit-build"
 readme = "README.md"
 requires-python = ">=3.8"
-dependencies = ["numpy", "plyfile>=1.1.2"]
+dependencies = ["numpy"]
 # ---------------------------------------------------------------------------
 # Tell scikit-build-core to obtain the dynamic version from CMakeLists:
 # ---------------------------------------------------------------------------

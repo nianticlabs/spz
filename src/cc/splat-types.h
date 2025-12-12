@@ -148,7 +148,7 @@ constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, Coordin
 //   - xyzw quaternion
 //   - alpha (before sigmoid activation, compute sigmoid(a) to get alpha value between 0 and 1)
 //   - rgb color (as SH DC component, compute 0.5 + 0.282095 * x to get color value between 0 and 1)
-//   - 0 to 75 spherical harmonics coefficients (see comment below)
+//   - 0 to 71 spherical harmonics coefficients (see comment below)
 struct GaussianCloud {
   // Total number of points (gaussians) in this splat.
   int32_t numPoints = 0;
