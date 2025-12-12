@@ -1,0 +1,76 @@
+
+name: Test
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} with BUILD_SHARED_LIBS=${{matrix.shared}}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        shared: [ON, OFF]
+
+    steps:
+     - uses: actions/checkout@v4
+     - uses: ilammy/msvc-dev-cmd@v1
+       if: matrix.os == 'windows-latest'
+     - name: Support longpaths
+       run: git config --system core.longpaths true
+       if: matrix.os == 'windows-latest'
+     - uses: mamba-org/setup-micromamba@v2
+       with:
+           init-shell: bash
+           environment-file: .github/environment.yml
+           environment-name: "build"
+
+     - name: Setup
+       shell: bash -l {0}
+       run: |
+           mkdir build
+
+     - name: CMake
+       shell: bash -l {0}
+       env:
+        BUILD_SHARED_LIBS: ${{ matrix.shared }}
+
+       run: |
+
+        if [ "$RUNNER_OS" == "Windows" ]; then
+        export CC=cl.exe
+        export CXX=cl.exe
+        fi
+
+        cmake   -G "Ninja"  \
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+              -DBUILD_SHARED_LIBS=$BUILD_SHARED_LIBS \
+              -DBUILD_TESTING=ON \
+              -DCMAKE_INSTALL_PREFIX=${CONDA_PREFIX} \
+              -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON \
+              ..
+
+
+       working-directory: ./build
+
+     - name: Compile
+       shell: bash -l {0}
+       run: |
+          ninja
+       working-directory: ./build
+
+     - name: Install
+       shell: bash -l {0}
+       run: |
+          ninja install
+       working-directory: ./build
+
+     - name: "There are no tests :spoon:"
+       shell: bash -l {0}
+       run: |
+          echo "There are no tests"
+       working-directory: ./build
+
