@@ -97,9 +97,15 @@ if(SPZ_BUILD_EXTENSIONS)
   target_compile_definitions(spz PUBLIC SPZ_BUILD_EXTENSIONS)
 endif()
 
+if (CMAKE_CXX_STANDARD)
+    set(SPZ_CXX ${CMAKE_CXX_STANDARD})
+else()
+    set(SPZ_CXX 17)
+endif()
+
 set_target_properties(spz PROPERTIES
   PUBLIC_HEADER "${spz_headers}"
-  CXX_STANDARD 17
+  CXX_STANDARD ${SPZ_CXX}
   CXX_STANDARD_REQUIRED ON
 )
 
@@ -209,7 +215,7 @@ if(SPZ_BUILD_TOOLS)
   target_link_libraries(ply_to_spz PRIVATE spz)
   target_include_directories(ply_to_spz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(ply_to_spz PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
   )
 
@@ -217,7 +223,7 @@ if(SPZ_BUILD_TOOLS)
   target_link_libraries(spz_to_ply PRIVATE spz)
   target_include_directories(spz_to_ply PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(spz_to_ply PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
   )
 
@@ -225,7 +231,7 @@ if(SPZ_BUILD_TOOLS)
   target_link_libraries(spz_info PRIVATE spz)
   target_include_directories(spz_info PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(spz_info PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
   )
 
