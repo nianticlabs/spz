@@ -81,8 +81,6 @@ void SpzExtensionSHQuantizationAdobe::write(std::ostream& os) const {
   os.write(reinterpret_cast<const char*>(&t), sizeof(t));
   os.write(reinterpret_cast<const char*>(&sh1Bits), sizeof(sh1Bits));
   os.write(reinterpret_cast<const char*>(&shRestBits), sizeof(shRestBits));
-  os.write(reinterpret_cast<const char*>(&shMin), sizeof(shMin));
-  os.write(reinterpret_cast<const char*>(&shMax), sizeof(shMax));
 }
 
 SpzExtensionBase* SpzExtensionSHQuantizationAdobe::copyAsRawData() const {
@@ -93,7 +91,7 @@ std::optional<SpzExtensionBasePtr> SpzExtensionSHQuantizationAdobe::read(std::is
   StreamMark mark(is);
   SpzLog("[SPZ] Found extension: SpzExtensionSHQuantizationAdobe");
   auto rec = std::make_shared<SpzExtensionSHQuantizationAdobe>();
-  if (!readExact(is, rec->sh1Bits) || !readExact(is, rec->shRestBits) || !readExact(is, rec->shMin) || !readExact(is, rec->shMax)) {
+  if (!readExact(is, rec->sh1Bits) || !readExact(is, rec->shRestBits)) {
     SpzLog("[SPZ ERROR] Failed to read all fields for SpzExtensionSHQuantizationAdobe");
     return std::nullopt;
   }
