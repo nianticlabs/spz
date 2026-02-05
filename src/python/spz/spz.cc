@@ -154,9 +154,7 @@ NB_MODULE(spz, m) {
         .def_rw("sh1_bits", &spz::PackOptions::sh1Bits,
                 "Bits of the first-order spherical harmonics")
         .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
-                "Bits of the non-first-order spherical harmonics")
-        .def_rw("enable_sh_min_max_scaling", &spz::PackOptions::enableSHMinMaxScaling,
-                "Whether to normalize the spherical harmonics before quantization");
+                "Bits of the non-first-order spherical harmonics");
 
     nb::class_<spz::UnpackOptions>(m, "UnpackOptions")
         .def(nb::init<>())
@@ -189,10 +187,6 @@ NB_MODULE(spz, m) {
                 "Bits used for first-order spherical harmonics quantization")
         .def_rw("sh_rest_bits", &spz::SpzExtensionSHQuantizationAdobe::shRestBits,
                 "Bits used for non-first-order spherical harmonics quantization")
-        .def_rw("sh_min", &spz::SpzExtensionSHQuantizationAdobe::shMin,
-                "Minimum SH coefficient value for quantization scaling")
-        .def_rw("sh_max", &spz::SpzExtensionSHQuantizationAdobe::shMax,
-                "Maximum SH coefficient value for quantization scaling")
         .def_static("type", &spz::SpzExtensionSHQuantizationAdobe::type,
                     "Static method to get the extension type enum value");
 

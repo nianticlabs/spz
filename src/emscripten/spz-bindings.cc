@@ -161,8 +161,7 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("version", &spz::PackOptions::version)
       .field("from", &spz::PackOptions::from)
       .field("sh1Bits", &spz::PackOptions::sh1Bits)
-      .field("shRestBits", &spz::PackOptions::shRestBits)
-      .field("enableSHMinMaxScaling", &spz::PackOptions::enableSHMinMaxScaling);
+      .field("shRestBits", &spz::PackOptions::shRestBits);
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 
@@ -182,8 +181,6 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .constructor<>()
       .property("sh1Bits", &spz::SpzExtensionSHQuantizationAdobe::sh1Bits)
       .property("shRestBits", &spz::SpzExtensionSHQuantizationAdobe::shRestBits)
-      .property("shMin", &spz::SpzExtensionSHQuantizationAdobe::shMin)
-      .property("shMax", &spz::SpzExtensionSHQuantizationAdobe::shMax)
       .class_function("type", &spz::SpzExtensionSHQuantizationAdobe::type);
 
   emscripten::class_<spz::SpzExtensionSafeOrbitCameraAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSafeOrbitCameraAdobe")

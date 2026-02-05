@@ -46,8 +46,6 @@ export class SpzExtensionBase {
 export class SpzExtensionSHQuantizationAdobe extends SpzExtensionBase {
   sh1Bits: number;
   shRestBits: number;
-  shMin: number;
-  shMax: number;
   constructor();
   static type(): SpzExtensionType;
 }
@@ -65,7 +63,6 @@ export interface PackOptions {
   from: CoordinateSystem;
   sh1Bits: number;
   shRestBits: number;
-  enableSHMinMaxScaling: boolean;
 }
 
 export interface UnpackOptions {

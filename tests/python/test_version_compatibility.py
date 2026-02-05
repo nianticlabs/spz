@@ -180,7 +180,7 @@ def test_version_roundtrip_consistency():
 
 
 def test_version_3_with_all_features():
-    """Test version 3 with SH degree 4, custom bits, and min/max scaling."""
+    """Test version 3 with SH degree 4, custom bits."""
     cloud = spz.GaussianCloud()
     cloud.sh_degree = 4
     cloud.antialiased = True
@@ -198,7 +198,6 @@ def test_version_3_with_all_features():
     opts.version = 3
     opts.sh1_bits = 8
     opts.sh_rest_bits = 6
-    opts.enable_sh_min_max_scaling = True
     opts.from_coord = spz.RUB
 
     filename = os.path.join(tempfile.gettempdir(), "all_features.spz")

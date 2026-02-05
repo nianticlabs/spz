@@ -89,8 +89,7 @@ struct PackedGaussian {
   std::array<uint8_t, SH_MAX_COEFFS> shB{};
 
   UnpackedGaussian unpack(
-    bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c,
-    float shMin = -1.0f, float shMax = 1.0f) const;
+    bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c) const;
 };
 
 // Represents a full splat with lower precision. Each splat has at most 64 bytes, although splats
@@ -124,7 +123,6 @@ struct PackOptions {
   // Spherical harmonics quantization parameters
   uint8_t sh1Bits = DEFAULT_SH1_BITS;      // Bits for SH degree 1 coefficients (max 8)
   uint8_t shRestBits = DEFAULT_SH_REST_BITS;   // Bits for SH degree 2+ coefficients (max 8)
-  bool enableSHMinMaxScaling = false;  // Whether to enable SH min/max scaling, useful for legacy versions.
 };
 
 struct UnpackOptions {

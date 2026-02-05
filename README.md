@@ -200,11 +200,9 @@ By default, a fixed-precision quantization is adopted, where we
 
 With extension `SPZ_ADOBE_sh_quantization`, SPZ supports configurable spherical harmonics quantization with the following improvements:
 
-1. **Adaptive Range Scaling**: Instead of assuming SH coefficients are in the [-1, 1] range, the format now computes the actual min/max values from the data and uses the full quantization range for optimal precision.
+1. **Configurable Bit Precision**: The number of quantization bits for SH degree 1 and higher degree coefficients can be configured (1-8 bits), allowing users to trade off between file size and quality. Default bits are 5 for SH degree 1 and 4 for higher ones.
 
-2. **Configurable Bit Precision**: The number of quantization bits for SH degree 1 and higher degree coefficients can be configured (1-8 bits), allowing users to trade off between file size and quality. Default bits are 5 for SH degree 1 and 4 for higher ones.
-
-3. **Backward Compatibility**: The library maintains full backward compatibility when this extension is unused.
+2. **Backward Compatibility**: The library maintains full backward compatibility when this extension is unused.
 
 **Attributes**
 
@@ -213,8 +211,6 @@ This extension has the following attributes and default values:
 ```
   uint8_t sh1Bits = 5;     // Bits for SH degree 1 coefficients
   uint8_t shRestBits = 4;  // Bits for SH degree 2+ coefficients
-  float shMin = -1.0f;     // Minimum SH coefficient value used for quantization
-  float shMax = 1.0f;      // Maximum SH coefficient value used for quantization
 ```
 
 ### Camera Orbit Limitation

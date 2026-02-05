@@ -82,35 +82,14 @@ int32_t dimForDegree(int32_t degree) {
 
 uint8_t toUint8(float x) { return static_cast<uint8_t>(std::clamp(std::round(x), 0.0f, 255.0f)); }
 
-// Quantizes to 8 bits using min/max scaling, then round to nearest bucket center. 0 always maps to a bucket center.
-uint8_t quantizeSH(float x, int32_t bucketSize, float minVal, float maxVal) {
-  if (maxVal <= minVal) {
-    return 128;  // Default to middle value if range is invalid
-  }
-  // Scale from [minVal, maxVal] to [0, 255]
-  float normalized = (x - minVal) / (maxVal - minVal);
-  int32_t q = static_cast<int>(std::round(normalized * 255.0f));
-  q = (q + bucketSize / 2) / bucketSize * bucketSize;
-  return static_cast<uint8_t>(std::clamp(q, 0, 255));
-}
-
-float unquantizeSH(uint8_t x, float minVal, float maxVal) {
-  if (maxVal <= minVal) {
-    return 0.0f;  // Default to 0 if range is invalid
-  }
-  // Scale from [0, 255] to [minVal, maxVal]
-  float normalized = static_cast<float>(x) / 255.0f;
-  return minVal + normalized * (maxVal - minVal);
-}
-
-// Legacy quantization functions for backward compatibility with older formats
-uint8_t quantizeSHLegacy(float x, int32_t bucketSize) {
+// Quantizes to 8 bits, the round to nearest bucket center. 0 always maps to a bucket center.
+uint8_t quantizeSH(float x, int32_t bucketSize) {
   int32_t q = static_cast<int>(std::round(x * 128.0f) + 128.0f);
   q = (q + bucketSize / 2) / bucketSize * bucketSize;
   return static_cast<uint8_t>(std::clamp(q, 0, 255));
 }
 
-float unquantizeSHLegacy(uint8_t x) { return (static_cast<float>(x) - 128.0f) / 128.0f; }
+float unquantizeSH(uint8_t x) { return (static_cast<float>(x) - 128.0f) / 128.0f; }
 
 float sigmoid(float x) { return 1 / (1 + std::exp(-x)); }
 
@@ -331,27 +310,10 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.fractionalBits = 12;
   packed.antialiased = g.antialiased;
 
-  float minSH = -1.0f;
-  float maxSH = 1.0f;
-  if (o.sh1Bits != DEFAULT_SH1_BITS || o.shRestBits != DEFAULT_SH_REST_BITS || o.enableSHMinMaxScaling) {
+  if (o.sh1Bits != DEFAULT_SH1_BITS || o.shRestBits != DEFAULT_SH_REST_BITS) {
     auto ext = std::make_shared<SpzExtensionSHQuantizationAdobe>();
     ext->sh1Bits = o.sh1Bits;
     ext->shRestBits = o.shRestBits;
-
-    // Compute min/max of SH coefficients for optimal quantization
-    if (o.enableSHMinMaxScaling && g.shDegree > 0 && !g.sh.empty()) {
-      minSH = *std::min_element(g.sh.begin(), g.sh.end());
-      maxSH = *std::max_element(g.sh.begin(), g.sh.end());
-
-      // Ensure we have a valid range
-      if (maxSH <= minSH) {
-        minSH = -1.0f;
-        maxSH = 1.0f;
-       }
-
-       ext->shMin = minSH;
-       ext->shMax = maxSH;
-    }
     packed.extensions.push_back(ext);
   }
 
@@ -414,14 +376,14 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
       size_t j = 0, k = 0;
       for (; j < 9; j += 3, k++) {  // There are 9 (3 * 3) coefficients for degree 1
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - o.sh1Bits), minSH, maxSH);
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - o.sh1Bits), minSH, maxSH);
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - o.sh1Bits), minSH, maxSH);
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - o.sh1Bits));
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - o.sh1Bits));
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - o.sh1Bits));
       }
       for (; j < shPerPoint; j += 3, k++) {
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - o.shRestBits), minSH, maxSH);
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - o.shRestBits), minSH, maxSH);
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - o.shRestBits), minSH, maxSH);
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - o.shRestBits));
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - o.shRestBits));
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - o.shRestBits));
       }
     }
   }
@@ -480,8 +442,7 @@ void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const 
 }
 
 UnpackedGaussian PackedGaussian::unpack(
-  bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c,
-  float shMin, float shMax) const {
+  bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c) const {
   UnpackedGaussian result;
   if (usesFloat16) {
     // Decode legacy float16 format. We can remove this at some point as it was never released.
@@ -521,17 +482,9 @@ UnpackedGaussian PackedGaussian::unpack(
   }
 
   for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
-    if (shMin == -1.0f && shMax == 1.0f) {
-      // Use legacy unquantization for backward compatibility
-      result.shR[i] = c.flipSh[i] * unquantizeSHLegacy(shR[i]);
-      result.shG[i] = c.flipSh[i] * unquantizeSHLegacy(shG[i]);
-      result.shB[i] = c.flipSh[i] * unquantizeSHLegacy(shB[i]);
-    } else {
-      // Use new min/max scaled unquantization
-      result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i], shMin, shMax);
-      result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i], shMin, shMax);
-      result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i], shMin, shMax);
-    }
+    result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i]);
+    result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i]);
+    result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i]);
   }
 
   return result;
@@ -567,13 +520,7 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
 }
 
 UnpackedGaussian PackedGaussians::unpack(int32_t i, const CoordinateConverter &c) const {
-  float shMin = -1.0f;
-  float shMax = 1.0f;
-  if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(extensions)) {
-    shMin = extQuant->shMin;
-    shMax = extQuant->shMax;
-  }
-  return at(i).unpack(usesFloat16(), usesQuaternionSmallestThree, fractionalBits, c, shMin, shMax);
+  return at(i).unpack(usesFloat16(), usesQuaternionSmallestThree, fractionalBits, c);
 }
 
 bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }
@@ -649,23 +596,8 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
     result.colors[i] = ((packed.colors[i] / 255.0f) - 0.5f) / colorScale;
   }
 
-  float shMin = -1.0f;
-  float shMax = 1.0f;
-
-  if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(packed.extensions)) {
-    // Use SH quantization parameters from the extension
-    shMin = extQuant->shMin;
-    shMax = extQuant->shMax;
-  }
-
   for (size_t i = 0; i < packed.sh.size(); i++) {
-    if (shMin == -1.0f && shMax == 1.0f) {
-      // Use legacy unquantization for backward compatibility
-      result.sh[i] = unquantizeSHLegacy(packed.sh[i]);
-    } else {
-      // Use new min/max scaled unquantization
-      result.sh[i] = unquantizeSH(packed.sh[i], shMin, shMax);
-    }
+    result.sh[i] = unquantizeSH(packed.sh[i]);
   }
 
   result.convertCoordinates(CoordinateSystem::RUB, o.to);
