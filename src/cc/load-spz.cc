@@ -138,7 +138,9 @@ bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
 }
 
 constexpr uint8_t FlagAntialiased = 0x1;
+#ifdef SPZ_BUILD_EXTENSIONS
 constexpr uint8_t FlagHasExtensions = 0x2;
+#endif
 
 // We always pad the attributes in this header explicitly to the 4-byte boundary to ensure compatibility when
 // reading from files that may have been written with different compilers or settings.
@@ -623,17 +625,17 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
     ;
   out->write(reinterpret_cast<const char *>(&header), sizeof(header));
 
-  // Write extensions
-#ifdef SPZ_BUILD_EXTENSIONS
-  writeAllExtensions(packed.extensions, *out);
-#endif
-
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
   out->write(reinterpret_cast<const char *>(packed.colors.data()), countBytes(packed.colors));
   out->write(reinterpret_cast<const char *>(packed.scales.data()), countBytes(packed.scales));
   out->write(reinterpret_cast<const char *>(packed.rotations.data()), countBytes(packed.rotations));
   out->write(reinterpret_cast<const char *>(packed.sh.data()), countBytes(packed.sh));
+
+  // Write extensions at the end
+#ifdef SPZ_BUILD_EXTENSIONS
+  writeAllExtensions(packed.extensions, *out);
+#endif
 }
 
 PackedGaussians deserializePackedGaussians(std::istream &in) {
@@ -661,24 +663,19 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
   const bool usesQuaternionSmallestThree = header.version >= 3;
+  const bool hasExtensions =
+#ifdef SPZ_BUILD_EXTENSIONS
+    (header.flags & FlagHasExtensions) != 0
+#else
+    false
+#endif
+  ;
   PackedGaussians result;
   result.version = header.version;
   result.numPoints = numPoints;
   result.shDegree = header.shDegree;
   result.fractionalBits = header.fractionalBits;
   result.antialiased = (header.flags & FlagAntialiased) != 0;
-
-  const bool hasExtensions = (header.flags & FlagHasExtensions) != 0;
-#ifdef SPZ_BUILD_EXTENSIONS
-  if (hasExtensions)
-    readAllExtensions(in, result.extensions);
-
-  // Validate extensions
-  if (!validateExtensions(result.extensions)) {
-    return {};
-  }
-#endif
-
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
   result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
@@ -692,10 +689,24 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   in.read(reinterpret_cast<char *>(result.scales.data()), countBytes(result.scales));
   in.read(reinterpret_cast<char *>(result.rotations.data()), countBytes(result.rotations));
   in.read(reinterpret_cast<char *>(result.sh.data()), countBytes(result.sh));
-  if (!in) {
+
+  // Read extensions at the end
+#ifdef SPZ_BUILD_EXTENSIONS
+  if (hasExtensions) {
+    readAllExtensions(in, result.extensions);
+
+    // Validate extensions
+    if (!validateExtensions(result.extensions)) {
+      return {};
+    }
+  }
+#endif
+
+if (!in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: read error");
     return {};
   }
+
   return result;
 }
 
