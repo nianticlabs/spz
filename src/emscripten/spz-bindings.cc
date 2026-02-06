@@ -46,7 +46,7 @@ struct EmGaussianCloud {
   int32_t numPoints;
   int32_t shDegree;
   bool antialiased;
-  emscripten::val extensions;
+  emscripten::val extensions;  // Always present, but empty array when extensions disabled
   emscripten::val positions;
   emscripten::val scales;
   emscripten::val rotations;
@@ -101,7 +101,11 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   emCloud.numPoints = cloud.numPoints;
   emCloud.shDegree = cloud.shDegree;
   emCloud.antialiased = cloud.antialiased;
+#ifdef SPZ_BUILD_EXTENSIONS
   emCloud.extensions = jsArrayFromVector(cloud.extensions);
+#else
+  emCloud.extensions = emscripten::val::array();  // Empty array when extensions disabled
+#endif
   emCloud.positions = jsFloat32ArrayFromVector(cloud.positions);
   emCloud.scales = jsFloat32ArrayFromVector(cloud.scales);
   emCloud.rotations = jsFloat32ArrayFromVector(cloud.rotations);
@@ -118,7 +122,9 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   cloud.shDegree = emCloud.shDegree;
   cloud.antialiased = emCloud.antialiased;
 
+#ifdef SPZ_BUILD_EXTENSIONS
   vectorFromJsArray(emCloud.extensions, cloud.extensions);
+#endif
   vectorFromJsArray(emCloud.positions, cloud.positions);
   vectorFromJsArray(emCloud.scales, cloud.scales);
   vectorFromJsArray(emCloud.rotations, cloud.rotations);
@@ -149,6 +155,7 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .value("LUF", spz::CoordinateSystem::LUF)
       .value("RUF", spz::CoordinateSystem::RUF);
 
+#ifdef SPZ_BUILD_EXTENSIONS
   emscripten::enum_<spz::SpzExtensionType>("SpzExtensionType")
       .value("SPZ_ADOBE_sh_quantization", spz::SpzExtensionType::SPZ_ADOBE_sh_quantization)
       .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera);
@@ -156,6 +163,20 @@ EMSCRIPTEN_BINDINGS(spz_module) {
   emscripten::class_<spz::SpzExtensionBase>("SpzExtensionBase")
       .smart_ptr<std::shared_ptr<spz::SpzExtensionBase>>("SpzExtensionBasePtr")
       .property("extensionType", &spz::SpzExtensionBase::extensionType);
+
+  emscripten::class_<spz::SpzExtensionSHQuantizationAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSHQuantizationAdobe")
+      .constructor<>()
+      .property("sh1Bits", &spz::SpzExtensionSHQuantizationAdobe::sh1Bits)
+      .property("shRestBits", &spz::SpzExtensionSHQuantizationAdobe::shRestBits)
+      .class_function("type", &spz::SpzExtensionSHQuantizationAdobe::type);
+
+  emscripten::class_<spz::SpzExtensionSafeOrbitCameraAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSafeOrbitCameraAdobe")
+      .constructor<>()
+      .property("safeOrbitElevationMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMin)
+      .property("safeOrbitElevationMax", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
+      .property("safeOrbitRadiusMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)
+      .class_function("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type);
+#endif
 
   emscripten::value_object<spz::PackOptions>("PackOptions")
       .field("version", &spz::PackOptions::version)
@@ -176,19 +197,6 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("alphas", &EmGaussianCloud::alphas)
       .field("colors", &EmGaussianCloud::colors)
       .field("sh", &EmGaussianCloud::sh);
-
-  emscripten::class_<spz::SpzExtensionSHQuantizationAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSHQuantizationAdobe")
-      .constructor<>()
-      .property("sh1Bits", &spz::SpzExtensionSHQuantizationAdobe::sh1Bits)
-      .property("shRestBits", &spz::SpzExtensionSHQuantizationAdobe::shRestBits)
-      .class_function("type", &spz::SpzExtensionSHQuantizationAdobe::type);
-
-  emscripten::class_<spz::SpzExtensionSafeOrbitCameraAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSafeOrbitCameraAdobe")
-      .constructor<>()
-      .property("safeOrbitElevationMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMin)
-      .property("safeOrbitElevationMax", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
-      .property("safeOrbitRadiusMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)
-      .class_function("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type);
 
   emscripten::function("loadSpzFromBuffer", &loadSpzFromBuffer);
   emscripten::function("saveSpzToBuffer", &saveSpzToBuffer);

@@ -13,6 +13,9 @@ option(SPZ_BUILD_PYTHON_BINDINGS "Build Python bindings using nanobind" OFF)
 # --- Command Line Tools Option ---
 option(SPZ_BUILD_TOOLS "Build command line tools" ON)
 
+# --- Extensions Option ---
+option(SPZ_BUILD_EXTENSIONS "Build SPZ extensions support" OFF)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(SPZ_BUILD_PYTHON_BINDINGS OFF CACHE BOOL "Build Python bindings using nanobind" FORCE)
   set(SPZ_BUILD_TOOLS OFF CACHE BOOL "Build command line tools" FORCE)
@@ -50,15 +53,22 @@ set(spz_sources
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-types.cc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-extensions.cc"
 )
 
 set(spz_headers
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-types.h"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-extensions.h"
 )
+
+if(SPZ_BUILD_EXTENSIONS)
+  list(APPEND spz_sources
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.cc"
+  )
+  list(APPEND spz_headers
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.h"
+  )
+endif()
 
 # create the library and configure it
 add_library(spz ${spz_sources})
@@ -79,6 +89,13 @@ target_include_directories(spz
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/cc>
   INTERFACE $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+
+if(SPZ_BUILD_EXTENSIONS)
+  target_include_directories(spz
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc>
+  )
+  target_compile_definitions(spz PUBLIC SPZ_BUILD_EXTENSIONS)
+endif()
 
 set_target_properties(spz PROPERTIES
   PUBLIC_HEADER "${spz_headers}"

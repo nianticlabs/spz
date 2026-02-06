@@ -24,7 +24,9 @@ SOFTWARE.
 */
 
 #include "load-spz.h"
+#ifdef SPZ_BUILD_EXTENSIONS
 #include "splat-extensions.h"
+#endif
 
 #include <zlib.h>
 
@@ -310,6 +312,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.fractionalBits = 12;
   packed.antialiased = g.antialiased;
 
+#ifdef SPZ_BUILD_EXTENSIONS
   if (o.sh1Bits != DEFAULT_SH1_BITS || o.shRestBits != DEFAULT_SH_REST_BITS) {
     auto ext = std::make_shared<SpzExtensionSHQuantizationAdobe>();
     ext->sh1Bits = o.sh1Bits;
@@ -319,6 +322,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
   // other extensions in GaussianCloud
   packed.extensions.insert(packed.extensions.end(), g.extensions.begin(), g.extensions.end());
+#endif
 
   if (o.version >= 3) {
     packed.usesQuaternionSmallestThree = true;
@@ -539,6 +543,7 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   result.shDegree = packed.shDegree;
   result.antialiased = packed.antialiased;
 
+#ifdef SPZ_BUILD_EXTENSIONS
   // We pick the extensions that should be stored in GaussianCloud while ignoring the others.
   for (auto ext : packed.extensions) {
     switch (ext->extensionType)
@@ -550,6 +555,7 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
         break;
     }
   }
+#endif
 
   result.positions.resize(numPoints * 3);
   result.scales.resize(numPoints * 3);
@@ -610,11 +616,17 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
   header.numPoints = static_cast<uint32_t>(packed.numPoints);
   header.shDegree = static_cast<uint8_t>(packed.shDegree);
   header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
-  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0) | static_cast<uint8_t>(packed.extensions.empty() ? 0 : FlagHasExtensions);
+  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0)
+#ifdef SPZ_BUILD_EXTENSIONS
+    | static_cast<uint8_t>(packed.extensions.empty() ? 0 : FlagHasExtensions)
+#endif
+    ;
   out->write(reinterpret_cast<const char *>(&header), sizeof(header));
 
   // Write extensions
+#ifdef SPZ_BUILD_EXTENSIONS
   writeAllExtensions(packed.extensions, *out);
+#endif
 
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
@@ -657,17 +669,15 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   result.antialiased = (header.flags & FlagAntialiased) != 0;
 
   const bool hasExtensions = (header.flags & FlagHasExtensions) != 0;
+#ifdef SPZ_BUILD_EXTENSIONS
   if (hasExtensions)
     readAllExtensions(in, result.extensions);
 
-  // Validate SH quantization bit parameters
-  if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(result.extensions)) {
-    if (extQuant->sh1Bits > 8 || extQuant->shRestBits > 8) {
-        SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
-            extQuant->sh1Bits, extQuant->shRestBits);
-        return {};
-    }
+  // Validate extensions
+  if (!validateExtensions(result.extensions)) {
+    return {};
   }
+#endif
 
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
@@ -833,13 +843,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
   };
 
   // Track extra elements (non-vertex) to handle their data
-  struct ExtraElement {
-    std::string name;
-    int32_t count;
-    size_t bytesPerElement;
-    bool isKnown;  // true for elements we explicitly handle (like safe_orbit)
-  };
-  std::vector<ExtraElement> extraElements;
+  std::vector<PlyExtraElement> extraElements;
 
   // State machine for parsing header
   enum class ParseState { IN_VERTEX, IN_EXTRA_ELEMENT };
@@ -905,17 +909,6 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     }
     std::string name = line.substr(std::strlen("property float "));
     fields[name] = i;
-  }
-
-  // Identify known elements
-  bool hasSafeOrbitElevation = false;
-  bool hasSafeOrbitRadius = false;
-  for (const auto& elem : extraElements) {
-    if (elem.name == "safe_orbit_camera_elevation_min_max_radians") {
-      hasSafeOrbitElevation = true;
-    } else if (elem.name == "safe_orbit_camera_radius_min") {
-      hasSafeOrbitRadius = true;
-    }
   }
 
   // Returns the index for a given field name, ensuring the name exists.
@@ -985,21 +978,10 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     return {};
   }
 
-  // Read safe orbit data if present
-  float safeOrbitElevationMin = 0.0f, safeOrbitElevationMax = 0.0f, safeOrbitRadiusMin = 0.0f;
-  bool hasSafeOrbit = false;
-  if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
-    float safeOrbitData[3];
-    in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
-    if (in.good()) {
-      safeOrbitElevationMin = safeOrbitData[0];
-      safeOrbitElevationMax = safeOrbitData[1];
-      safeOrbitRadiusMin = safeOrbitData[2];
-      SpzLog("[SPZ] Loaded safe orbit data: elevation [%f, %f], radius min %f",
-             safeOrbitElevationMin, safeOrbitElevationMax, safeOrbitRadiusMin);
-    }
-    hasSafeOrbit = true;
-  }
+  GaussianCloud result;
+#ifdef SPZ_BUILD_EXTENSIONS
+  readExtensionsFromPly(in, extraElements, result.extensions);
+#endif
 
   // Skip data for extra elements (they appear after vertex and safe orbit data in the file)
   for (const auto& elem : extraElements) {
@@ -1013,14 +995,6 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   in.close();
 
-  GaussianCloud result;
-  if (hasSafeOrbit) {
-    auto extSafeOrbit = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>();
-    extSafeOrbit->safeOrbitElevationMin = safeOrbitElevationMin;
-    extSafeOrbit->safeOrbitElevationMax = safeOrbitElevationMax;
-    extSafeOrbit->safeOrbitRadiusMin = safeOrbitRadiusMin;
-    result.extensions.push_back(extSafeOrbit);
-  }
   result.numPoints = numPoints;
   result.shDegree = degreeForDim(shDim);
   result.positions.reserve(numPoints * 3);
@@ -1137,27 +1111,16 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out << "property float rot_2\n";
   out << "property float rot_3\n";
 
-  // Add safe orbit elements if present
-  auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(data.extensions);
-  if (extSafeOrbit) {
-    out << "element safe_orbit_camera_elevation_min_max_radians 2\n";
-    out << "property float safe_orbit_camera_elevation_min_max_radians\n";
-    out << "element safe_orbit_camera_radius_min 1\n";
-    out << "property float safe_orbit_camera_radius_min\n";
-  }
+#ifdef SPZ_BUILD_EXTENSIONS
+  writeExtensionsToPlyHeader(data.extensions, out);
+#endif
 
   out << "end_header\n";
   out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
 
-  // Write safe orbit data if present
-  if (extSafeOrbit) {
-    float safeOrbitData[3] = {
-      extSafeOrbit->safeOrbitElevationMin,
-      extSafeOrbit->safeOrbitElevationMax,
-      extSafeOrbit->safeOrbitRadiusMin
-    };
-    out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
-  }
+#ifdef SPZ_BUILD_EXTENSIONS
+  writeExtensionsToPlyData(data.extensions, out);
+#endif
 
   out.close();
   if (!out.good()) {

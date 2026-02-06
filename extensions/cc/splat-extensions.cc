@@ -150,4 +150,68 @@ void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostre
   for (const auto& rec : list)
     rec->write(os);
 }
+
+bool validateExtensions(const std::vector<SpzExtensionBasePtr>& extensions) {
+  // Validate SH quantization bit parameters
+  if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(extensions)) {
+    if (extQuant->sh1Bits > 8 || extQuant->shRestBits > 8) {
+      SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
+          extQuant->sh1Bits, extQuant->shRestBits);
+      return false;
+    }
+  }
+  return true;
+}
+
+void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions) {
+  // Identify known extension elements
+  bool hasSafeOrbitElevation = false;
+  bool hasSafeOrbitRadius = false;
+  for (const auto& elem : extraElements) {
+    if (elem.name == "safe_orbit_camera_elevation_min_max_radians") {
+      hasSafeOrbitElevation = true;
+    } else if (elem.name == "safe_orbit_camera_radius_min") {
+      hasSafeOrbitRadius = true;
+    }
+  }
+
+  // Read safe orbit data if present
+  if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
+    float safeOrbitData[3];
+    in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
+    if (in.good()) {
+      auto extSafeOrbit = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>();
+      extSafeOrbit->safeOrbitElevationMin = safeOrbitData[0];
+      extSafeOrbit->safeOrbitElevationMax = safeOrbitData[1];
+      extSafeOrbit->safeOrbitRadiusMin = safeOrbitData[2];
+      SpzLog("[SPZ] Loaded safe orbit data: elevation [%f, %f], radius min %f",
+             extSafeOrbit->safeOrbitElevationMin, extSafeOrbit->safeOrbitElevationMax, extSafeOrbit->safeOrbitRadiusMin);
+      extensions.push_back(extSafeOrbit);
+    }
+  }
+}
+
+void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out) {
+  // Add safe orbit elements if present
+  auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(extensions);
+  if (extSafeOrbit) {
+    out << "element safe_orbit_camera_elevation_min_max_radians 2\n";
+    out << "property float safe_orbit_camera_elevation_min_max_radians\n";
+    out << "element safe_orbit_camera_radius_min 1\n";
+    out << "property float safe_orbit_camera_radius_min\n";
+  }
+}
+
+void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out) {
+  // Write safe orbit data if present
+  auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(extensions);
+  if (extSafeOrbit) {
+    float safeOrbitData[3] = {
+      extSafeOrbit->safeOrbitElevationMin,
+      extSafeOrbit->safeOrbitElevationMax,
+      extSafeOrbit->safeOrbitRadiusMin
+    };
+    out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
+  }
+}
 }  // namespace spz
