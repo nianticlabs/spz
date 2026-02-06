@@ -32,10 +32,19 @@ SOFTWARE.
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <sstream>
 #include <vector>
 
+// C-compatible extension node structure (used for C interop)
+typedef struct SpzExtensionNode {
+  uint32_t type;
+  void* data;
+  struct SpzExtensionNode* next;
+} SpzExtensionNode;
+
 namespace spz {
+// Forward declaration to avoid circular dependency
+// The full definition is in load-spz.h, which is included in splat-extensions.cc
+struct PlyExtraElement;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_sh_quantization = 0xADBE0001u,
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
@@ -79,6 +88,35 @@ struct SpzExtensionSafeOrbitCameraAdobe : public SpzExtensionBase {
 void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out);
 
 void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostream& os);
+
+bool validateExtensions(const std::vector<SpzExtensionBasePtr>& extensions);
+
+void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions);
+
+void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
+
+void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
+
+inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
+  SpzExtensionNode* head = nullptr;
+  SpzExtensionNode* tail = nullptr;
+
+  for (const auto& ext : extensions) {
+    if (!ext) continue;  // Skip null extensions
+
+    SpzExtensionNode* node = new SpzExtensionNode{static_cast<uint32_t>(ext->extensionType), ext->copyAsRawData(), nullptr};
+
+    if (!head) {
+      head = node;
+      tail = node;
+    } else {
+      tail->next = node;
+      tail = node;
+    }
+  }
+
+  return head;
+}
 
 template <typename T>
 std::shared_ptr<T> findExtensionByType(const std::vector<SpzExtensionBasePtr>& list) {

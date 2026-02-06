@@ -31,7 +31,9 @@ SOFTWARE.
 #include <vector>
 
 #include "splat-types.h"
+#ifdef SPZ_BUILD_EXTENSIONS
 #include "splat-extensions.h"
+#endif
 
 namespace spz {
 #ifdef ANDROID
@@ -109,7 +111,9 @@ struct PackedGaussians {
   std::vector<uint8_t> colors;
   std::vector<uint8_t> sh;
 
+#ifdef SPZ_BUILD_EXTENSIONS
   std::vector<SpzExtensionBasePtr> extensions;  // List of extensions, if any
+#endif
 
   bool usesFloat16() const;
   PackedGaussian at(int32_t i) const;
@@ -127,6 +131,14 @@ struct PackOptions {
 
 struct UnpackOptions {
   CoordinateSystem to = CoordinateSystem::UNSPECIFIED;
+};
+
+// Structure for PLY extra elements (non-vertex elements)
+struct PlyExtraElement {
+  std::string name;
+  int32_t count;
+  size_t bytesPerElement;
+  bool isKnown;  // true for elements we explicitly handle (like safe_orbit)
 };
 
 // Saves Gaussian splat in packed format, returning a vector of bytes.

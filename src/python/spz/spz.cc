@@ -11,7 +11,9 @@
 
 #include "src/cc/load-spz.h"
 #include "src/cc/splat-types.h"
-#include "src/cc/splat-extensions.h"
+#ifdef SPZ_BUILD_EXTENSIONS
+#include "splat-extensions.h"
+#endif
 
 namespace nb = nanobind;
 
@@ -164,6 +166,7 @@ NB_MODULE(spz, m) {
     // -------------------------------------------------------------------------
     // Extensions structs
     // -------------------------------------------------------------------------
+#ifdef SPZ_BUILD_EXTENSIONS
     nb::enum_<spz::SpzExtensionType>(m, "SpzExtensionType", R"doc(
         Enumeration of vendor-specific SPZ extension types.
         More extensions may be added in the future, with their values defined as
@@ -200,6 +203,7 @@ NB_MODULE(spz, m) {
                 "Minimum radius for safe orbit")
         .def_static("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type,
                     "Static method to get the extension type enum value");
+#endif
 
     // -------------------------------------------------------------------------
     // GaussianCloud - Main data structure for 3D Gaussian splats

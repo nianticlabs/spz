@@ -38,11 +38,12 @@ typedef struct {
   float *data;
 } SpzFloatBuffer;
 
-typedef struct SpzExtensionNode {
-  uint32_t type;
-  void* data;
-  SpzExtensionNode* next;
-} SpzExtensionNode;
+// Forward declaration - full definition is in splat-extensions.h
+#ifdef SPZ_BUILD_EXTENSIONS
+#include "splat-extensions.h"
+#else
+typedef struct SpzExtensionNode SpzExtensionNode;
+#endif
 
 typedef struct {
   int32_t numPoints;
