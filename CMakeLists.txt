@@ -131,13 +131,22 @@ if(SPZ_BUILD_WASM)
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dist"
   )
 
-  # Copy the TypeScript declaration file
-  add_custom_command(
-    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz.d.ts"
-            "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz.d.ts"
+  # Generate the TypeScript declaration file conditionally based on SPZ_BUILD_EXTENSIONS
+  if(SPZ_BUILD_EXTENSIONS)
+    # Read the extensions TypeScript definitions
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions.d.ts.in" SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions-modules.d.ts.in" SPZ_EXTENSIONS_MODULE_INTERFACE)
+    set(SPZ_EXTENSIONS_GAUSSIAN_CLOUD_FIELD "  extensions: SpzExtensionBase[];")
+  else()
+    set(SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS "")
+    set(SPZ_EXTENSIONS_GAUSSIAN_CLOUD_FIELD "")
+    set(SPZ_EXTENSIONS_MODULE_INTERFACE "")
+  endif()
+
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz.d.ts.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
+    @ONLY
   )
 
   add_custom_target(copy_spz_dts ALL
