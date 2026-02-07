@@ -1,0 +1,3 @@
+  sh1Bits: number;
+  shRestBits: number;
+

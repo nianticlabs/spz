@@ -214,4 +214,21 @@ void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions
     out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
   }
 }
+
+bool addExtendedPackOptions(const PackOptions& options, PackedGaussians& packed) {
+  if (options.sh1Bits != DEFAULT_SH1_BITS || options.shRestBits != DEFAULT_SH_REST_BITS) {
+    // Validate SH quantization bit parameters
+    if (options.sh1Bits > 8 || options.shRestBits > 8) {
+      SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
+             options.sh1Bits, options.shRestBits);
+      return false;
+    }
+
+    auto ext = std::make_shared<SpzExtensionSHQuantizationAdobe>();
+    ext->sh1Bits = options.sh1Bits;
+    ext->shRestBits = options.shRestBits;
+    packed.extensions.push_back(ext);
+  }
+  return true;
+}
 }  // namespace spz

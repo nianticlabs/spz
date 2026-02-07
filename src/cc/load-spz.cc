@@ -290,13 +290,6 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     return {};
   }
 
-  // Validate SH quantization bit parameters
-  if (o.sh1Bits > 8 || o.shRestBits > 8) {
-    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
-           o.sh1Bits, o.shRestBits);
-    return {};
-  }
-
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
   if (o.version < 3 && g.shDegree > 3) {
@@ -315,11 +308,8 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.antialiased = g.antialiased;
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  if (o.sh1Bits != DEFAULT_SH1_BITS || o.shRestBits != DEFAULT_SH_REST_BITS) {
-    auto ext = std::make_shared<SpzExtensionSHQuantizationAdobe>();
-    ext->sh1Bits = o.sh1Bits;
-    ext->shRestBits = o.shRestBits;
-    packed.extensions.push_back(ext);
+  if (!addExtendedPackOptions(o, packed)) {
+    return {};
   }
 
   // other extensions in GaussianCloud
@@ -378,18 +368,25 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
   if (g.shDegree > 0) {
     // Use configurable spherical harmonics quantization parameters
+#ifdef SPZ_BUILD_EXTENSIONS
+    const uint8_t sh1Bits = o.sh1Bits;
+    const uint8_t shRestBits = o.shRestBits;
+#else
+    const uint8_t sh1Bits = DEFAULT_SH1_BITS;
+    const uint8_t shRestBits = DEFAULT_SH_REST_BITS;
+#endif
     const int32_t shPerPoint = dimForDegree(g.shDegree) * 3;
     for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
       size_t j = 0, k = 0;
       for (; j < 9; j += 3, k++) {  // There are 9 (3 * 3) coefficients for degree 1
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - o.sh1Bits));
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - o.sh1Bits));
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - o.sh1Bits));
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - sh1Bits));
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - sh1Bits));
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - sh1Bits));
       }
       for (; j < shPerPoint; j += 3, k++) {
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - o.shRestBits));
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - o.shRestBits));
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - o.shRestBits));
+        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - shRestBits));
+        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - shRestBits));
+        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - shRestBits));
       }
     }
   }

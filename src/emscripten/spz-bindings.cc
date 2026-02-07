@@ -181,8 +181,11 @@ EMSCRIPTEN_BINDINGS(spz_module) {
   emscripten::value_object<spz::PackOptions>("PackOptions")
       .field("version", &spz::PackOptions::version)
       .field("from", &spz::PackOptions::from)
+#ifdef SPZ_BUILD_EXTENSIONS
       .field("sh1Bits", &spz::PackOptions::sh1Bits)
-      .field("shRestBits", &spz::PackOptions::shRestBits);
+      .field("shRestBits", &spz::PackOptions::shRestBits)
+#endif
+      ;
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 

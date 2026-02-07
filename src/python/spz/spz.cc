@@ -153,10 +153,13 @@ NB_MODULE(spz, m) {
                 "SPZ version of the input splat")
         .def_rw("from_coord", &spz::PackOptions::from,
                 "Coordinate system of the input splat")
+#ifdef SPZ_BUILD_EXTENSIONS
         .def_rw("sh1_bits", &spz::PackOptions::sh1Bits,
                 "Bits of the first-order spherical harmonics")
         .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
-                "Bits of the non-first-order spherical harmonics");
+                "Bits of the non-first-order spherical harmonics")
+#endif
+        ;
 
     nb::class_<spz::UnpackOptions>(m, "UnpackOptions")
         .def(nb::init<>())
