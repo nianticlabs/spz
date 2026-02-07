@@ -124,9 +124,12 @@ struct PackOptions {
   uint32_t version = LATEST_SPZ_HEADER_VERSION;  // Version of the packed format
 
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
+
+#ifdef SPZ_BUILD_EXTENSIONS
   // Spherical harmonics quantization parameters
   uint8_t sh1Bits = DEFAULT_SH1_BITS;      // Bits for SH degree 1 coefficients (max 8)
   uint8_t shRestBits = DEFAULT_SH_REST_BITS;   // Bits for SH degree 2+ coefficients (max 8)
+#endif
 };
 
 struct UnpackOptions {

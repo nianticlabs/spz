@@ -97,6 +97,14 @@ void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensio
 
 void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
 
+// Forward declarations
+struct PackOptions;
+struct PackedGaussians;
+
+// Add extensions to packed based on pack options (e.g., SH quantization)
+// Returns false if validation fails, true otherwise
+bool addExtendedPackOptions(const PackOptions& options, PackedGaussians& packed);
+
 inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
   SpzExtensionNode* head = nullptr;
   SpzExtensionNode* tail = nullptr;
