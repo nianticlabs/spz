@@ -1138,4 +1138,12 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   return true;
 }
 
+bool hasExtensionSupport() {
+#ifdef SPZ_BUILD_EXTENSIONS
+  return true;
+#else
+  return false;
+#endif
+}
+
 }  // namespace spz

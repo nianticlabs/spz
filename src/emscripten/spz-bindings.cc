@@ -203,5 +203,6 @@ EMSCRIPTEN_BINDINGS(spz_module) {
 
   emscripten::function("loadSpzFromBuffer", &loadSpzFromBuffer);
   emscripten::function("saveSpzToBuffer", &saveSpzToBuffer);
+  emscripten::function("SpzHasExtensionSupport", &spz::hasExtensionSupport);
   emscripten::constant("LATEST_SPZ_HEADER_VERSION", spz::LATEST_SPZ_HEADER_VERSION);
 }

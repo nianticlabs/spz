@@ -415,4 +415,7 @@ NB_MODULE(spz, m) {
     m.def("save_splat_to_ply", (bool (*)(const spz::GaussianCloud &, const spz::PackOptions &, const std::string &)) &spz::saveSplatToPly,
           nb::arg("gaussians"), nb::arg("options"), nb::arg("filename"),
           "Write GaussianCloud data to a *.ply* file.");
+
+    m.def("has_extension_support", &spz::hasExtensionSupport,
+          "Returns True if the build has extension support enabled, False otherwise.");
 }
