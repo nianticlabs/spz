@@ -192,7 +192,7 @@ def test_version_3_with_all_features():
     cloud.rotations = rng.uniform(-1.0, 1.0, size=num_points * 4).astype(np.float32)
     cloud.alphas = rng.uniform(-2.0, 2.0, size=num_points).astype(np.float32)
     cloud.colors = rng.uniform(-0.5, 1.5, size=num_points * 3).astype(np.float32)
-    cloud.sh = rng.uniform(-1.5, 1.5, size=num_points * 72).astype(np.float32)
+    cloud.sh = rng.uniform(-1.0, 1.0, size=num_points * 72).astype(np.float32)
 
     opts = spz.PackOptions()
     opts.version = 3

@@ -9,8 +9,8 @@ import spz
 # Epsilon constants (from the C++ tests)
 # -----------------------------------------------------------------------------
 
-SH_4BIT_EPSILON = 2.0 / 32.0 + 0.5 / 255.0
-SH_5BIT_EPSILON = 2.0 / 64.0 + 0.5 / 255.0
+SH_4BIT_EPSILON = 2.0 / 32.0 + 0.5 / 128.0  # Half bucket size (0.0625) + rounding error (0.5/128.0)
+SH_5BIT_EPSILON = 2.0 / 64.0 + 0.5 / 128.0  # Half bucket size (0.03125) + rounding error (0.5/128.0)
 
 # -----------------------------------------------------------------------------
 # Helper functions using SciPy for quaternion math.

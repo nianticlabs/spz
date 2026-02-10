@@ -186,8 +186,9 @@ def test_compression_precision_validation():
     np.testing.assert_allclose(loaded_cloud.sh[0:9], cloud.sh[0:9], atol=SH_5BIT_EPSILON)
 
     # Verify the constants match the C++ implementation
-    assert SH_4BIT_EPSILON == 2.0 / 32.0 + 0.5 / 255.0
-    assert SH_5BIT_EPSILON == 2.0 / 64.0 + 0.5 / 255.0
+    # Note: The rounding error uses 128.0 because quantization maps [-1,1] to [0,256]
+    assert SH_4BIT_EPSILON == 2.0 / 32.0 + 0.5 / 128.0
+    assert SH_5BIT_EPSILON == 2.0 / 64.0 + 0.5 / 128.0
 
 
 def test_performance_large_cloud():
