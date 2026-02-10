@@ -44,6 +44,16 @@ void setExtensionsToCloud(const ::emscripten::val& emExtensions, spz::GaussianCl
   vectorFromJsArray(emExtensions, cloud.extensions);
 }
 
+// Helper function to get extensions from PackOptions
+::emscripten::val getExtensionsFromPackOptions(const spz::PackOptions& options) {
+  return jsArrayFromVector(options.extensions);
+}
+
+// Helper function to set extensions in PackOptions
+void setExtensionsToPackOptions(const ::emscripten::val& emExtensions, spz::PackOptions& options) {
+  vectorFromJsArray(emExtensions, options.extensions);
+}
+
 // Register all extension-related Emscripten bindings
 void register_extensions() {
   ::emscripten::enum_<spz::SpzExtensionType>("SpzExtensionType")
@@ -71,8 +81,7 @@ void register_extensions() {
 // Register extension-related fields for PackOptions
 void register_pack_options_extensions(::emscripten::value_object<spz::PackOptions>& pack_options) {
   pack_options
-      .field("sh1Bits", &spz::PackOptions::sh1Bits)
-      .field("shRestBits", &spz::PackOptions::shRestBits);
+      .field("extensions", &getExtensionsFromPackOptions, &setExtensionsToPackOptions);
 }
 
 }  // namespace emscripten

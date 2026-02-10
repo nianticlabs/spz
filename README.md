@@ -25,6 +25,8 @@ be saved and loaded without conversion, which may harm interoperability.
 Requires `libz` as the only dependent library, otherwise the code is completely self-contained.
 A CMake build system is provided for convenience.
 
+**Note:** If `libz` is not found on the system, the CMake build system will automatically download zlib version 1.3.1 using FetchContent. This ensures consistent builds across different environments.
+
 ### Typescript
 
 To build the Typescript interface through Web-Assembly (WASM), an Emscripten environment needs to be setup before compilation. One may install the Emscripten SDK following the instructions [here](https://emscripten.org/docs/getting_started/downloads.html).
@@ -46,7 +48,7 @@ The package will be built and installed into the `dist` folder.
 
 ```
 bool saveSpz(
-   const GaussianCloud &gaussians, PackOptions &options, std::vector<uint8_t> *output);
+   const GaussianCloud &gaussians, const PackOptions &options, std::vector<uint8_t> *output);
 ```
 
 Converts a cloud of Gaussians in `.spz` format to a vector of bytes.
@@ -113,13 +115,13 @@ The `PackOptions` struct supports the following fields:
 
 ## File Format
 
-The .spz format is a gzipped stream of data consisting of a variable-size header followed by the
+The .spz format is a gzipped stream of data consisting of a 16-byte header followed by the
 gaussian data. This data is organized by attribute in the following order: positions,
 alphas, colors, scales, rotations, spherical harmonics.
 
 ### Header
 
-**Version 2 (current):**
+**Version 3 (current):**
 ```c
 struct PackedGaussiansHeader {
   uint32_t magic;
@@ -137,7 +139,7 @@ All values are little-endian.
 1. **magic**: This is always 0x5053474e
 2. **version**: Currently, the only valid versions are 2 and 3
 3. **numPoints**: The number of gaussians
-4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 3 (inclusive).
+4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 4 (inclusive).
 5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
    the fixed-point encoding.
 6. **flags**: A bit field containing flags.

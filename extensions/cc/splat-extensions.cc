@@ -24,6 +24,8 @@ SOFTWARE.
 
 #include "splat-extensions.h"
 
+#include <algorithm>
+
 #include "load-spz.h"
 
 namespace spz {
@@ -215,18 +217,34 @@ void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions
   }
 }
 
-bool addExtendedPackOptions(const PackOptions& options, PackedGaussians& packed) {
-  if (options.sh1Bits != DEFAULT_SH1_BITS || options.shRestBits != DEFAULT_SH_REST_BITS) {
-    // Validate SH quantization bit parameters
-    if (options.sh1Bits > 8 || options.shRestBits > 8) {
-      SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
-             options.sh1Bits, options.shRestBits);
-      return false;
+bool addExtendedPackOptions(
+  const std::vector<SpzExtensionBasePtr>& gaussianCloudExtensions,
+  const std::vector<SpzExtensionBasePtr>& packOptionsExtensions,
+  PackedGaussians& packed) {
+  // First, add extensions from GaussianCloud
+  packed.extensions.insert(packed.extensions.end(), gaussianCloudExtensions.begin(), gaussianCloudExtensions.end());
+
+  // Then, add extensions from PackOptions, overriding any duplicates by extension type
+  // PackOptions extensions take precedence over GaussianCloud extensions
+  for (const auto& ext : packOptionsExtensions) {
+    // Remove any existing extension of the same type
+    packed.extensions.erase(
+      std::remove_if(packed.extensions.begin(), packed.extensions.end(),
+        [&ext](const SpzExtensionBasePtr& existing) {
+          return existing && existing->extensionType == ext->extensionType;
+        }),
+      packed.extensions.end());
+
+    // Validate SH quantization extension if present
+    if (auto extQuant = std::dynamic_pointer_cast<SpzExtensionSHQuantizationAdobe>(ext)) {
+      if (extQuant->sh1Bits > 8 || extQuant->shRestBits > 8) {
+        SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
+               extQuant->sh1Bits, extQuant->shRestBits);
+        return false;
+      }
     }
 
-    auto ext = std::make_shared<SpzExtensionSHQuantizationAdobe>();
-    ext->sh1Bits = options.sh1Bits;
-    ext->shRestBits = options.shRestBits;
+    // Add the extension from PackOptions (which takes precedence)
     packed.extensions.push_back(ext);
   }
   return true;

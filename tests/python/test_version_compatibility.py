@@ -196,8 +196,11 @@ def test_version_3_with_all_features():
 
     opts = spz.PackOptions()
     opts.version = 3
-    opts.sh1_bits = 8
-    opts.sh_rest_bits = 6
+    if spz.has_extension_support():
+        sh_ext = spz.SpzExtensionSHQuantizationAdobe()
+        sh_ext.sh1_bits = 8
+        sh_ext.sh_rest_bits = 6
+        opts.extensions = [sh_ext]
     opts.from_coord = spz.RUB
 
     filename = os.path.join(tempfile.gettempdir(), "all_features.spz")
