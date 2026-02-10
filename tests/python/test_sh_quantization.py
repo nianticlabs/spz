@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import spz
+from test_utils import sh_epsilon
 
 # Skip all tests in this module if extension support is not available
 pytestmark = pytest.mark.skipif(
@@ -73,7 +74,8 @@ def test_sh_quantization_8bit():
     assert spz.save_spz(cloud, opts, filename) is True
 
     loaded = spz.load_spz(filename, spz.UnpackOptions())
-    np.testing.assert_allclose(loaded.sh, original_sh, atol=0.01)
+    # 8-bit quantization: max error is sh_epsilon(8)
+    np.testing.assert_allclose(loaded.sh, original_sh, rtol=0, atol=sh_epsilon(8))
 
 
 def test_sh_quantization_low_bits():
@@ -101,8 +103,8 @@ def test_sh_quantization_low_bits():
     loaded = spz.load_spz(filename, spz.UnpackOptions())
 
     assert len(loaded.sh) == 9
-    # Large tolerance expected with 1-bit quantization
-    np.testing.assert_allclose(loaded.sh, original_sh, atol=1.0)
+    # 1-bit quantization: max error is sh_epsilon(1)
+    np.testing.assert_allclose(loaded.sh, original_sh, rtol=0, atol=sh_epsilon(1))
 
 
 def test_sh_bits_comparison():
@@ -165,6 +167,8 @@ def test_sh_degree_4_with_custom_bits():
     assert loaded.sh_degree == 4
     assert len(loaded.sh) == num_points * 72
 
-    # Degree 1 coefficients should have reasonable error with 6-bit quantization
-    np.testing.assert_allclose(loaded.sh[:9], cloud.sh[:9], rtol=0, atol=0.02)
+    # Degree 1 coefficients use 6-bit quantization: max error is sh_epsilon(6)
+    # Degree 2+ coefficients use 3-bit quantization: max error is sh_epsilon(3)
+    np.testing.assert_allclose(loaded.sh[:9], cloud.sh[:9], rtol=0, atol=sh_epsilon(6))
+    # Note: We only test degree 1 coefficients here; degree 2+ would need sh_epsilon(3) tolerance
 
