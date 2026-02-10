@@ -8,8 +8,7 @@ import pytest
 
 import spz
 from test_utils import (
-    SH_4BIT_EPSILON,
-    SH_5BIT_EPSILON,
+    sh_epsilon,
     make_test_gaussian_cloud,
     normalized,
     read_file,
@@ -51,10 +50,10 @@ def test_save_load_packed_format():
             assert np.isclose(cosine, 1.0, atol=1e-4)
 
     np.testing.assert_allclose(dst.alphas, src.alphas, atol=0.01)
-    np.testing.assert_allclose(dst.sh, src.sh, atol=SH_4BIT_EPSILON)
+    np.testing.assert_allclose(dst.sh, src.sh, atol=sh_epsilon(4))
     # Check degree‑1 SH (first 9 coefficients) with extra precision.
-    np.testing.assert_allclose(dst.sh[0:9], src.sh[0:9], atol=SH_5BIT_EPSILON)
-    np.testing.assert_allclose(dst.sh[45:45 + 9], src.sh[45:45 + 9], atol=SH_5BIT_EPSILON)
+    np.testing.assert_allclose(dst.sh[0:9], src.sh[0:9], atol=sh_epsilon(5))
+    np.testing.assert_allclose(dst.sh[45:45 + 9], src.sh[45:45 + 9], atol=sh_epsilon(5))
 
 
 def test_save_load_packed_format_large_splat():
@@ -183,12 +182,12 @@ def test_compression_precision_validation():
 
     np.testing.assert_allclose(loaded_cloud.alphas, cloud.alphas, atol=0.01)
     np.testing.assert_allclose(loaded_cloud.colors, cloud.colors, atol=0.01)
-    np.testing.assert_allclose(loaded_cloud.sh[0:9], cloud.sh[0:9], atol=SH_5BIT_EPSILON)
+    np.testing.assert_allclose(loaded_cloud.sh[0:9], cloud.sh[0:9], atol=sh_epsilon(5))
 
-    # Verify the constants match the C++ implementation
+    # Verify the function matches the C++ implementation
     # Note: The rounding error uses 128.0 because quantization maps [-1,1] to [0,256]
-    assert SH_4BIT_EPSILON == 2.0 / 32.0 + 0.5 / 128.0
-    assert SH_5BIT_EPSILON == 2.0 / 64.0 + 0.5 / 128.0
+    assert sh_epsilon(4) == 2.0 / 32.0 + 0.5 / 128.0
+    assert sh_epsilon(5) == 2.0 / 64.0 + 0.5 / 128.0
 
 
 def test_performance_large_cloud():
