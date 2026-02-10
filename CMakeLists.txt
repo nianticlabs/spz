@@ -110,8 +110,20 @@ if(SPZ_BUILD_WASM)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-bindings.cc"
   )
 
+  if(SPZ_BUILD_EXTENSIONS)
+    list(APPEND spz_binding_sources
+      "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions.cc"
+    )
+  endif()
+
   add_executable(spz-wasm ${spz_binding_sources})
   target_link_libraries(spz-wasm PRIVATE spz)
+
+  if(SPZ_BUILD_EXTENSIONS)
+    target_include_directories(spz-wasm PRIVATE
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    )
+  endif()
 
   target_link_options(spz-wasm PRIVATE
     "-O3"
@@ -264,6 +276,12 @@ if(SPZ_BUILD_PYTHON_BINDINGS)
 
   # Add the project root to the include path for the python module
   target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # Add extensions include directory and source file if extensions are enabled
+  if(SPZ_BUILD_EXTENSIONS)
+    target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc)
+    target_sources(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/extensions/python/splat-extensions.cc)
+  endif()
 
   # Link the python module against the spz library
   target_link_libraries(spz_py PRIVATE spz::spz)

@@ -4,8 +4,15 @@ import os
 import tempfile
 
 import numpy as np
+import pytest
 
 import spz
+
+# Skip all tests in this module if extension support is not available
+pytestmark = pytest.mark.skipif(
+    not spz.has_extension_support(),
+    reason="SPZ_BUILD_EXTENSIONS is not enabled"
+)
 
 
 def test_pack_options_sh_bits_properties():

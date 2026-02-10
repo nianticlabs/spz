@@ -32,6 +32,10 @@ SOFTWARE.
 #include <vector>
 
 #include "load-spz.h"
+#include "utils.h"
+#ifdef SPZ_BUILD_EXTENSIONS
+#include "extensions/emscripten/splat-extensions.h"
+#endif
 
 // This file provides Emscripten bindings for the SPZ library, allowing
 // JavaScript to interact with SPZ Gaussian splats. A design rule is that
@@ -73,24 +77,6 @@ inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer
   return array;
 }
 
-template <typename T>
-inline emscripten::val jsArrayFromVector(const std::vector<T>& vec) {
-  emscripten::val array = emscripten::val::array();
-  for (const auto& item : vec) {
-    array.call<void>("push", item);
-  }
-  return array;
-}
-
-template <typename T>
-inline void vectorFromJsArray(const emscripten::val& array, std::vector<T>& out) {
-  const size_t length = array["length"].as<size_t>();
-  out.resize(length);
-  for (size_t i = 0; i < length; ++i) {
-    out[i] = array[i].as<T>();
-  }
-}
-
 EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::UnpackOptions& options) {
   std::vector<uint8_t> bufferInternal;
   vectorFromJsArray(buffer, bufferInternal);
@@ -102,7 +88,7 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   emCloud.shDegree = cloud.shDegree;
   emCloud.antialiased = cloud.antialiased;
 #ifdef SPZ_BUILD_EXTENSIONS
-  emCloud.extensions = jsArrayFromVector(cloud.extensions);
+  emCloud.extensions = spz::emscripten::setExtensionsFromCloud(cloud);
 #else
   emCloud.extensions = emscripten::val::array();  // Empty array when extensions disabled
 #endif
@@ -123,7 +109,7 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   cloud.antialiased = emCloud.antialiased;
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  vectorFromJsArray(emCloud.extensions, cloud.extensions);
+  spz::emscripten::setExtensionsToCloud(emCloud.extensions, cloud);
 #endif
   vectorFromJsArray(emCloud.positions, cloud.positions);
   vectorFromJsArray(emCloud.scales, cloud.scales);
@@ -156,36 +142,16 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .value("RUF", spz::CoordinateSystem::RUF);
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  emscripten::enum_<spz::SpzExtensionType>("SpzExtensionType")
-      .value("SPZ_ADOBE_sh_quantization", spz::SpzExtensionType::SPZ_ADOBE_sh_quantization)
-      .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera);
-
-  emscripten::class_<spz::SpzExtensionBase>("SpzExtensionBase")
-      .smart_ptr<std::shared_ptr<spz::SpzExtensionBase>>("SpzExtensionBasePtr")
-      .property("extensionType", &spz::SpzExtensionBase::extensionType);
-
-  emscripten::class_<spz::SpzExtensionSHQuantizationAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSHQuantizationAdobe")
-      .constructor<>()
-      .property("sh1Bits", &spz::SpzExtensionSHQuantizationAdobe::sh1Bits)
-      .property("shRestBits", &spz::SpzExtensionSHQuantizationAdobe::shRestBits)
-      .class_function("type", &spz::SpzExtensionSHQuantizationAdobe::type);
-
-  emscripten::class_<spz::SpzExtensionSafeOrbitCameraAdobe, emscripten::base<spz::SpzExtensionBase>>("SpzExtensionSafeOrbitCameraAdobe")
-      .constructor<>()
-      .property("safeOrbitElevationMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMin)
-      .property("safeOrbitElevationMax", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
-      .property("safeOrbitRadiusMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)
-      .class_function("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type);
+  spz::emscripten::register_extensions();
 #endif
 
-  emscripten::value_object<spz::PackOptions>("PackOptions")
+  emscripten::value_object<spz::PackOptions> pack_options("PackOptions");
+  pack_options
       .field("version", &spz::PackOptions::version)
-      .field("from", &spz::PackOptions::from)
+      .field("from", &spz::PackOptions::from);
 #ifdef SPZ_BUILD_EXTENSIONS
-      .field("sh1Bits", &spz::PackOptions::sh1Bits)
-      .field("shRestBits", &spz::PackOptions::shRestBits)
+  spz::emscripten::register_pack_options_extensions(pack_options);
 #endif
-      ;
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 
