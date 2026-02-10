@@ -59,6 +59,14 @@ struct EmGaussianCloud {
   emscripten::val sh;
 };
 
+// A counterpart to the C++ PackOptions structure, used to
+// transfer data between C++ and JavaScript.
+struct EmPackOptions {
+  uint32_t version;
+  spz::CoordinateSystem from;
+  emscripten::val extensions;  // Always present, but empty array when extensions disabled
+};
+
 inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer) {
   emscripten::val Uint8Array = emscripten::val::global("Uint8Array");
   emscripten::val array = Uint8Array.new_(buffer.size());
@@ -88,7 +96,7 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   emCloud.shDegree = cloud.shDegree;
   emCloud.antialiased = cloud.antialiased;
 #ifdef SPZ_BUILD_EXTENSIONS
-  emCloud.extensions = spz::emscripten::setExtensionsFromCloud(cloud);
+  emCloud.extensions = jsArrayFromVector(cloud.extensions);
 #else
   emCloud.extensions = emscripten::val::array();  // Empty array when extensions disabled
 #endif
@@ -102,14 +110,14 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   return emCloud;
 }
 
-emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackOptions& options) {
+emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const EmPackOptions& emOptions) {
   spz::GaussianCloud cloud;
   cloud.numPoints = emCloud.numPoints;
   cloud.shDegree = emCloud.shDegree;
   cloud.antialiased = emCloud.antialiased;
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  spz::emscripten::setExtensionsToCloud(emCloud.extensions, cloud);
+  vectorFromJsArray(emCloud.extensions, cloud.extensions);
 #endif
   vectorFromJsArray(emCloud.positions, cloud.positions);
   vectorFromJsArray(emCloud.scales, cloud.scales);
@@ -117,6 +125,13 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   vectorFromJsArray(emCloud.alphas, cloud.alphas);
   vectorFromJsArray(emCloud.colors, cloud.colors);
   vectorFromJsArray(emCloud.sh, cloud.sh);
+
+  spz::PackOptions options;
+  options.version = emOptions.version;
+  options.from = emOptions.from;
+#ifdef SPZ_BUILD_EXTENSIONS
+  vectorFromJsArray(emOptions.extensions, options.extensions);
+#endif
 
   std::vector<uint8_t> output;
   if (!spz::saveSpz(cloud, options, &output)) {
@@ -145,13 +160,10 @@ EMSCRIPTEN_BINDINGS(spz_module) {
   spz::emscripten::register_extensions();
 #endif
 
-  emscripten::value_object<spz::PackOptions> pack_options("PackOptions");
-  pack_options
-      .field("version", &spz::PackOptions::version)
-      .field("from", &spz::PackOptions::from);
-#ifdef SPZ_BUILD_EXTENSIONS
-  spz::emscripten::register_pack_options_extensions(pack_options);
-#endif
+  emscripten::value_object<EmPackOptions>("PackOptions")
+      .field("version", &EmPackOptions::version)
+      .field("from", &EmPackOptions::from)
+      .field("extensions", &EmPackOptions::extensions);
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 

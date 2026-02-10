@@ -127,7 +127,7 @@ struct PackOptions {
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  std::vector<SpzExtensionBasePtr> extensions;  // List of extensions, if any
+  std::vector<SpzExtensionBasePtr> extensions;  // List of extensions for packing, if any
 #endif
 };
 
