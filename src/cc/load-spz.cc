@@ -230,6 +230,9 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   return success;
 }
 
+// Backward compatibility function for version 2. In version 2, rotations are represented as the
+// (x, y, z) components of the normalized rotation quaternion, with each component encoded as an
+// 8-bit signed integer. Version 3+ uses packQuaternionSmallestThree for better accuracy.
 void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const CoordinateConverter& c) {
     // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
     // NOTE: These are already in xyzw order.
@@ -306,24 +309,17 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.shDegree = g.shDegree;
   packed.fractionalBits = 12;
   packed.antialiased = g.antialiased;
+  // Turn off quaternion-smallest-three for backward compatibility, since version 2 does not
+  // support it.
+  packed.usesQuaternionSmallestThree = o.version >= 3;
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  if (!addExtendedPackOptions(o, packed)) {
+  if (!addExtendedPackOptions(g.extensions, o.extensions, packed)) {
     return {};
   }
-
-  // other extensions in GaussianCloud
-  packed.extensions.insert(packed.extensions.end(), g.extensions.begin(), g.extensions.end());
 #endif
 
-  if (o.version >= 3) {
-    packed.usesQuaternionSmallestThree = true;
-    packed.rotations.resize(numPoints * 4);
-  } else {
-    // Backward compatibility for older versions.
-    packed.usesQuaternionSmallestThree = false;
-    packed.rotations.resize(numPoints * 3);
-  }
+  packed.rotations.resize(numPoints * (packed.usesQuaternionSmallestThree ? 4 : 3));
   packed.positions.resize(numPoints * 3 * 3);
   packed.scales.resize(numPoints * 3);
   packed.alphas.resize(numPoints);
@@ -369,8 +365,13 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (g.shDegree > 0) {
     // Use configurable spherical harmonics quantization parameters
 #ifdef SPZ_BUILD_EXTENSIONS
-    const uint8_t sh1Bits = o.sh1Bits;
-    const uint8_t shRestBits = o.shRestBits;
+    uint8_t sh1Bits = DEFAULT_SH1_BITS;
+    uint8_t shRestBits = DEFAULT_SH_REST_BITS;
+    // Look for SH quantization extension in packed.extensions
+    if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(packed.extensions)) {
+      sh1Bits = extQuant->sh1Bits;
+      shRestBits = extQuant->shRestBits;
+    }
 #else
     const uint8_t sh1Bits = DEFAULT_SH1_BITS;
     const uint8_t shRestBits = DEFAULT_SH_REST_BITS;
@@ -543,17 +544,11 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   result.antialiased = packed.antialiased;
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  // We pick the extensions that should be stored in GaussianCloud while ignoring the others.
-  for (auto ext : packed.extensions) {
-    switch (ext->extensionType)
-    {
-    case SpzExtensionType::SPZ_ADOBE_safe_orbit_camera:
-        result.extensions.push_back(ext);
-        break;
-    default:
-        break;
-    }
-  }
+  // Copy all extensions from PackedGaussians to GaussianCloud.
+  // Note: Some extensions (like SH quantization) are only used during packing and may not
+  // be needed in the unpacked cloud, but we preserve them for metadata completeness
+  // and future extensibility.
+  result.extensions = packed.extensions;
 #endif
 
   result.positions.resize(numPoints * 3);

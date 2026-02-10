@@ -94,8 +94,9 @@ struct PackedGaussian {
     bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c) const;
 };
 
-// Represents a full splat with lower precision. Each splat has at most 64 bytes, although splats
-// with fewer spherical harmonics degrees will have less. The data is stored non-interleaved.
+// Represents a full splat with lower precision. Each splat has at most 92 bytes (for degree 4
+// spherical harmonics), although splats with fewer spherical harmonics degrees will have less.
+// The data is stored non-interleaved.
 struct PackedGaussians {
   uint32_t version = LATEST_SPZ_HEADER_VERSION;  // Version of the packed format
   int32_t numPoints = 0;       // Total number of points (gaussians)
@@ -126,9 +127,7 @@ struct PackOptions {
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  // Spherical harmonics quantization parameters
-  uint8_t sh1Bits = DEFAULT_SH1_BITS;      // Bits for SH degree 1 coefficients (max 8)
-  uint8_t shRestBits = DEFAULT_SH_REST_BITS;   // Bits for SH degree 2+ coefficients (max 8)
+  std::vector<SpzExtensionBasePtr> extensions;  // List of extensions, if any
 #endif
 };
 

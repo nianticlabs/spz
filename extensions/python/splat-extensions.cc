@@ -61,10 +61,9 @@ void register_extensions(nb::module_& m) {
 // Register extension-related properties for PackOptions
 void register_pack_options_extensions(nb::class_<spz::PackOptions>& pack_options) {
     pack_options
-        .def_rw("sh1_bits", &spz::PackOptions::sh1Bits,
-                "Bits of the first-order spherical harmonics")
-        .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
-                "Bits of the non-first-order spherical harmonics");
+        .def_rw("extensions", &spz::PackOptions::extensions,
+                "List of SPZ extensions associated with this PackOptions. "
+                "Users should construct SpzExtensionSHQuantizationAdobe and push it into this vector to enable SH quantization.");
 }
 
 // Register extension-related properties for GaussianCloud

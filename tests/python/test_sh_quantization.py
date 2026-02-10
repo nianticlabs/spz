@@ -16,19 +16,29 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_pack_options_sh_bits_properties():
-    """Test that PackOptions has sh1_bits and sh_rest_bits properties."""
+    """Test that PackOptions uses extensions for SH quantization."""
     opts = spz.PackOptions()
 
+    # Test that extensions is an empty list by default
+    assert len(opts.extensions) == 0
+
+    # Test creating and adding SH quantization extension
+    sh_ext = spz.SpzExtensionSHQuantizationAdobe()
     # Test default values (from C++ constants: DEFAULT_SH1_BITS=5, DEFAULT_SH_REST_BITS=4)
-    assert opts.sh1_bits == 5
-    assert opts.sh_rest_bits == 4
+    assert sh_ext.sh1_bits == 5
+    assert sh_ext.sh_rest_bits == 4
 
     # Test setting custom values
-    opts.sh1_bits = 8
-    opts.sh_rest_bits = 6
+    sh_ext.sh1_bits = 8
+    sh_ext.sh_rest_bits = 6
 
-    assert opts.sh1_bits == 8
-    assert opts.sh_rest_bits == 6
+    assert sh_ext.sh1_bits == 8
+    assert sh_ext.sh_rest_bits == 6
+
+    # Add to PackOptions
+    opts.extensions = [sh_ext]
+    assert len(opts.extensions) == 1
+    assert isinstance(opts.extensions[0], spz.SpzExtensionSHQuantizationAdobe)
 
 
 def test_sh_quantization_8bit():
@@ -54,8 +64,10 @@ def test_sh_quantization_8bit():
     cloud.sh = original_sh.copy()
 
     opts = spz.PackOptions()
-    opts.sh1_bits = 8
-    opts.sh_rest_bits = 8
+    sh_ext = spz.SpzExtensionSHQuantizationAdobe()
+    sh_ext.sh1_bits = 8
+    sh_ext.sh_rest_bits = 8
+    opts.extensions = [sh_ext]
 
     filename = os.path.join(tempfile.gettempdir(), "sh_8bit_test.spz")
     assert spz.save_spz(cloud, opts, filename) is True
@@ -78,8 +90,10 @@ def test_sh_quantization_low_bits():
     cloud.sh = original_sh.copy()
 
     opts = spz.PackOptions()
-    opts.sh1_bits = 1
-    opts.sh_rest_bits = 1
+    sh_ext = spz.SpzExtensionSHQuantizationAdobe()
+    sh_ext.sh1_bits = 1
+    sh_ext.sh_rest_bits = 1
+    opts.extensions = [sh_ext]
 
     filename = os.path.join(tempfile.gettempdir(), "sh_lowbit_test.spz")
     assert spz.save_spz(cloud, opts, filename) is True
@@ -108,8 +122,10 @@ def test_sh_bits_comparison():
     errors = {}
     for bits in [4, 6, 8]:
         opts = spz.PackOptions()
-        opts.sh1_bits = bits
-        opts.sh_rest_bits = bits
+        sh_ext = spz.SpzExtensionSHQuantizationAdobe()
+        sh_ext.sh1_bits = bits
+        sh_ext.sh_rest_bits = bits
+        opts.extensions = [sh_ext]
 
         filename = os.path.join(tempfile.gettempdir(), f"sh_bits_{bits}.spz")
         assert spz.save_spz(cloud, opts, filename) is True
@@ -137,8 +153,10 @@ def test_sh_degree_4_with_custom_bits():
 
     opts = spz.PackOptions()
     opts.version = 3
-    opts.sh1_bits = 6
-    opts.sh_rest_bits = 3
+    sh_ext = spz.SpzExtensionSHQuantizationAdobe()
+    sh_ext.sh1_bits = 6
+    sh_ext.sh_rest_bits = 3
+    opts.extensions = [sh_ext]
 
     filename = os.path.join(tempfile.gettempdir(), "sh4_custom_bits.spz")
     assert spz.save_spz(cloud, opts, filename) is True

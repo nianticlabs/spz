@@ -1,3 +1,2 @@
-  sh1Bits: number;
-  shRestBits: number;
+  extensions: SpzExtensionBase[];
 

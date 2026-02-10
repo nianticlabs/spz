@@ -98,12 +98,15 @@ void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensio
 void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
 
 // Forward declarations
-struct PackOptions;
 struct PackedGaussians;
 
-// Add extensions to packed based on pack options (e.g., SH quantization)
+// Add extensions to packed, merging two extension vectors
+// Extensions from packOptionsExtensions take precedence over extensions from gaussianCloudExtensions
 // Returns false if validation fails, true otherwise
-bool addExtendedPackOptions(const PackOptions& options, PackedGaussians& packed);
+bool addExtendedPackOptions(
+  const std::vector<SpzExtensionBasePtr>& gaussianCloudExtensions,
+  const std::vector<SpzExtensionBasePtr>& packOptionsExtensions,
+  PackedGaussians& packed);
 
 inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
   SpzExtensionNode* head = nullptr;

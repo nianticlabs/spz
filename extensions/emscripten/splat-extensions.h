@@ -21,6 +21,12 @@ namespace emscripten {
 // Helper function to set extensions in GaussianCloud from EmGaussianCloud
 void setExtensionsToCloud(const ::emscripten::val& emExtensions, spz::GaussianCloud& cloud);
 
+// Helper function to get extensions from PackOptions
+::emscripten::val getExtensionsFromPackOptions(const spz::PackOptions& options);
+
+// Helper function to set extensions in PackOptions
+void setExtensionsToPackOptions(const ::emscripten::val& emExtensions, spz::PackOptions& options);
+
 // Register all extension-related Emscripten bindings
 void register_extensions();
 
