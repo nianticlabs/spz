@@ -34,26 +34,6 @@ SOFTWARE.
 namespace spz {
 namespace emscripten {
 
-// Helper function to set extensions in EmGaussianCloud from GaussianCloud
-::emscripten::val setExtensionsFromCloud(const spz::GaussianCloud& cloud) {
-  return jsArrayFromVector(cloud.extensions);
-}
-
-// Helper function to set extensions in GaussianCloud from EmGaussianCloud
-void setExtensionsToCloud(const ::emscripten::val& emExtensions, spz::GaussianCloud& cloud) {
-  vectorFromJsArray(emExtensions, cloud.extensions);
-}
-
-// Helper function to get extensions from PackOptions
-::emscripten::val getExtensionsFromPackOptions(const spz::PackOptions& options) {
-  return jsArrayFromVector(options.extensions);
-}
-
-// Helper function to set extensions in PackOptions
-void setExtensionsToPackOptions(const ::emscripten::val& emExtensions, spz::PackOptions& options) {
-  vectorFromJsArray(emExtensions, options.extensions);
-}
-
 // Register all extension-related Emscripten bindings
 void register_extensions() {
   ::emscripten::enum_<spz::SpzExtensionType>("SpzExtensionType")
@@ -76,12 +56,6 @@ void register_extensions() {
       .property("safeOrbitElevationMax", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
       .property("safeOrbitRadiusMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)
       .class_function("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type);
-}
-
-// Register extension-related fields for PackOptions
-void register_pack_options_extensions(::emscripten::value_object<spz::PackOptions>& pack_options) {
-  pack_options
-      .field("extensions", &getExtensionsFromPackOptions, &setExtensionsToPackOptions);
 }
 
 }  // namespace emscripten
