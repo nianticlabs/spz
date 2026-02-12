@@ -27,8 +27,6 @@ void register_extensions(nb::module_& m) {
         - VENDOR_ID is a unique identifier for the vendor (e.g., Adobe = 0xADBE);
         - EXTENSION_ID is a unique identifier for the specific extension within that vendor's namespace.
     )doc")
-        .value("SPZ_ADOBE_sh_quantization", spz::SpzExtensionType::SPZ_ADOBE_sh_quantization,
-               "Adobe spherical harmonics quantization extension")
         .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera,
                "Adobe safe orbit camera extension")
         .export_values();
@@ -36,15 +34,6 @@ void register_extensions(nb::module_& m) {
     nb::class_<spz::SpzExtensionBase>(m, "SpzExtensionBase")
         .def_ro("extension_type", &spz::SpzExtensionBase::extensionType,
                 "Type of the SPZ extension");
-
-    nb::class_<spz::SpzExtensionSHQuantizationAdobe, spz::SpzExtensionBase>(m, "SpzExtensionSHQuantizationAdobe")
-        .def(nb::init<>())
-        .def_rw("sh1_bits", &spz::SpzExtensionSHQuantizationAdobe::sh1Bits,
-                "Bits used for first-order spherical harmonics quantization")
-        .def_rw("sh_rest_bits", &spz::SpzExtensionSHQuantizationAdobe::shRestBits,
-                "Bits used for non-first-order spherical harmonics quantization")
-        .def_static("type", &spz::SpzExtensionSHQuantizationAdobe::type,
-                    "Static method to get the extension type enum value");
 
     nb::class_<spz::SpzExtensionSafeOrbitCameraAdobe, spz::SpzExtensionBase>(m, "SpzExtensionSafeOrbitCameraAdobe")
         .def(nb::init<>())
@@ -56,14 +45,6 @@ void register_extensions(nb::module_& m) {
                 "Minimum radius for safe orbit")
         .def_static("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type,
                     "Static method to get the extension type enum value");
-}
-
-// Register extension-related properties for PackOptions
-void register_pack_options_extensions(nb::class_<spz::PackOptions>& pack_options) {
-    pack_options
-        .def_rw("extensions", &spz::PackOptions::extensions,
-                "List of SPZ extensions associated with this PackOptions. "
-                "Users should construct SpzExtensionSHQuantizationAdobe and push it into this vector to enable SH quantization.");
 }
 
 // Register extension-related properties for GaussianCloud

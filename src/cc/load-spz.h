@@ -126,9 +126,8 @@ struct PackOptions {
 
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
 
-#ifdef SPZ_BUILD_EXTENSIONS
-  std::vector<SpzExtensionBasePtr> extensions;  // List of extensions for packing, if any
-#endif
+  uint8_t sh1Bits = DEFAULT_SH1_BITS;     // Bits for SH degree 1 coefficients
+  uint8_t shRestBits = DEFAULT_SH_REST_BITS;  // Bits for SH degree 2+ coefficients
 };
 
 struct UnpackOptions {

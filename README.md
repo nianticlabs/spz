@@ -109,7 +109,7 @@ Check [src/emscripten/spz.d.ts](src/emscripten/spz.d.ts) for the Typescript inte
 The `PackOptions` struct supports the following fields:
 
 - `from`: Source coordinate system (default: `UNSPECIFIED`)
-- `version`: Version of the packed format
+- `version`: Version of the packed format (default: `3`)
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
 
@@ -191,29 +191,18 @@ Each coefficient is represented as an 8-bit signed integer.
 
 **Quantization:**
 
-By default, a fixed-precision quantization is adopted, where we
+SPZ supports configurable spherical harmonics quantization. By default, a fixed-precision quantization is adopted:
 - Assumes SH coefficients are in the [-1, 1] range
 - Fixed 5 bits of precision for degree 1 and 4 bits for degrees 2, 3, and 4
 - Maintained for backward compatibility
 
+The quantization precision can be configured via `PackOptions`:
+- `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
+- `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
+
+This allows users to trade off between file size and quality. The library maintains full backward compatibility with default quantization settings.
+
 ### Extensions
-
-### Spherical Harmonics Quantization
-
-With extension `SPZ_ADOBE_sh_quantization`, SPZ supports configurable spherical harmonics quantization with the following improvements:
-
-1. **Configurable Bit Precision**: The number of quantization bits for SH degree 1 and higher degree coefficients can be configured (1-8 bits), allowing users to trade off between file size and quality. Default bits are 5 for SH degree 1 and 4 for higher ones.
-
-2. **Backward Compatibility**: The library maintains full backward compatibility when this extension is unused.
-
-**Attributes**
-
-This extension has the following attributes and default values:
-
-```
-  uint8_t sh1Bits = 5;     // Bits for SH degree 1 coefficients
-  uint8_t shRestBits = 4;  // Bits for SH degree 2+ coefficients
-```
 
 ### Camera Orbit Limitation
 

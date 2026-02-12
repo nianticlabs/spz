@@ -154,13 +154,11 @@ if(SPZ_BUILD_WASM)
     # Read the extensions TypeScript definitions
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions.d.ts.in" SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS)
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions-modules.d.ts.in" SPZ_EXTENSIONS_MODULE_INTERFACE)
-    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions-pack-options.d.ts.in" SPZ_EXTENSIONS_PACK_OPTIONS_FIELDS)
     set(SPZ_EXTENSIONS_GAUSSIAN_CLOUD_FIELD "  extensions: SpzExtensionBase[];")
   else()
     set(SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS "")
     set(SPZ_EXTENSIONS_GAUSSIAN_CLOUD_FIELD "")
     set(SPZ_EXTENSIONS_MODULE_INTERFACE "")
-    set(SPZ_EXTENSIONS_PACK_OPTIONS_FIELDS "")
   endif()
 
   configure_file(

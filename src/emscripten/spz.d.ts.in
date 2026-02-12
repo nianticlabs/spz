@@ -39,7 +39,8 @@ export enum CoordinateSystem {
 export interface PackOptions {
   version: number;
   from: CoordinateSystem;
-@SPZ_EXTENSIONS_PACK_OPTIONS_FIELDS@
+  sh1Bits: number;
+  shRestBits: number;
 }
 
 export interface UnpackOptions {
