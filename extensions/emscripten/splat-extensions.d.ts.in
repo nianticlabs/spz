@@ -1,17 +1,9 @@
 export enum SpzExtensionType {
-  SPZ_ADOBE_sh_quantization = 0xADBE0001,
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002,
 }
 
 export class SpzExtensionBase {
   readonly extensionType: SpzExtensionType;
-}
-
-export class SpzExtensionSHQuantizationAdobe extends SpzExtensionBase {
-  sh1Bits: number;
-  shRestBits: number;
-  constructor();
-  static type(): SpzExtensionType;
 }
 
 export class SpzExtensionSafeOrbitCameraAdobe extends SpzExtensionBase {

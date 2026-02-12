@@ -155,10 +155,11 @@ NB_MODULE(spz, m) {
         .def_rw("version", &spz::PackOptions::version,
                 "SPZ version of the input splat")
         .def_rw("from_coord", &spz::PackOptions::from,
-                "Coordinate system of the input splat");
-#ifdef SPZ_BUILD_EXTENSIONS
-    spz::python::register_pack_options_extensions(pack_options);
-#endif
+                "Coordinate system of the input splat")
+        .def_rw("sh1_bits", &spz::PackOptions::sh1Bits,
+                "Bits used for first-order spherical harmonics quantization")
+        .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
+                "Bits used for non-first-order spherical harmonics quantization");
 
     nb::class_<spz::UnpackOptions>(m, "UnpackOptions")
         .def(nb::init<>())

@@ -196,14 +196,8 @@ def test_version_3_with_all_features():
 
     opts = spz.PackOptions()
     opts.version = 3
-    if spz.has_extension_support():
-        eps = sh_epsilon(6)  # sh_rest_bits=6
-        sh_ext = spz.SpzExtensionSHQuantizationAdobe()
-        sh_ext.sh1_bits = 8
-        sh_ext.sh_rest_bits = 6
-        opts.extensions = [sh_ext]
-    else:
-        eps = sh_epsilon(4)  # default sh_rest_bits=4
+    opts.sh1_bits = 8
+    opts.sh_rest_bits = 6
     opts.from_coord = spz.RUB
 
     filename = os.path.join(tempfile.gettempdir(), "all_features.spz")
@@ -219,5 +213,5 @@ def test_version_3_with_all_features():
     assert loaded.antialiased
     assert len(loaded.sh) == num_points * 72
 
-    np.testing.assert_allclose(loaded.sh, cloud.sh, rtol=0, atol=eps)
+    np.testing.assert_allclose(loaded.sh, cloud.sh, rtol=0, atol=sh_epsilon(6))
 

@@ -64,7 +64,8 @@ struct EmGaussianCloud {
 struct EmPackOptions {
   uint32_t version;
   spz::CoordinateSystem from;
-  emscripten::val extensions;  // Always present, but empty array when extensions disabled
+  uint8_t sh1Bits;
+  uint8_t shRestBits;
 };
 
 inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer) {
@@ -129,9 +130,8 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const EmPackOpti
   spz::PackOptions options;
   options.version = emOptions.version;
   options.from = emOptions.from;
-#ifdef SPZ_BUILD_EXTENSIONS
-  vectorFromJsArray(emOptions.extensions, options.extensions);
-#endif
+  options.sh1Bits = emOptions.sh1Bits;
+  options.shRestBits = emOptions.shRestBits;
 
   std::vector<uint8_t> output;
   if (!spz::saveSpz(cloud, options, &output)) {
@@ -163,7 +163,8 @@ EMSCRIPTEN_BINDINGS(spz_module) {
   emscripten::value_object<EmPackOptions>("PackOptions")
       .field("version", &EmPackOptions::version)
       .field("from", &EmPackOptions::from)
-      .field("extensions", &EmPackOptions::extensions);
+      .field("sh1Bits", &EmPackOptions::sh1Bits)
+      .field("shRestBits", &EmPackOptions::shRestBits);
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 

@@ -293,6 +293,13 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     return {};
   }
 
+  // Validate SH quantization bit parameters
+  if (o.sh1Bits > 8 || o.shRestBits > 8 || o.sh1Bits < 1 || o.shRestBits < 1) {
+    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 or be less than 1 (sh1Bits=%d, shRestBits=%d)",
+           o.sh1Bits, o.shRestBits);
+    return {};
+  }
+
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
   if (o.version < 3 && g.shDegree > 3) {
@@ -312,12 +319,6 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   // Turn off quaternion-smallest-three for backward compatibility, since version 2 does not
   // support it.
   packed.usesQuaternionSmallestThree = o.version >= 3;
-
-#ifdef SPZ_BUILD_EXTENSIONS
-  if (!addExtendedPackOptions(g.extensions, o.extensions, packed)) {
-    return {};
-  }
-#endif
 
   packed.rotations.resize(numPoints * (packed.usesQuaternionSmallestThree ? 4 : 3));
   packed.positions.resize(numPoints * 3 * 3);
@@ -363,19 +364,9 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
 
   if (g.shDegree > 0) {
-    // Use configurable spherical harmonics quantization parameters
-#ifdef SPZ_BUILD_EXTENSIONS
-    uint8_t sh1Bits = DEFAULT_SH1_BITS;
-    uint8_t shRestBits = DEFAULT_SH_REST_BITS;
-    // Look for SH quantization extension in packed.extensions
-    if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(packed.extensions)) {
-      sh1Bits = extQuant->sh1Bits;
-      shRestBits = extQuant->shRestBits;
-    }
-#else
-    const uint8_t sh1Bits = DEFAULT_SH1_BITS;
-    const uint8_t shRestBits = DEFAULT_SH_REST_BITS;
-#endif
+    // Use configurable spherical harmonics quantization parameters from PackOptions
+    const uint8_t sh1Bits = o.sh1Bits;
+    const uint8_t shRestBits = o.shRestBits;
     const int32_t shPerPoint = dimForDegree(g.shDegree) * 3;
     for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
       size_t j = 0, k = 0;
@@ -686,11 +677,6 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
 #ifdef SPZ_BUILD_EXTENSIONS
   if (hasExtensions) {
     readAllExtensions(in, result.extensions);
-
-    // Validate extensions
-    if (!validateExtensions(result.extensions)) {
-      return {};
-    }
   }
 #endif
 

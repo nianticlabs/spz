@@ -23,9 +23,6 @@ SOFTWARE.
 */
 
 #include "splat-extensions.h"
-
-#include <algorithm>
-
 #include "load-spz.h"
 
 namespace spz {
@@ -61,9 +58,6 @@ std::optional<SpzExtensionBasePtr> tryParseExtension(std::istream& is) {
   SpzExtensionType type = static_cast<SpzExtensionType>(type_u32);
 
   switch (type) {
-    case SpzExtensionType::SPZ_ADOBE_sh_quantization:
-      mark.commit();
-      return SpzExtensionSHQuantizationAdobe::read(is);
     case SpzExtensionType::SPZ_ADOBE_safe_orbit_camera:
       mark.commit();
       return SpzExtensionSafeOrbitCameraAdobe::read(is);
@@ -73,38 +67,6 @@ std::optional<SpzExtensionBasePtr> tryParseExtension(std::istream& is) {
   }
 }
 }  // namespace
-
-SpzExtensionSHQuantizationAdobe::SpzExtensionSHQuantizationAdobe() : SpzExtensionBase(SpzExtensionType::SPZ_ADOBE_sh_quantization) {
-}
-
-void SpzExtensionSHQuantizationAdobe::write(std::ostream& os) const {
-  const uint32_t t = static_cast<uint32_t>(extensionType);
-  SpzLog("[SPZ] Writing extension: SHQuantizationAdobe");
-  os.write(reinterpret_cast<const char*>(&t), sizeof(t));
-  os.write(reinterpret_cast<const char*>(&sh1Bits), sizeof(sh1Bits));
-  os.write(reinterpret_cast<const char*>(&shRestBits), sizeof(shRestBits));
-}
-
-SpzExtensionBase* SpzExtensionSHQuantizationAdobe::copyAsRawData() const {
-  return new SpzExtensionSHQuantizationAdobe(*this);
-}
-
-std::optional<SpzExtensionBasePtr> SpzExtensionSHQuantizationAdobe::read(std::istream& is) {
-  StreamMark mark(is);
-  SpzLog("[SPZ] Found extension: SpzExtensionSHQuantizationAdobe");
-  auto rec = std::make_shared<SpzExtensionSHQuantizationAdobe>();
-  if (!readExact(is, rec->sh1Bits) || !readExact(is, rec->shRestBits)) {
-    SpzLog("[SPZ ERROR] Failed to read all fields for SpzExtensionSHQuantizationAdobe");
-    return std::nullopt;
-  }
-
-  mark.commit();
-  return std::optional{std::move(rec)};
-}
-
-SpzExtensionType SpzExtensionSHQuantizationAdobe::type() {
-  return SpzExtensionType::SPZ_ADOBE_sh_quantization;
-}
 
 SpzExtensionSafeOrbitCameraAdobe::SpzExtensionSafeOrbitCameraAdobe() : SpzExtensionBase(SpzExtensionType::SPZ_ADOBE_safe_orbit_camera) {
 }
@@ -151,18 +113,6 @@ void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
 void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostream& os) {
   for (const auto& rec : list)
     rec->write(os);
-}
-
-bool validateExtensions(const std::vector<SpzExtensionBasePtr>& extensions) {
-  // Validate SH quantization bit parameters
-  if (auto extQuant = findExtensionByType<SpzExtensionSHQuantizationAdobe>(extensions)) {
-    if (extQuant->sh1Bits > 8 || extQuant->shRestBits > 8) {
-      SpzLog("[SPZ ERROR] Invalid SH quantization bits in file (sh1Bits=%d, shRestBits=%d)",
-          extQuant->sh1Bits, extQuant->shRestBits);
-      return false;
-    }
-  }
-  return true;
 }
 
 void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions) {
@@ -215,38 +165,5 @@ void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions
     };
     out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
   }
-}
-
-bool addExtendedPackOptions(
-  const std::vector<SpzExtensionBasePtr>& gaussianCloudExtensions,
-  const std::vector<SpzExtensionBasePtr>& packOptionsExtensions,
-  PackedGaussians& packed) {
-  // First, add extensions from GaussianCloud
-  packed.extensions.insert(packed.extensions.end(), gaussianCloudExtensions.begin(), gaussianCloudExtensions.end());
-
-  // Then, add extensions from PackOptions, overriding any duplicates by extension type
-  // PackOptions extensions take precedence over GaussianCloud extensions
-  for (const auto& ext : packOptionsExtensions) {
-    // Remove any existing extension of the same type
-    packed.extensions.erase(
-      std::remove_if(packed.extensions.begin(), packed.extensions.end(),
-        [&ext](const SpzExtensionBasePtr& existing) {
-          return existing && existing->extensionType == ext->extensionType;
-        }),
-      packed.extensions.end());
-
-    // Validate SH quantization extension if present
-    if (auto extQuant = std::dynamic_pointer_cast<SpzExtensionSHQuantizationAdobe>(ext)) {
-      if (extQuant->sh1Bits > 8 || extQuant->shRestBits > 8) {
-        SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 (sh1Bits=%d, shRestBits=%d)",
-               extQuant->sh1Bits, extQuant->shRestBits);
-        return false;
-      }
-    }
-
-    // Add the extension from PackOptions (which takes precedence)
-    packed.extensions.push_back(ext);
-  }
-  return true;
 }
 }  // namespace spz
