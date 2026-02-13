@@ -364,7 +364,9 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
 
   if (g.shDegree > 0) {
-    // Use configurable spherical harmonics quantization parameters from PackOptions
+    // Use configurable spherical harmonics quantization parameters from PackOptions.
+    // Quantization reduces information entropy for better g-zipping compression.
+    // Note: Unpacking doesn't need these bits since g-unzipping fills zero bits automatically.
     const uint8_t sh1Bits = o.sh1Bits;
     const uint8_t shRestBits = o.shRestBits;
     const int32_t shPerPoint = dimForDegree(g.shDegree) * 3;
