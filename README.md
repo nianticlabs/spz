@@ -209,6 +209,8 @@ The quantization precision can be configured via `PackOptions`:
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
 
+**Note:** Quantization bits are only used during packing to reduce information entropy for better g-zipping compression. The unpacking process does not need to know the exact quantization bits, as g-unzipping already fills zero bits for quantized data.
+
 This allows users to trade off between file size and quality. The library maintains full backward compatibility with default quantization settings.
 
 ### Extensions
