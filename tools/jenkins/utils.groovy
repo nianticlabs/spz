@@ -35,7 +35,7 @@ def setupCondaEnvironment(venv_name, profile) {
     // set env var for debugging the script: CONDA_DEBUG_FLAG=-vvv if needed
     env_list = ["CONDA_DEBUG_FLAG=${debug_flag}"]
     withEnv(env_list) {
-        runInConda(name: venv_name, label: "Setup virtual env", script: setup_script)
+        runInConda(name: venv_name, label: "Setup virtual env", script: setup_script, buildEnv: profile.toolchain)
     }
 }
 
