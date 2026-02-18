@@ -118,8 +118,12 @@ timestamps {
             echo "Tag v${env.bump_tag} already points to current commit - reusing it"
           } else {
             echo "Tag v${env.bump_tag} points to different commit - bumping to next version"
-            // Bump to next version to avoid conflict
-            env.bump_tag = sh(returnStdout: true, script: """echo "${bump_tag%.*}.\$((${bump_tag##*.}+1))" """).trim()
+            // Bump to next version to avoid conflict (do version math in Groovy)
+            def parts = env.bump_tag.tokenize('.')
+            def major = parts[0]
+            def minor = parts[1]
+            def patch = parts[2].toInteger() + 1
+            env.bump_tag = "${major}.${minor}.${patch}"
             echo "New version will be: v${env.bump_tag}"
             sh(script: '''git tag v${bump_tag} && git push --tags''')
           }
