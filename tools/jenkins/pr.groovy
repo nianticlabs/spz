@@ -14,7 +14,7 @@ def clean_workspace = false
 def profiles = [
   [host:'mac', name: 'MacOS', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0')],
   [host:'ubuntu', name: 'Ubuntu', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11)],
-  [host:'windows', name: 'Windows' , label: 'builder&&win', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.vs(2022, 'x64', '14.38')],
+  [host:'windows', name: 'Windows' , label: 'builder&&win', timeout: '60', timeout_unit: 'MINUTES', toolchain: cmd.vs(2022, 'x64', '14.38')],
 ]
 
 def wheel_profile = [name:'linux', platform: 'linux', label: 'builder&&linux', zap_py_venv: false, timeout: [time: '60', unit: 'MINUTES']]
