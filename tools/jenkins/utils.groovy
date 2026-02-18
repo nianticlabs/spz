@@ -14,19 +14,109 @@ def testPython(profile) {
 }
 
 def pythonWheelOps(wheel_version, release_mode, profile, is_pr=false) {
-  withEnv(["PIP_EXTRA_INDEX_URL=https://$ARTIFACTORY_UW2_USER:$ARTIFACTORY_UW2_API_KEY@artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-release/simple https://$ARTIFACTORY_UW2_USER:$ARTIFACTORY_UW2_API_KEY@artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release/simple"]) {
-    def repo_url_tech_transfer = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-${release_mode}"
-    def repo_url_adobeshared = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-${release_mode}"
-    def script = "boa_toolkit package build --wheel_dir wheelhouse --version ${wheel_version}"
-    echo "Running: ${script}"
-    uvr(script: script, buildEnv: profile.toolchain)
-    uvr(script: "boa_toolkit package check --wheel_dir wheelhouse --smoke_test tools/smoke_test.py", buildEnv: profile.toolchain)
-    if (!is_pr) {
-        echo "Uploading ${repo_url_adobeshared}..."
-        uvr(script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_adobeshared}", buildEnv: profile.toolchain)
+  // Create .netrc for authentication from Jenkins credentials
+  def netrcContent = """machine artifactory-uw2.adobeitc.com
+  login ${env.ARTIFACTORY_UW2_USER}
+  password ${env.ARTIFACTORY_UW2_API_KEY}
+"""
+
+  // Write .netrc to home directory (Unix: ~/.netrc, Windows: %USERPROFILE%\_netrc)
+  def netrcPath = nodeUtils.shyIsUnix() ? "${env.HOME}/.netrc" : "${env.USERPROFILE}\\_netrc"
+  writeFile file: netrcPath, text: netrcContent
+
+  // Set restrictive permissions on Unix (required for .netrc security)
+  if (nodeUtils.shyIsUnix()) {
+    cmd "chmod 600 ${netrcPath}"
+  }
+
+  try {
+    // Clean and prepare wheelhouse directory
+    echo "Preparing wheelhouse directory..."
+    if (nodeUtils.shyIsUnix()) {
+      cmd("mkdir -p wheelhouse && rm -f wheelhouse/*.whl")
+    } else {
+      cmd("if not exist wheelhouse mkdir wheelhouse")
+      cmd("del /Q wheelhouse\\*.whl 2>nul || echo No existing wheels to clean")
     }
-    echo "Uploading ${repo_url_tech_transfer}..."
-    uvr(script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_tech_transfer}", buildEnv: profile.toolchain)
+
+    // Define repository names based on release mode
+    def tech_transfer_index = (release_mode == "release") ? "tech-transfer-release" : "tech-transfer-dev"
+
+    // Step 1: Build the wheel
+    echo "Building wheel version ${wheel_version}..."
+
+    // For scikit-build-core, set version via SKBUILD_PROJECT_VERSION environment variable
+    // This overrides the version read from CMakeLists.txt (normally 1.1.0)
+    def buildEnvVars = []
+    if (wheel_version != "1.1.0") {
+      buildEnvVars.add("SKBUILD_PROJECT_VERSION=${wheel_version}")
+    }
+
+    withEnv(buildEnvVars) {
+      uvr(script: "uv build --wheel --out-dir wheelhouse", buildEnv: profile.toolchain)
+    }
+
+    // Step 2: Validate the wheel was built
+    def wheelFiles
+    if (nodeUtils.shyIsUnix()) {
+      wheelFiles = cmd(returnStdout: true, script: 'ls wheelhouse/*.whl 2>/dev/null | wc -l').trim().toInteger()
+    } else {
+      wheelFiles = cmd(returnStdout: true, script: 'powershell -Command "(Get-ChildItem wheelhouse\\*.whl -ErrorAction SilentlyContinue | Measure-Object).Count"').trim().toInteger()
+    }
+
+    if (wheelFiles == 0) {
+      error "No wheel files found in wheelhouse/ directory after build"
+    }
+
+    // Get wheel filename for logging
+    def wheel_file
+    if (nodeUtils.shyIsUnix()) {
+      wheel_file = cmd(returnStdout: true, script: 'ls wheelhouse/*.whl | head -1 | xargs basename').trim()
+    } else {
+      wheel_file = cmd(returnStdout: true, script: 'powershell -Command "Get-ChildItem wheelhouse\\*.whl | Select-Object -First 1 -ExpandProperty Name"').trim()
+    }
+    echo "Built wheel: ${wheel_file}"
+
+    // Step 3: Smoke test - install wheel in isolated environment and test import
+    echo "Running smoke test..."
+    if (nodeUtils.shyIsUnix()) {
+      uvr(script: "uv run --with wheelhouse/*.whl --no-project --index-strategy unsafe-best-match -- python tools/smoke_test.py", buildEnv: profile.toolchain)
+    } else {
+      uvr(script: "uv run --with wheelhouse/${wheel_file} --no-project --index-strategy unsafe-best-match -- python tools/smoke_test.py", buildEnv: profile.toolchain)
+    }
+
+    // Step 4: Publish wheels to repositories
+    if (!is_pr) {
+      // For release builds, also publish to adobeshared
+      echo "Publishing to adobeshared-release..."
+      if (nodeUtils.shyIsUnix()) {
+        cmd("uv publish --index adobeshared-release wheelhouse/*.whl")
+      } else {
+        cmd('for %%f in (wheelhouse\\*.whl) do uv publish --index adobeshared-release %%f')
+      }
+    } else {
+      echo "Skipping adobeshared publish (PR build)"
+    }
+
+    // Always publish to tech-transfer (dev or release based on release_mode)
+    echo "Publishing to ${tech_transfer_index}..."
+    if (nodeUtils.shyIsUnix()) {
+      cmd("uv publish --index ${tech_transfer_index} wheelhouse/*.whl")
+    } else {
+      cmd('for %%f in (wheelhouse\\*.whl) do uv publish --index ' + tech_transfer_index + ' %%f')
+    }
+
+    echo "Wheel operations completed successfully"
+
+  } finally {
+    // Clean up .netrc file for security
+    if (fileExists(netrcPath)) {
+      if (nodeUtils.shyIsUnix()) {
+        cmd "rm -f ${netrcPath}"
+      } else {
+        cmd "del /Q ${netrcPath}"
+      }
+    }
   }
 }
 

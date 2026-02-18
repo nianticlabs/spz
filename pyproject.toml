@@ -54,3 +54,25 @@ test-requires = "pytest"
 # Needed for full C++17 support
 [tool.cibuildwheel.macos.environment]
 MACOSX_DEPLOYMENT_TARGET = "10.14"
+
+# UV configuration for package indices
+[[tool.uv.index]]
+name = "adobeshared-release"
+url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release/simple"
+authenticate = "always"  # Use .netrc for authentication
+
+[[tool.uv.index]]
+name = "tech-transfer-release"
+url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-release/simple"
+publish-url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-release"
+authenticate = "always"
+
+[[tool.uv.index]]
+name = "tech-transfer-dev"
+url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-dev/simple"
+publish-url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-dev"
+authenticate = "always"
+
+# Configure dependencies to use correct index
+[tool.uv.sources]
+boa-toolkit = { index = "adobeshared-release" }
