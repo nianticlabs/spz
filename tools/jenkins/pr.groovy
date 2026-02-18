@@ -77,7 +77,7 @@ timestamps {
         withSshCredentials() {
           smartCleanWs() // ensure there aren't any old .whl builds hanging around
           checkout scm
-          utils.setupUvEnvironment(profile)
+          utils.setupUvEnvironment(wheel_profile)
           def wheel_version = "0.0.0.dev+pr${CHANGE_ID}build${BUILD_NUMBER}"
           def release_mode = "dev"
           utils.pythonWheelOps(wheel_version, release_mode, wheel_profile, true)
