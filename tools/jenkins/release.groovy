@@ -104,33 +104,45 @@ timestamps {
         env.tag = sh(returnStdout: true, script: '''git describe --tags --abbrev=0 | sed 's/^v//' ''').trim()
         env.bump_tag = sh(returnStdout: true, script: '''echo "${tag%.*}.$((${tag##*.}+1))"''').trim()
 
-        // Check if tag already exists
-        def tagExists = sh(returnStatus: true, script: """git rev-parse v\${bump_tag} >/dev/null 2>&1""")
+        // Get current commit for comparison
+        def currentCommit = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
 
-        if (tagExists == 0) {
-          echo "WARNING: Tag v${env.bump_tag} already exists"
+        // Keep bumping version until we find one that either doesn't exist or points to current commit
+        def maxAttempts = 10
+        def attempt = 0
+        def tagFound = false
 
-          // Check if existing tag points to current HEAD
-          def currentCommit = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
-          def tagCommit = sh(returnStdout: true, script: """git rev-parse v\${bump_tag}^{}""").trim()
+        while (attempt < maxAttempts && !tagFound) {
+          def tagExists = sh(returnStatus: true, script: """git rev-parse v\${bump_tag} >/dev/null 2>&1""")
 
-          if (currentCommit == tagCommit) {
-            echo "Tag v${env.bump_tag} already points to current commit - reusing it"
+          if (tagExists == 0) {
+            // Tag exists, check if it points to current commit
+            def tagCommit = sh(returnStdout: true, script: """git rev-parse v\${bump_tag}^{}""").trim()
+
+            if (currentCommit == tagCommit) {
+              echo "Tag v${env.bump_tag} already points to current commit - reusing it"
+              tagFound = true
+            } else {
+              echo "WARNING: Tag v${env.bump_tag} already exists and points to different commit"
+              // Bump to next version
+              def parts = env.bump_tag.tokenize('.')
+              def major = parts[0]
+              def minor = parts[1]
+              def patch = parts[2].toInteger() + 1
+              env.bump_tag = "${major}.${minor}.${patch}"
+              echo "Trying next version: v${env.bump_tag}"
+              attempt++
+            }
           } else {
-            echo "Tag v${env.bump_tag} points to different commit - bumping to next version"
-            // Bump to next version to avoid conflict (do version math in Groovy)
-            def parts = env.bump_tag.tokenize('.')
-            def major = parts[0]
-            def minor = parts[1]
-            def patch = parts[2].toInteger() + 1
-            env.bump_tag = "${major}.${minor}.${patch}"
-            echo "New version will be: v${env.bump_tag}"
+            // Tag doesn't exist, we can create it
+            echo "Creating new tag v${env.bump_tag}"
             sh(script: '''git tag v${bump_tag} && git push --tags''')
+            tagFound = true
           }
-        } else {
-          // Tag doesn't exist, create it normally
-          echo "Creating new tag v${env.bump_tag}"
-          sh(script: '''git tag v${bump_tag} && git push --tags''')
+        }
+
+        if (!tagFound) {
+          error("Could not find available tag after ${maxAttempts} attempts. Last tried: v${env.bump_tag}")
         }
 
         echo "Release version: ${env.bump_tag}"
