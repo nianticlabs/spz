@@ -74,5 +74,5 @@ publish-url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-te
 authenticate = "always"
 
 # Configure dependencies to use correct index
-[tool.uv.sources]
-boa-toolkit = { index = "adobeshared-release" }
+# (Add custom sources here if needed)
+# [tool.uv.sources]

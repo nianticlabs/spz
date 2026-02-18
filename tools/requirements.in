@@ -12,4 +12,3 @@
 twine
 lxml
 unittest-xml-reporting
-boa_toolkit>=3.2.6
