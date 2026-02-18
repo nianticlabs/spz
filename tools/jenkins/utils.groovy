@@ -40,11 +40,12 @@ def pythonWheelOps(wheel_version, release_mode, profile, is_pr=false) {
   // By changing 'dynamic = ["version"]' to 'version = "..."', scikit-build-core
   // will use the static version instead of reading from CMakeLists.txt
   // If wheel_version matches the version already in CMakeLists.txt, skip the override
-  def cmake_version = cmd(returnStdout: true, script: "grep -oP 'VERSION\\s+\\K[0-9]+\\.[0-9]+\\.[0-9]+' CMakeLists.txt | head -1").trim()
+  def cmake_version = cmd(returnStdout: true, script: "grep -oP 'VERSION\\s+\\K[0-9]+\\.[0-9]+\\.[0-9]+' CMakeLists.txt | head -1 || grep 'VERSION' CMakeLists.txt | grep -o '[0-9]\\+\\.[0-9]\\+\\.[0-9]\\+' | head -1").trim()
   if (wheel_version != cmake_version) {
     echo "Modifying pyproject.toml to set version ${wheel_version}..."
     if (nodeUtils.shyIsUnix()) {
-      cmd("sed -i 's/dynamic = \\[\"version\"\\]/version = \"${wheel_version}\"/' pyproject.toml")
+      // Use perl for cross-platform in-place editing (works on both Linux and macOS)
+      cmd("perl -i -pe 's/dynamic = \\[\"version\"\\]/version = \"${wheel_version}\"/' pyproject.toml")
     } else {
       cmd("powershell -Command \"(Get-Content pyproject.toml) -replace 'dynamic = \\[\\\"version\\\"\\]', 'version = \\\"${wheel_version}\\\"' | Set-Content pyproject.toml\"")
     }
