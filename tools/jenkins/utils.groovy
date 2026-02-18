@@ -37,7 +37,7 @@ def pythonWheelOps(wheel_version, release_mode, profile, is_pr=false) {
   }
 
   withEnv(buildEnvVars) {
-    uvr(script: "uv build --wheel --out-dir wheelhouse", buildEnv: profile.toolchain)
+    cmd(script: "uv build --wheel --out-dir wheelhouse", buildEnv: profile.toolchain)
   }
 
   // Step 2: Validate the wheel was built
