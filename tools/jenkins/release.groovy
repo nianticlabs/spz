@@ -99,6 +99,15 @@ timestamps {
         checkout scm
         env.tag = sh(returnStdout: true, script: '''git describe --tags --abbrev=0 | sed 's/^v//' ''').trim()
         env.bump_tag = sh(returnStdout: true, script: '''echo "${tag%.*}.$((${tag##*.}+1))"''').trim()
+
+        // Check if tag already exists (from a previous failed release attempt)
+        def tagExists = sh(returnStatus: true, script: """git rev-parse v\${bump_tag} >/dev/null 2>&1""")
+        if (tagExists == 0) {
+          error("Tag v${env.bump_tag} already exists. Please either:\n" +
+                "1. Delete the tag: git tag -d v${env.bump_tag} && git push origin :refs/tags/v${env.bump_tag}\n" +
+                "2. Or manually bump the version in the repository")
+        }
+
         sh(script: '''git tag v${bump_tag} && git push --tags''')
       }
     }
