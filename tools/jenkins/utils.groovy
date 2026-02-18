@@ -29,16 +29,18 @@ def pythonWheelOps(wheel_version, release_mode, profile, is_pr=false) {
   // Step 1: Build the wheel
   echo "Building wheel version ${wheel_version}..."
 
-  // For scikit-build-core, set version via SKBUILD_PROJECT_VERSION environment variable
-  // This overrides the version read from CMakeLists.txt (normally 1.1.0)
-  def buildEnvVars = []
+  // For scikit-build-core with regex version provider, we must modify CMakeLists.txt
+  // since environment variable overrides don't work with this provider
   if (wheel_version != "1.1.0") {
-    buildEnvVars.add("SKBUILD_PROJECT_VERSION=${wheel_version}")
+    echo "Modifying CMakeLists.txt to set version ${wheel_version}..."
+    if (nodeUtils.shyIsUnix()) {
+      cmd("sed -i 's/VERSION 1\\.1\\.0/VERSION ${wheel_version}/' CMakeLists.txt")
+    } else {
+      cmd("powershell -Command \"(Get-Content CMakeLists.txt) -replace 'VERSION 1\\.1\\.0', 'VERSION ${wheel_version}' | Set-Content CMakeLists.txt\"")
+    }
   }
 
-  withEnv(buildEnvVars) {
-    cmd(script: "uv build --wheel --out-dir wheelhouse", buildEnv: profile.toolchain)
-  }
+  cmd(script: "uv build --wheel --out-dir wheelhouse", buildEnv: profile.toolchain)
 
   // Step 2: Validate the wheel was built
   def wheelFiles
