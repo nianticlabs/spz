@@ -59,14 +59,6 @@ struct EmGaussianCloud {
   emscripten::val sh;
 };
 
-// A counterpart to the C++ PackOptions structure, used to
-// transfer data between C++ and JavaScript.
-struct EmPackOptions {
-  uint32_t version;
-  spz::CoordinateSystem from;
-  uint8_t sh1Bits;
-  uint8_t shRestBits;
-};
 
 inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer) {
   emscripten::val Uint8Array = emscripten::val::global("Uint8Array");
@@ -111,7 +103,7 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   return emCloud;
 }
 
-emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const EmPackOptions& emOptions) {
+emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackOptions& options) {
   spz::GaussianCloud cloud;
   cloud.numPoints = emCloud.numPoints;
   cloud.shDegree = emCloud.shDegree;
@@ -126,12 +118,6 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const EmPackOpti
   vectorFromJsArray(emCloud.alphas, cloud.alphas);
   vectorFromJsArray(emCloud.colors, cloud.colors);
   vectorFromJsArray(emCloud.sh, cloud.sh);
-
-  spz::PackOptions options;
-  options.version = emOptions.version;
-  options.from = emOptions.from;
-  options.sh1Bits = emOptions.sh1Bits;
-  options.shRestBits = emOptions.shRestBits;
 
   std::vector<uint8_t> output;
   if (!spz::saveSpz(cloud, options, &output)) {
@@ -160,11 +146,11 @@ EMSCRIPTEN_BINDINGS(spz_module) {
   spz::emscripten::register_extensions();
 #endif
 
-  emscripten::value_object<EmPackOptions>("PackOptions")
-      .field("version", &EmPackOptions::version)
-      .field("from", &EmPackOptions::from)
-      .field("sh1Bits", &EmPackOptions::sh1Bits)
-      .field("shRestBits", &EmPackOptions::shRestBits);
+  emscripten::value_object<spz::PackOptions>("PackOptions")
+      .field("version", &spz::PackOptions::version)
+      .field("from", &spz::PackOptions::from)
+      .field("sh1Bits", &spz::PackOptions::sh1Bits)
+      .field("shRestBits", &spz::PackOptions::shRestBits);
 
   emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 
