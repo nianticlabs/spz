@@ -1,7 +1,6 @@
 def setupUvEnvironment(profile) {
   // Verify uv and uvr are available on this node
   cmd 'uv --version'
-  uvr(script: 'python --version')
 
   def python_version = profile.python_version ?: '3.12'
   if (profile.zap_py_venv || !fileExists('.venv')) {
