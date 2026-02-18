@@ -1,0 +1,15 @@
+# This file contains direct dependencies used to generate the requirements.txt
+#
+# requirements.txt can be generated with this command:
+#
+#     uv pip compile --emit-index-url --upgrade --python 3.12 --universal requirements.in -o requirements.txt
+#
+
+# Libraries that only devs of your lib need should go here.
+--index-url https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-tech-transfer-3di-release/simple
+--extra-index-url https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release/simple
+
+twine
+lxml
+unittest-xml-reporting
+boa_toolkit>=3.2.6

@@ -55,19 +55,17 @@ def build_spz_wheel(profile) {
       ]) {
         withSshCredentials() {
           try {
-              def venv_name = '.venv'
-
               smartStage("Setup-${profile.name}") {
                 smartCleanWs() // ensure there aren't any old .whl builds hanging around
                 printEnvVarsAndJobParams()
                 checkout scm
-                utils.setupCondaEnvironment(venv_name, profile)
+                utils.setupUvEnvironment(profile)
               } // setup
 
               smartStage("Wheel-${profile.name}") {
                 def wheel_version = "v${env.bump_tag}"
                 def release_mode = "release"
-                utils.pythonWheelOps(venv_name, wheel_version, release_mode, profile)
+                utils.pythonWheelOps(wheel_version, release_mode, profile)
               } // wheel
             currentBuild.result = "SUCCESS"
           } catch(Exception e) {
