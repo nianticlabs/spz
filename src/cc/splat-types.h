@@ -33,7 +33,9 @@ SOFTWARE.
 #include <vector>
 
 #include "splat-c-types.h"
+#ifdef SPZ_BUILD_EXTENSIONS
 #include "splat-extensions.h"
+#endif
 
 namespace spz {
 
@@ -45,27 +47,6 @@ inline SpzFloatBuffer copyFloatBuffer(const std::vector<float> &vector) {
     std::memcpy(buffer.data, vector.data(), buffer.count * sizeof(float));
   }
   return buffer;
-}
-
-inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
-  SpzExtensionNode* head = nullptr;
-  SpzExtensionNode* tail = nullptr;
-
-  for (const auto& ext : extensions) {
-    if (!ext) continue;  // Skip null extensions
-
-    SpzExtensionNode* node = new SpzExtensionNode{static_cast<uint32_t>(ext->extensionType), ext->copyAsRawData(), nullptr};
-
-    if (!head) {
-      head = node;
-      tail = node;
-    } else {
-      tail->next = node;
-      tail = node;
-    }
-  }
-
-  return head;
 }
 
 enum class CoordinateSystem {
@@ -177,7 +158,9 @@ struct GaussianCloud {
   //   sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b
   std::vector<float> sh;
 
+#ifdef SPZ_BUILD_EXTENSIONS
   std::vector<SpzExtensionBasePtr> extensions;  // List of extensions, if any
+#endif
 
   // The caller is responsible for freeing the pointers in the returned GaussianCloudData
   GaussianCloudData data() const {
@@ -191,7 +174,11 @@ struct GaussianCloud {
     data.alphas = copyFloatBuffer(alphas);
     data.colors = copyFloatBuffer(colors);
     data.sh = copyFloatBuffer(sh);
+#ifdef SPZ_BUILD_EXTENSIONS
     data.extensions = copyExtensions(extensions);
+#else
+    data.extensions = nullptr;
+#endif
     return data;
   }
 

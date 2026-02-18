@@ -35,7 +35,7 @@ def setupCondaEnvironment(venv_name, profile) {
     // set env var for debugging the script: CONDA_DEBUG_FLAG=-vvv if needed
     env_list = ["CONDA_DEBUG_FLAG=${debug_flag}"]
     withEnv(env_list) {
-        runInConda(name: venv_name, label: "Setup virtual env", script: setup_script)
+        runInConda(name: venv_name, label: "Setup virtual env", script: setup_script, buildEnv: profile.toolchain)
     }
 }
 
@@ -58,13 +58,13 @@ def pythonWheelOps(venv_name, wheel_version, release_mode, profile, is_pr=false)
                 script = 'source useXcode 16.0 MacOSX && ' + script
             }
             echo "Running: ${script}"
-            runInConda(name: venv_name, script: script)
+            runInConda(name: venv_name, script: script, buildEnv: profile.toolchain)
         } catch (Exception e) {
             echo "Got exception: ${e}"
             throw e
         }
         try {
-            runInConda(name: venv_name, script: "boa_toolkit package check --wheel_dir wheelhouse --smoke_test tools/smoke_test.py")
+            runInConda(name: venv_name, script: "boa_toolkit package check --wheel_dir wheelhouse --smoke_test tools/smoke_test.py", buildEnv: profile.toolchain)
         } catch (Exception e) {
             echo "Got exception: ${e}"
             throw e
@@ -72,10 +72,10 @@ def pythonWheelOps(venv_name, wheel_version, release_mode, profile, is_pr=false)
         try {
             if (!is_pr) {
                 echo "Uploading ${repo_url_adobeshared}..."
-                runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_adobeshared}")
+                runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_adobeshared}", buildEnv: profile.toolchain)
             }
             echo "Uploading ${repo_url_tech_transfer}..."
-            runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_tech_transfer}")
+            runInConda(name: venv_name, script: "boa_toolkit package upload --wheel_dir wheelhouse --pypi_url ${repo_url_tech_transfer}", buildEnv: profile.toolchain)
         } catch (Exception e) {
             echo "Got exception: ${e}"
             throw e

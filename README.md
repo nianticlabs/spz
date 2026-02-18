@@ -25,6 +25,8 @@ be saved and loaded without conversion, which may harm interoperability.
 Requires `libz` as the only dependent library, otherwise the code is completely self-contained.
 A CMake build system is provided for convenience.
 
+**Note:** If `libz` is not found on the system, the CMake build system will automatically download zlib version 1.3.1 using FetchContent. This ensures consistent builds across different environments.
+
 ### Typescript
 
 To build the Typescript interface through Web-Assembly (WASM), an Emscripten environment needs to be setup before compilation. One may install the Emscripten SDK following the instructions [here](https://emscripten.org/docs/getting_started/downloads.html).
@@ -55,7 +57,7 @@ npm run publishPackage
 
 ```
 bool saveSpz(
-   const GaussianCloud &gaussians, PackOptions &options, std::vector<uint8_t> *output);
+   const GaussianCloud &gaussians, const PackOptions &options, std::vector<uint8_t> *output);
 ```
 
 Converts a cloud of Gaussians in `.spz` format to a vector of bytes.
@@ -116,19 +118,19 @@ Check [src/emscripten/spz.d.ts](src/emscripten/spz.d.ts) for the Typescript inte
 The `PackOptions` struct supports the following fields:
 
 - `from`: Source coordinate system (default: `UNSPECIFIED`)
-- `version`: Version of the packed format
+- `version`: Version of the packed format (default: `3`)
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
 
 ## File Format
 
-The .spz format is a gzipped stream of data consisting of a variable-size header followed by the
+The .spz format is a gzipped stream of data consisting of a 16-byte header followed by the
 gaussian data. This data is organized by attribute in the following order: positions,
 alphas, colors, scales, rotations, spherical harmonics.
 
 ### Header
 
-**Version 2 (current):**
+**Version 3 (current):**
 ```c
 struct PackedGaussiansHeader {
   uint32_t magic;
@@ -146,7 +148,7 @@ All values are little-endian.
 1. **magic**: This is always 0x5053474e
 2. **version**: Currently, the only valid versions are 2 and 3
 3. **numPoints**: The number of gaussians
-4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 3 (inclusive).
+4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 4 (inclusive).
 5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
    the fixed-point encoding.
 6. **flags**: A bit field containing flags.
@@ -198,33 +200,20 @@ Each coefficient is represented as an 8-bit signed integer.
 
 **Quantization:**
 
-By default, a fixed-precision quantization is adopted, where we
+SPZ supports configurable spherical harmonics quantization. By default, a fixed-precision quantization is adopted:
 - Assumes SH coefficients are in the [-1, 1] range
 - Fixed 5 bits of precision for degree 1 and 4 bits for degrees 2, 3, and 4
 - Maintained for backward compatibility
 
+The quantization precision can be configured via `PackOptions`:
+- `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
+- `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
+
+**Note:** Quantization bits are only used during packing to reduce information entropy for better g-zipping compression. The unpacking process does not need to know the exact quantization bits, as g-unzipping already fills zero bits for quantized data.
+
+This allows users to trade off between file size and quality. The library maintains full backward compatibility with default quantization settings.
+
 ### Extensions
-
-### Spherical Harmonics Quantization
-
-With extension `SPZ_ADOBE_sh_quantization`, SPZ supports configurable spherical harmonics quantization with the following improvements:
-
-1. **Adaptive Range Scaling**: Instead of assuming SH coefficients are in the [-1, 1] range, the format now computes the actual min/max values from the data and uses the full quantization range for optimal precision.
-
-2. **Configurable Bit Precision**: The number of quantization bits for SH degree 1 and higher degree coefficients can be configured (1-8 bits), allowing users to trade off between file size and quality. Default bits are 5 for SH degree 1 and 4 for higher ones.
-
-3. **Backward Compatibility**: The library maintains full backward compatibility when this extension is unused.
-
-**Attributes**
-
-This extension has the following attributes and default values:
-
-```
-  uint8_t sh1Bits = 5;     // Bits for SH degree 1 coefficients
-  uint8_t shRestBits = 4;  // Bits for SH degree 2+ coefficients
-  float shMin = -1.0f;     // Minimum SH coefficient value used for quantization
-  float shMax = 1.0f;      // Maximum SH coefficient value used for quantization
-```
 
 ### Camera Orbit Limitation
 

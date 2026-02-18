@@ -2,8 +2,7 @@
 
 # Export shared test utilities
 from .test_utils import (
-    SH_4BIT_EPSILON,
-    SH_5BIT_EPSILON,
+    sh_epsilon,
     normalized,
     axis_angle_quat,
     times,

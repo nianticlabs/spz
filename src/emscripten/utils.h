@@ -1,7 +1,6 @@
 /*
 MIT License
 
-Copyright (c) 2025 Niantic Labs
 Copyright (c) 2025 Adobe Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -23,39 +22,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#ifndef SPZ_SPLAT_C_TYPES_H_
-#define SPZ_SPLAT_C_TYPES_H_
+#ifndef SPZ_EMSCRIPTEN_UTILS_H_
+#define SPZ_EMSCRIPTEN_UTILS_H_
 
-#define _USE_MATH_DEFINES
-#include <math.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <emscripten/val.h>
+#include <vector>
 
-// These types are used to bridge between the C++ API and C (to interop with Swift and C#).
+// Utility functions for converting between C++ vectors and JavaScript arrays
+template <typename T>
+inline ::emscripten::val jsArrayFromVector(const std::vector<T>& vec) {
+  ::emscripten::val array = ::emscripten::val::array();
+  for (const auto& item : vec) {
+    array.call<void>("push", item);
+  }
+  return array;
+}
 
-typedef struct {
-  size_t count;
-  float *data;
-} SpzFloatBuffer;
+template <typename T>
+inline void vectorFromJsArray(const ::emscripten::val& array, std::vector<T>& out) {
+  const size_t length = array["length"].as<size_t>();
+  out.resize(length);
+  for (size_t i = 0; i < length; ++i) {
+    out[i] = array[i].as<T>();
+  }
+}
 
-// Forward declaration - full definition is in splat-extensions.h
-#ifdef SPZ_BUILD_EXTENSIONS
-#include "splat-extensions.h"
-#else
-typedef struct SpzExtensionNode SpzExtensionNode;
-#endif
+#endif  // SPZ_EMSCRIPTEN_UTILS_H_
 
-typedef struct {
-  int32_t numPoints;
-  int32_t shDegree;
-  bool antialiased;
-  SpzFloatBuffer positions;
-  SpzFloatBuffer scales;
-  SpzFloatBuffer rotations;
-  SpzFloatBuffer alphas;
-  SpzFloatBuffer colors;
-  SpzFloatBuffer sh;
-  SpzExtensionNode* extensions;
-} GaussianCloudData;
-
-#endif  // SPZ_SPLAT_C_TYPES_H_

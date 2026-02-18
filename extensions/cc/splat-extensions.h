@@ -32,12 +32,20 @@ SOFTWARE.
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <sstream>
 #include <vector>
 
+// C-compatible extension node structure (used for C interop)
+typedef struct SpzExtensionNode {
+  uint32_t type;
+  void* data;
+  struct SpzExtensionNode* next;
+} SpzExtensionNode;
+
 namespace spz {
+// Forward declaration to avoid circular dependency
+// The full definition is in load-spz.h, which is included in splat-extensions.cc
+struct PlyExtraElement;
 enum class SpzExtensionType : uint32_t {
-  SPZ_ADOBE_sh_quantization = 0xADBE0001u,
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
 };
 
@@ -51,20 +59,6 @@ struct SpzExtensionBase {
 };
 
 using SpzExtensionBasePtr = std::shared_ptr<SpzExtensionBase>;
-
-// SH quantization parameters
-struct SpzExtensionSHQuantizationAdobe : public SpzExtensionBase {
-  uint8_t sh1Bits = 5;     // Bits for SH degree 1 coefficients
-  uint8_t shRestBits = 4;  // Bits for SH degree 2+ coefficients
-  float shMin = -1.0f;     // Minimum SH coefficient value used for quantization
-  float shMax = 1.0f;      // Maximum SH coefficient value used for quantization
-
-  SpzExtensionSHQuantizationAdobe();
-  void write(std::ostream& os) const override;
-  SpzExtensionBase* copyAsRawData() const override;
-  static std::optional<SpzExtensionBasePtr> read(std::istream& is);
-  static SpzExtensionType type();
-};
 
 struct SpzExtensionSafeOrbitCameraAdobe : public SpzExtensionBase {
   float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
@@ -81,6 +75,33 @@ struct SpzExtensionSafeOrbitCameraAdobe : public SpzExtensionBase {
 void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out);
 
 void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostream& os);
+
+void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions);
+
+void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
+
+void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
+
+inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
+  SpzExtensionNode* head = nullptr;
+  SpzExtensionNode* tail = nullptr;
+
+  for (const auto& ext : extensions) {
+    if (!ext) continue;  // Skip null extensions
+
+    SpzExtensionNode* node = new SpzExtensionNode{static_cast<uint32_t>(ext->extensionType), ext->copyAsRawData(), nullptr};
+
+    if (!head) {
+      head = node;
+      tail = node;
+    } else {
+      tail->next = node;
+      tail = node;
+    }
+  }
+
+  return head;
+}
 
 template <typename T>
 std::shared_ptr<T> findExtensionByType(const std::vector<SpzExtensionBasePtr>& list) {

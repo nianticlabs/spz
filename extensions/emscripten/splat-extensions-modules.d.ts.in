@@ -1,0 +1,5 @@
+  SpzExtensionType: typeof SpzExtensionType;
+
+  // Extension classes
+  SpzExtensionBase: typeof SpzExtensionBase;
+  SpzExtensionSafeOrbitCameraAdobe: typeof SpzExtensionSafeOrbitCameraAdobe;

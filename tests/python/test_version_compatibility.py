@@ -6,7 +6,7 @@ import tempfile
 import numpy as np
 
 import spz
-from test_utils import times
+from test_utils import times, sh_epsilon
 
 
 def test_pack_options_version_property():
@@ -180,7 +180,7 @@ def test_version_roundtrip_consistency():
 
 
 def test_version_3_with_all_features():
-    """Test version 3 with SH degree 4, custom bits, and min/max scaling."""
+    """Test version 3 with SH degree 4, custom bits."""
     cloud = spz.GaussianCloud()
     cloud.sh_degree = 4
     cloud.antialiased = True
@@ -192,13 +192,12 @@ def test_version_3_with_all_features():
     cloud.rotations = rng.uniform(-1.0, 1.0, size=num_points * 4).astype(np.float32)
     cloud.alphas = rng.uniform(-2.0, 2.0, size=num_points).astype(np.float32)
     cloud.colors = rng.uniform(-0.5, 1.5, size=num_points * 3).astype(np.float32)
-    cloud.sh = rng.uniform(-1.5, 1.5, size=num_points * 72).astype(np.float32)
+    cloud.sh = rng.uniform(-1.0, 1.0, size=num_points * 72).astype(np.float32)
 
     opts = spz.PackOptions()
     opts.version = 3
     opts.sh1_bits = 8
     opts.sh_rest_bits = 6
-    opts.enable_sh_min_max_scaling = True
     opts.from_coord = spz.RUB
 
     filename = os.path.join(tempfile.gettempdir(), "all_features.spz")
@@ -214,5 +213,5 @@ def test_version_3_with_all_features():
     assert loaded.antialiased
     assert len(loaded.sh) == num_points * 72
 
-    np.testing.assert_allclose(loaded.sh, cloud.sh, rtol=0, atol=0.05)
+    np.testing.assert_allclose(loaded.sh, cloud.sh, rtol=0, atol=sh_epsilon(6))
 
