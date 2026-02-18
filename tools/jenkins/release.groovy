@@ -97,18 +97,39 @@ timestamps {
     node('builder') {
       withSshCredentials() {
         checkout scm
+
+        // Fetch all tags to ensure we have the latest
+        sh(script: '''git fetch --tags''')
+
         env.tag = sh(returnStdout: true, script: '''git describe --tags --abbrev=0 | sed 's/^v//' ''').trim()
         env.bump_tag = sh(returnStdout: true, script: '''echo "${tag%.*}.$((${tag##*.}+1))"''').trim()
 
-        // Check if tag already exists (from a previous failed release attempt)
+        // Check if tag already exists
         def tagExists = sh(returnStatus: true, script: """git rev-parse v\${bump_tag} >/dev/null 2>&1""")
+
         if (tagExists == 0) {
-          error("Tag v${env.bump_tag} already exists. Please either:\n" +
-                "1. Delete the tag: git tag -d v${env.bump_tag} && git push origin :refs/tags/v${env.bump_tag}\n" +
-                "2. Or manually bump the version in the repository")
+          echo "WARNING: Tag v${env.bump_tag} already exists"
+
+          // Check if existing tag points to current HEAD
+          def currentCommit = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
+          def tagCommit = sh(returnStdout: true, script: """git rev-parse v\${bump_tag}^{}""").trim()
+
+          if (currentCommit == tagCommit) {
+            echo "Tag v${env.bump_tag} already points to current commit - reusing it"
+          } else {
+            echo "Tag v${env.bump_tag} points to different commit - bumping to next version"
+            // Bump to next version to avoid conflict
+            env.bump_tag = sh(returnStdout: true, script: """echo "${bump_tag%.*}.\$((${bump_tag##*.}+1))" """).trim()
+            echo "New version will be: v${env.bump_tag}"
+            sh(script: '''git tag v${bump_tag} && git push --tags''')
+          }
+        } else {
+          // Tag doesn't exist, create it normally
+          echo "Creating new tag v${env.bump_tag}"
+          sh(script: '''git tag v${bump_tag} && git push --tags''')
         }
 
-        sh(script: '''git tag v${bump_tag} && git push --tags''')
+        echo "Release version: ${env.bump_tag}"
       }
     }
   }
