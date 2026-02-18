@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import spz
-from test_utils import SH_4BIT_EPSILON
+from test_utils import sh_epsilon
 
 
 def test_sh_encoding_for_zeros_and_edges():
@@ -155,7 +155,7 @@ def test_sh_degree_4_save_load():
     np.testing.assert_allclose(loaded.positions, cloud.positions, atol=1/2048.0)
     np.testing.assert_allclose(loaded.scales, cloud.scales, atol=1/16.0)
     np.testing.assert_allclose(loaded.alphas, cloud.alphas, atol=0.01)
-    np.testing.assert_allclose(loaded.sh, cloud.sh, atol=SH_4BIT_EPSILON)
+    np.testing.assert_allclose(loaded.sh, cloud.sh, atol=sh_epsilon(4))
 
 
 def test_sh_degree_4_ply_roundtrip():

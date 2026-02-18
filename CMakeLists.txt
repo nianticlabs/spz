@@ -13,6 +13,9 @@ option(SPZ_BUILD_PYTHON_BINDINGS "Build Python bindings using nanobind" OFF)
 # --- Command Line Tools Option ---
 option(SPZ_BUILD_TOOLS "Build command line tools" ON)
 
+# --- Extensions Option ---
+option(SPZ_BUILD_EXTENSIONS "Build SPZ extensions support" OFF)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(SPZ_BUILD_PYTHON_BINDINGS OFF CACHE BOOL "Build Python bindings using nanobind" FORCE)
   set(SPZ_BUILD_TOOLS OFF CACHE BOOL "Build command line tools" FORCE)
@@ -50,15 +53,22 @@ set(spz_sources
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-types.cc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-extensions.cc"
 )
 
 set(spz_headers
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.h"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-types.h"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-extensions.h"
 )
+
+if(SPZ_BUILD_EXTENSIONS)
+  list(APPEND spz_sources
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.cc"
+  )
+  list(APPEND spz_headers
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.h"
+  )
+endif()
 
 # create the library and configure it
 add_library(spz ${spz_sources})
@@ -80,9 +90,22 @@ target_include_directories(spz
   INTERFACE $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+if(SPZ_BUILD_EXTENSIONS)
+  target_include_directories(spz
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc>
+  )
+  target_compile_definitions(spz PUBLIC SPZ_BUILD_EXTENSIONS)
+endif()
+
+if (CMAKE_CXX_STANDARD)
+    set(SPZ_CXX ${CMAKE_CXX_STANDARD})
+else()
+    set(SPZ_CXX 17)
+endif()
+
 set_target_properties(spz PROPERTIES
   PUBLIC_HEADER "${spz_headers}"
-  CXX_STANDARD 17
+  CXX_STANDARD ${SPZ_CXX}
   CXX_STANDARD_REQUIRED ON
 )
 
@@ -93,8 +116,20 @@ if(SPZ_BUILD_WASM)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-bindings.cc"
   )
 
+  if(SPZ_BUILD_EXTENSIONS)
+    list(APPEND spz_binding_sources
+      "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions.cc"
+    )
+  endif()
+
   add_executable(spz-wasm ${spz_binding_sources})
   target_link_libraries(spz-wasm PRIVATE spz)
+
+  if(SPZ_BUILD_EXTENSIONS)
+    target_include_directories(spz-wasm PRIVATE
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    )
+  endif()
 
   target_link_options(spz-wasm PRIVATE
     "-O3"
@@ -114,13 +149,22 @@ if(SPZ_BUILD_WASM)
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dist"
   )
 
-  # Copy the TypeScript declaration file
-  add_custom_command(
-    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz.d.ts"
-            "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz.d.ts"
+  # Generate the TypeScript declaration file conditionally based on SPZ_BUILD_EXTENSIONS
+  if(SPZ_BUILD_EXTENSIONS)
+    # Read the extensions TypeScript definitions
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions.d.ts.in" SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extensions/emscripten/splat-extensions-modules.d.ts.in" SPZ_EXTENSIONS_MODULE_INTERFACE)
+    set(SPZ_EXTENSIONS_GAUSSIAN_CLOUD_FIELD "  extensions: SpzExtensionBase[];")
+  else()
+    set(SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS "")
+    set(SPZ_EXTENSIONS_GAUSSIAN_CLOUD_FIELD "")
+    set(SPZ_EXTENSIONS_MODULE_INTERFACE "")
+  endif()
+
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz.d.ts.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
+    @ONLY
   )
 
   add_custom_target(copy_spz_dts ALL
@@ -169,7 +213,7 @@ if(SPZ_BUILD_TOOLS)
   target_link_libraries(ply_to_spz PRIVATE spz)
   target_include_directories(ply_to_spz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(ply_to_spz PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
   )
 
@@ -177,7 +221,7 @@ if(SPZ_BUILD_TOOLS)
   target_link_libraries(spz_to_ply PRIVATE spz)
   target_include_directories(spz_to_ply PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(spz_to_ply PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
   )
 
@@ -185,7 +229,7 @@ if(SPZ_BUILD_TOOLS)
   target_link_libraries(spz_info PRIVATE spz)
   target_include_directories(spz_info PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(spz_info PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
   )
 
@@ -236,6 +280,12 @@ if(SPZ_BUILD_PYTHON_BINDINGS)
 
   # Add the project root to the include path for the python module
   target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # Add extensions include directory and source file if extensions are enabled
+  if(SPZ_BUILD_EXTENSIONS)
+    target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc)
+    target_sources(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/extensions/python/splat-extensions.cc)
+  endif()
 
   # Link the python module against the spz library
   target_link_libraries(spz_py PRIVATE spz::spz)

@@ -2,6 +2,8 @@
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
+#include <nanobind/stl/shared_ptr.h>
 #include <nanobind/ndarray.h>
 
 #include <vector>
@@ -11,7 +13,9 @@
 
 #include "src/cc/load-spz.h"
 #include "src/cc/splat-types.h"
-#include "src/cc/splat-extensions.h"
+#ifdef SPZ_BUILD_EXTENSIONS
+#include "extensions/python/splat-extensions.h"
+#endif
 
 namespace nb = nanobind;
 
@@ -145,18 +149,17 @@ NB_MODULE(spz, m) {
     // -------------------------------------------------------------------------
     // Options structs
     // -------------------------------------------------------------------------
-    nb::class_<spz::PackOptions>(m, "PackOptions")
+    nb::class_<spz::PackOptions> pack_options(m, "PackOptions");
+    pack_options
         .def(nb::init<>())
         .def_rw("version", &spz::PackOptions::version,
                 "SPZ version of the input splat")
         .def_rw("from_coord", &spz::PackOptions::from,
                 "Coordinate system of the input splat")
         .def_rw("sh1_bits", &spz::PackOptions::sh1Bits,
-                "Bits of the first-order spherical harmonics")
+                "Bits used for first-order spherical harmonics quantization")
         .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
-                "Bits of the non-first-order spherical harmonics")
-        .def_rw("enable_sh_min_max_scaling", &spz::PackOptions::enableSHMinMaxScaling,
-                "Whether to normalize the spherical harmonics before quantization");
+                "Bits used for non-first-order spherical harmonics quantization");
 
     nb::class_<spz::UnpackOptions>(m, "UnpackOptions")
         .def(nb::init<>())
@@ -166,46 +169,9 @@ NB_MODULE(spz, m) {
     // -------------------------------------------------------------------------
     // Extensions structs
     // -------------------------------------------------------------------------
-    nb::enum_<spz::SpzExtensionType>(m, "SpzExtensionType", R"doc(
-        Enumeration of vendor-specific SPZ extension types.
-        More extensions may be added in the future, with their values defined as
-        VENDOR_ID << 16 | EXTENSION_ID, where:
-        - VENDOR_ID is a unique identifier for the vendor (e.g., Adobe = 0xADBE);
-        - EXTENSION_ID is a unique identifier for the specific extension within that vendor's namespace.
-    )doc")
-        .value("SPZ_ADOBE_sh_quantization", spz::SpzExtensionType::SPZ_ADOBE_sh_quantization,
-               "Adobe spherical harmonics quantization extension")
-        .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera,
-               "Adobe safe orbit camera extension")
-        .export_values();
-
-    nb::class_<spz::SpzExtensionBase>(m, "SpzExtensionBase")
-        .def_ro("extension_type", &spz::SpzExtensionBase::extensionType,
-                "Type of the SPZ extension");
-
-    nb::class_<spz::SpzExtensionSHQuantizationAdobe, spz::SpzExtensionBase>(m, "SpzExtensionSHQuantizationAdobe")
-        .def(nb::init<>())
-        .def_rw("sh1_bits", &spz::SpzExtensionSHQuantizationAdobe::sh1Bits,
-                "Bits used for first-order spherical harmonics quantization")
-        .def_rw("sh_rest_bits", &spz::SpzExtensionSHQuantizationAdobe::shRestBits,
-                "Bits used for non-first-order spherical harmonics quantization")
-        .def_rw("sh_min", &spz::SpzExtensionSHQuantizationAdobe::shMin,
-                "Minimum SH coefficient value for quantization scaling")
-        .def_rw("sh_max", &spz::SpzExtensionSHQuantizationAdobe::shMax,
-                "Maximum SH coefficient value for quantization scaling")
-        .def_static("type", &spz::SpzExtensionSHQuantizationAdobe::type,
-                    "Static method to get the extension type enum value");
-
-    nb::class_<spz::SpzExtensionSafeOrbitCameraAdobe, spz::SpzExtensionBase>(m, "SpzExtensionSafeOrbitCameraAdobe")
-        .def(nb::init<>())
-        .def_rw("safe_orbit_elevation_min", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMin,
-                "Minimum elevation angle for safe orbit (radians)")
-        .def_rw("safe_orbit_elevation_max", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax,
-                "Maximum elevation angle for safe orbit (radians)")
-        .def_rw("safe_orbit_radius_min", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin,
-                "Minimum radius for safe orbit")
-        .def_static("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type,
-                    "Static method to get the extension type enum value");
+#ifdef SPZ_BUILD_EXTENSIONS
+    spz::python::register_extensions(m);
+#endif
 
     // -------------------------------------------------------------------------
     // GaussianCloud - Main data structure for 3D Gaussian splats
@@ -393,7 +359,11 @@ NB_MODULE(spz, m) {
 
                  Applies the same internal logic as convert_coordinates(RUB, RDF).)doc")
         .def("median_volume", &spz::GaussianCloud::medianVolume,
-             "Return the median Gaussian volume.");
+             "Return the median Gaussian volume");
+
+#ifdef SPZ_BUILD_EXTENSIONS
+    spz::python::register_gaussian_cloud_extensions(cloud);
+#endif
 
     // -------------------------------------------------------------------------
     // Functions
@@ -414,4 +384,7 @@ NB_MODULE(spz, m) {
     m.def("save_splat_to_ply", (bool (*)(const spz::GaussianCloud &, const spz::PackOptions &, const std::string &)) &spz::saveSplatToPly,
           nb::arg("gaussians"), nb::arg("options"), nb::arg("filename"),
           "Write GaussianCloud data to a *.ply* file.");
+
+    m.def("has_extension_support", &spz::hasExtensionSupport,
+          "Returns True if the build has extension support enabled, False otherwise.");
 }

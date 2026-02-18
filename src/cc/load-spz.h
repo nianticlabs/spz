@@ -31,7 +31,9 @@ SOFTWARE.
 #include <vector>
 
 #include "splat-types.h"
+#ifdef SPZ_BUILD_EXTENSIONS
 #include "splat-extensions.h"
+#endif
 
 namespace spz {
 #ifdef ANDROID
@@ -89,12 +91,12 @@ struct PackedGaussian {
   std::array<uint8_t, SH_MAX_COEFFS> shB{};
 
   UnpackedGaussian unpack(
-    bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c,
-    float shMin = -1.0f, float shMax = 1.0f) const;
+    bool usesFloat16, bool usesQuaternionSmallestThree, int32_t fractionalBits, const CoordinateConverter &c) const;
 };
 
-// Represents a full splat with lower precision. Each splat has at most 64 bytes, although splats
-// with fewer spherical harmonics degrees will have less. The data is stored non-interleaved.
+// Represents a full splat with lower precision. Each splat has at most 92 bytes (for degree 4
+// spherical harmonics), although splats with fewer spherical harmonics degrees will have less.
+// The data is stored non-interleaved.
 struct PackedGaussians {
   uint32_t version = LATEST_SPZ_HEADER_VERSION;  // Version of the packed format
   int32_t numPoints = 0;       // Total number of points (gaussians)
@@ -110,7 +112,9 @@ struct PackedGaussians {
   std::vector<uint8_t> colors;
   std::vector<uint8_t> sh;
 
+#ifdef SPZ_BUILD_EXTENSIONS
   std::vector<SpzExtensionBasePtr> extensions;  // List of extensions, if any
+#endif
 
   bool usesFloat16() const;
   PackedGaussian at(int32_t i) const;
@@ -121,14 +125,23 @@ struct PackOptions {
   uint32_t version = LATEST_SPZ_HEADER_VERSION;  // Version of the packed format
 
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
-  // Spherical harmonics quantization parameters
-  uint8_t sh1Bits = DEFAULT_SH1_BITS;      // Bits for SH degree 1 coefficients (max 8)
-  uint8_t shRestBits = DEFAULT_SH_REST_BITS;   // Bits for SH degree 2+ coefficients (max 8)
-  bool enableSHMinMaxScaling = false;  // Whether to enable SH min/max scaling, useful for legacy versions.
+
+  // Quantization bits are only used during packing to reduce information entropy for g-zipping.
+  // Unpacking doesn't need these values since g-unzipping already fills zero bits for quantized data.
+  uint8_t sh1Bits = DEFAULT_SH1_BITS;     // Bits for SH degree 1 coefficients
+  uint8_t shRestBits = DEFAULT_SH_REST_BITS;  // Bits for SH degree 2+ coefficients
 };
 
 struct UnpackOptions {
   CoordinateSystem to = CoordinateSystem::UNSPECIFIED;
+};
+
+// Structure for PLY extra elements (non-vertex elements)
+struct PlyExtraElement {
+  std::string name;
+  int32_t count;
+  size_t bytesPerElement;
+  bool isKnown;  // true for elements we explicitly handle (like safe_orbit)
 };
 
 // Saves Gaussian splat in packed format, returning a vector of bytes.
@@ -163,4 +176,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out);
 
 bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out);
+
+// Returns true if the build has extension support enabled, false otherwise
+bool hasExtensionSupport();
 }  // namespace spz

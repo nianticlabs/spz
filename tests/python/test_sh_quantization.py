@@ -1,30 +1,28 @@
-"""Tests for SH quantization bit rates and min/max scaling."""
+"""Tests for SH quantization bit rates."""
 
 import os
 import tempfile
 
 import numpy as np
+import pytest
 
 import spz
-
+from test_utils import sh_epsilon
 
 def test_pack_options_sh_bits_properties():
-    """Test that PackOptions has sh1_bits and sh_rest_bits properties."""
+    """Test that PackOptions has sh1Bits and shRestBits properties."""
     opts = spz.PackOptions()
 
     # Test default values (from C++ constants: DEFAULT_SH1_BITS=5, DEFAULT_SH_REST_BITS=4)
     assert opts.sh1_bits == 5
     assert opts.sh_rest_bits == 4
-    assert not opts.enable_sh_min_max_scaling
 
     # Test setting custom values
     opts.sh1_bits = 8
     opts.sh_rest_bits = 6
-    opts.enable_sh_min_max_scaling = True
 
     assert opts.sh1_bits == 8
     assert opts.sh_rest_bits == 6
-    assert opts.enable_sh_min_max_scaling
 
 
 def test_sh_quantization_8bit():
@@ -57,7 +55,8 @@ def test_sh_quantization_8bit():
     assert spz.save_spz(cloud, opts, filename) is True
 
     loaded = spz.load_spz(filename, spz.UnpackOptions())
-    np.testing.assert_allclose(loaded.sh, original_sh, atol=0.01)
+    # 8-bit quantization: max error is sh_epsilon(8)
+    np.testing.assert_allclose(loaded.sh, original_sh, rtol=0, atol=sh_epsilon(8))
 
 
 def test_sh_quantization_low_bits():
@@ -83,55 +82,8 @@ def test_sh_quantization_low_bits():
     loaded = spz.load_spz(filename, spz.UnpackOptions())
 
     assert len(loaded.sh) == 9
-    # Large tolerance expected with 1-bit quantization
-    np.testing.assert_allclose(loaded.sh, original_sh, atol=1.0)
-
-
-def test_sh_min_max_scaling():
-    """Test SH min/max scaling for better quantization of narrow-range data."""
-    cloud = spz.GaussianCloud()
-    cloud.sh_degree = 1
-    cloud.positions = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-    cloud.scales = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-    cloud.alphas = np.array([0.0], dtype=np.float32)
-    cloud.colors = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-
-    # Narrow range SH coefficients
-    original_sh = np.array([
-        0.01, 0.02, 0.03,
-        0.04, 0.05, 0.06,
-        0.07, 0.08, 0.09
-    ], dtype=np.float32)
-    cloud.sh = original_sh.copy()
-
-    # Save with min/max scaling enabled
-    opts_scaled = spz.PackOptions()
-    opts_scaled.enable_sh_min_max_scaling = True
-    opts_scaled.sh1_bits = 8
-    opts_scaled.sh_rest_bits = 8
-
-    filename_scaled = os.path.join(tempfile.gettempdir(), "sh_minmax_scaled.spz")
-    assert spz.save_spz(cloud, opts_scaled, filename_scaled) is True
-
-    loaded_scaled = spz.load_spz(filename_scaled, spz.UnpackOptions())
-
-    # Save without min/max scaling (default)
-    opts_default = spz.PackOptions()
-    opts_default.enable_sh_min_max_scaling = False
-    opts_default.sh1_bits = 8
-    opts_default.sh_rest_bits = 8
-
-    filename_default = os.path.join(tempfile.gettempdir(), "sh_minmax_default.spz")
-    assert spz.save_spz(cloud, opts_default, filename_default) is True
-
-    loaded_default = spz.load_spz(filename_default, spz.UnpackOptions())
-
-    # With min/max scaling, precision should be better for narrow-range data
-    error_scaled = np.abs(loaded_scaled.sh - original_sh).max()
-    error_default = np.abs(loaded_default.sh - original_sh).max()
-
-    assert error_scaled <= error_default
+    # 1-bit quantization: max error is sh_epsilon(1)
+    np.testing.assert_allclose(loaded.sh, original_sh, rtol=0, atol=sh_epsilon(1))
 
 
 def test_sh_bits_comparison():
@@ -182,7 +134,6 @@ def test_sh_degree_4_with_custom_bits():
     opts.version = 3
     opts.sh1_bits = 6
     opts.sh_rest_bits = 3
-    opts.enable_sh_min_max_scaling = True
 
     filename = os.path.join(tempfile.gettempdir(), "sh4_custom_bits.spz")
     assert spz.save_spz(cloud, opts, filename) is True
@@ -191,6 +142,8 @@ def test_sh_degree_4_with_custom_bits():
     assert loaded.sh_degree == 4
     assert len(loaded.sh) == num_points * 72
 
-    # Degree 1 coefficients should have reasonable error with 6-bit quantization
-    np.testing.assert_allclose(loaded.sh[:9], cloud.sh[:9], rtol=0, atol=0.02)
+    # Degree 1 coefficients use 6-bit quantization: max error is sh_epsilon(6)
+    # Degree 2+ coefficients use 3-bit quantization: max error is sh_epsilon(3)
+    np.testing.assert_allclose(loaded.sh[:9], cloud.sh[:9], rtol=0, atol=sh_epsilon(6))
+    # Note: We only test degree 1 coefficients here; degree 2+ would need sh_epsilon(3) tolerance
 

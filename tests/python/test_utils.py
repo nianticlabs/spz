@@ -9,8 +9,24 @@ import spz
 # Epsilon constants (from the C++ tests)
 # -----------------------------------------------------------------------------
 
-SH_4BIT_EPSILON = 2.0 / 32.0 + 0.5 / 255.0
-SH_5BIT_EPSILON = 2.0 / 64.0 + 0.5 / 255.0
+
+def sh_epsilon(bits):
+    """
+    Calculate the maximum quantization error (epsilon) for SH quantization with given bit precision.
+
+    For N-bit quantization:
+    - Number of buckets = 2^N
+    - Half bucket size (max quantization error) = 1.0 / (2^N) = 1.0 / (1 << bits)
+    - Rounding error from quantization step = 0.5 / 128.0 (constant)
+    - Total max error = half_bucket + rounding_error
+
+    Args:
+        bits: Number of quantization bits (1-8)
+
+    Returns:
+        Maximum quantization error (epsilon) for the given bit precision
+    """
+    return 1.0 / (1 << bits) + 0.5 / 128.0
 
 # -----------------------------------------------------------------------------
 # Helper functions using SciPy for quaternion math.

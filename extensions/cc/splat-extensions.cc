@@ -23,7 +23,6 @@ SOFTWARE.
 */
 
 #include "splat-extensions.h"
-
 #include "load-spz.h"
 
 namespace spz {
@@ -59,9 +58,6 @@ std::optional<SpzExtensionBasePtr> tryParseExtension(std::istream& is) {
   SpzExtensionType type = static_cast<SpzExtensionType>(type_u32);
 
   switch (type) {
-    case SpzExtensionType::SPZ_ADOBE_sh_quantization:
-      mark.commit();
-      return SpzExtensionSHQuantizationAdobe::read(is);
     case SpzExtensionType::SPZ_ADOBE_safe_orbit_camera:
       mark.commit();
       return SpzExtensionSafeOrbitCameraAdobe::read(is);
@@ -71,40 +67,6 @@ std::optional<SpzExtensionBasePtr> tryParseExtension(std::istream& is) {
   }
 }
 }  // namespace
-
-SpzExtensionSHQuantizationAdobe::SpzExtensionSHQuantizationAdobe() : SpzExtensionBase(SpzExtensionType::SPZ_ADOBE_sh_quantization) {
-}
-
-void SpzExtensionSHQuantizationAdobe::write(std::ostream& os) const {
-  const uint32_t t = static_cast<uint32_t>(extensionType);
-  SpzLog("[SPZ] Writing extension: SHQuantizationAdobe");
-  os.write(reinterpret_cast<const char*>(&t), sizeof(t));
-  os.write(reinterpret_cast<const char*>(&sh1Bits), sizeof(sh1Bits));
-  os.write(reinterpret_cast<const char*>(&shRestBits), sizeof(shRestBits));
-  os.write(reinterpret_cast<const char*>(&shMin), sizeof(shMin));
-  os.write(reinterpret_cast<const char*>(&shMax), sizeof(shMax));
-}
-
-SpzExtensionBase* SpzExtensionSHQuantizationAdobe::copyAsRawData() const {
-  return new SpzExtensionSHQuantizationAdobe(*this);
-}
-
-std::optional<SpzExtensionBasePtr> SpzExtensionSHQuantizationAdobe::read(std::istream& is) {
-  StreamMark mark(is);
-  SpzLog("[SPZ] Found extension: SpzExtensionSHQuantizationAdobe");
-  auto rec = std::make_shared<SpzExtensionSHQuantizationAdobe>();
-  if (!readExact(is, rec->sh1Bits) || !readExact(is, rec->shRestBits) || !readExact(is, rec->shMin) || !readExact(is, rec->shMax)) {
-    SpzLog("[SPZ ERROR] Failed to read all fields for SpzExtensionSHQuantizationAdobe");
-    return std::nullopt;
-  }
-
-  mark.commit();
-  return std::optional{std::move(rec)};
-}
-
-SpzExtensionType SpzExtensionSHQuantizationAdobe::type() {
-  return SpzExtensionType::SPZ_ADOBE_sh_quantization;
-}
 
 SpzExtensionSafeOrbitCameraAdobe::SpzExtensionSafeOrbitCameraAdobe() : SpzExtensionBase(SpzExtensionType::SPZ_ADOBE_safe_orbit_camera) {
 }
@@ -151,5 +113,57 @@ void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
 void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostream& os) {
   for (const auto& rec : list)
     rec->write(os);
+}
+
+void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions) {
+  // Identify known extension elements
+  bool hasSafeOrbitElevation = false;
+  bool hasSafeOrbitRadius = false;
+  for (const auto& elem : extraElements) {
+    if (elem.name == "safe_orbit_camera_elevation_min_max_radians") {
+      hasSafeOrbitElevation = true;
+    } else if (elem.name == "safe_orbit_camera_radius_min") {
+      hasSafeOrbitRadius = true;
+    }
+  }
+
+  // Read safe orbit data if present
+  if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
+    float safeOrbitData[3];
+    in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
+    if (in.good()) {
+      auto extSafeOrbit = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>();
+      extSafeOrbit->safeOrbitElevationMin = safeOrbitData[0];
+      extSafeOrbit->safeOrbitElevationMax = safeOrbitData[1];
+      extSafeOrbit->safeOrbitRadiusMin = safeOrbitData[2];
+      SpzLog("[SPZ] Loaded safe orbit data: elevation [%f, %f], radius min %f",
+             extSafeOrbit->safeOrbitElevationMin, extSafeOrbit->safeOrbitElevationMax, extSafeOrbit->safeOrbitRadiusMin);
+      extensions.push_back(extSafeOrbit);
+    }
+  }
+}
+
+void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out) {
+  // Add safe orbit elements if present
+  auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(extensions);
+  if (extSafeOrbit) {
+    out << "element safe_orbit_camera_elevation_min_max_radians 2\n";
+    out << "property float safe_orbit_camera_elevation_min_max_radians\n";
+    out << "element safe_orbit_camera_radius_min 1\n";
+    out << "property float safe_orbit_camera_radius_min\n";
+  }
+}
+
+void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out) {
+  // Write safe orbit data if present
+  auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(extensions);
+  if (extSafeOrbit) {
+    float safeOrbitData[3] = {
+      extSafeOrbit->safeOrbitElevationMin,
+      extSafeOrbit->safeOrbitElevationMax,
+      extSafeOrbit->safeOrbitRadiusMin
+    };
+    out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
+  }
 }
 }  // namespace spz
