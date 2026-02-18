@@ -34,23 +34,33 @@ def build_spz(profile) {
           usernamePassword(credentialsId: 's3dibot-artifactory-uw2-apikey', passwordVariable: 'ARTIFACTORY_UW2_API_KEY', usernameVariable: 'ARTIFACTORY_UW2_USER')
       ]) {
         withSshCredentials() {
-          smartStage("Setup-${profile.host}") {
-            if (profile.clean_workspace) {
-              smartCleanWs()  // from algpipeline with smart retries
+          try {
+            smartStage("Setup-${profile.host}") {
+              if (profile.clean_workspace) {
+                smartCleanWs()  // from algpipeline with smart retries
+              }
+              printEnvVarsAndJobParams()
+              checkout scm
+              utils.setupUvEnvironment(profile)
+            } // Setup
+
+            smartStage("Test-${profile.host}") {
+              utils.testPython(profile)
+            } // TestPython
+          } catch(Exception e) {
+            println("${profile.name} on ${NODE_NAME} caught Exception:\n    ${e}")
+            currentBuild.result = "FAILURE"
+            throw e   // Need this so that Jenkins job can declare the correct verdict
+          } finally {
+            println("currentBuild.result=${currentBuild.result}")
+
+            if (currentBuild.result != "FAILURE") {
+              println("Cleaning up ${WORKSPACE} on ${NODE_NAME}")
+              cleanWs()
             }
+
             printEnvVarsAndJobParams()
-            checkout scm
-            utils.setupUvEnvironment(profile)
-          } // Setup
-
-          smartStage("Test-${profile.host}") {
-            utils.testPython(profile)
-          } // TestPython
-
-          println("Cleaning up ${WORKSPACE} on ${NODE_NAME}")
-          cleanWs()
-          // dump env vars again to show newly added ones during the run
-          printEnvVarsAndJobParams()
+          } // finally
         } // sshagent
       } // with credentials
     } // nodeTimeout()
@@ -75,12 +85,27 @@ timestamps {
         usernamePassword(credentialsId: 's3dibot-artifactory-uw2-apikey', passwordVariable: 'ARTIFACTORY_UW2_API_KEY', usernameVariable: 'ARTIFACTORY_UW2_USER'),
       ]) {
         withSshCredentials() {
-          smartCleanWs() // ensure there aren't any old .whl builds hanging around
-          checkout scm
-          utils.setupUvEnvironment(wheel_profile)
-          def wheel_version = "0.0.0.dev+pr${CHANGE_ID}build${BUILD_NUMBER}"
-          def release_mode = "dev"
-          utils.pythonWheelOps(wheel_version, release_mode, wheel_profile, true)
+          try {
+            smartCleanWs() // ensure there aren't any old .whl builds hanging around
+            checkout scm
+            utils.setupUvEnvironment(wheel_profile)
+            def wheel_version = "0.0.0.dev+pr${CHANGE_ID}build${BUILD_NUMBER}"
+            def release_mode = "dev"
+            utils.pythonWheelOps(wheel_version, release_mode, wheel_profile, true)
+          } catch(Exception e) {
+            println("+++++ Build wheel on ${NODE_NAME} caught Exception:\n    ${e}")
+            currentBuild.result = "FAILURE"
+            throw e   // Need this so that Jenkins job can declare the correct verdict
+          } finally {
+            println("+++++ currentBuild.result=${currentBuild.result}")
+
+            if (currentBuild.result != "FAILURE") {
+              println("Cleaning up ${WORKSPACE} on ${NODE_NAME}")
+              cleanWs()
+            }
+
+            printEnvVarsAndJobParams()
+          } // finally
         }  // withSshCredentials()
       } // with credentials
     } // nodeTimeout

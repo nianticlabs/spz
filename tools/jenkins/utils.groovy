@@ -1,5 +1,12 @@
 def setupUvEnvironment(profile) {
-  cmd 'uv venv --python 3.12'
+  // Verify uv and uvr are available on this node
+  cmd 'uv --version'
+  uvr(script: 'python --version')
+
+  def python_version = profile.python_version ?: '3.12'
+  if (profile.zap_py_venv || !fileExists('.venv')) {
+    cmd "uv venv --python ${python_version}"
+  }
   cmd 'uv pip install -r tools/requirements.txt'
   cmd script: 'uv pip install -e ".[tests]" --upgrade', buildEnv: profile.toolchain
 }
@@ -33,7 +40,9 @@ def pythonWheelOps(wheel_version, release_mode, profile, is_pr=false) {
   // CMake project() VERSION must be numeric-only, so we can't use dev versions there
   // By changing 'dynamic = ["version"]' to 'version = "..."', scikit-build-core
   // will use the static version instead of reading from CMakeLists.txt
-  if (wheel_version != "1.1.0") {
+  // If wheel_version matches the version already in CMakeLists.txt, skip the override
+  def cmake_version = cmd(returnStdout: true, script: "grep -oP 'VERSION\\s+\\K[0-9]+\\.[0-9]+\\.[0-9]+' CMakeLists.txt | head -1").trim()
+  if (wheel_version != cmake_version) {
     echo "Modifying pyproject.toml to set version ${wheel_version}..."
     if (nodeUtils.shyIsUnix()) {
       cmd("sed -i 's/dynamic = \\[\"version\"\\]/version = \"${wheel_version}\"/' pyproject.toml")

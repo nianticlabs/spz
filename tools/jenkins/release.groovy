@@ -26,13 +26,13 @@ def zap_venv = true
 // Build for Linux and macOS across Python 3.10, 3.11, 3.12
 def profiles = [
   // Linux
-  [host:'ubuntu', name: 'Ubuntu-Python3.10', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, conda_file: './tools/conda310.yaml'],
-  [host:'ubuntu', name: 'Ubuntu-Python3.11', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, conda_file: './tools/conda311.yaml'],
-  [host:'ubuntu', name: 'Ubuntu-Python3.12', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, conda_file: './tools/conda312.yaml'],
+  [host:'ubuntu', name: 'Ubuntu-Python3.10', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, python_version: '3.10'],
+  [host:'ubuntu', name: 'Ubuntu-Python3.11', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, python_version: '3.11'],
+  [host:'ubuntu', name: 'Ubuntu-Python3.12', label: 'builder&&(Ubuntu22||RedHat8)', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useGcc(11), zap_py_venv: zap_venv, python_version: '3.12'],
   // macOS
-  [host:'mac', name: 'MacOS-Python3.10', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, conda_file: './tools/conda310.yaml'],
-  [host:'mac', name: 'MacOS-Python3.11', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, conda_file: './tools/conda311.yaml'],
-  [host:'mac', name: 'MacOS-Python3.12', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, conda_file: './tools/conda312.yaml'],
+  [host:'mac', name: 'MacOS-Python3.10', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, python_version: '3.10'],
+  [host:'mac', name: 'MacOS-Python3.11', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, python_version: '3.11'],
+  [host:'mac', name: 'MacOS-Python3.12', label: 'Xcode_16_0&&mac', timeout: '45', timeout_unit: 'MINUTES', toolchain: cmd.useXcode('16.0'), zap_py_venv: zap_venv, python_version: '3.12'],
 ]
 
 smartStage("Load utils.groovy") {
@@ -63,7 +63,7 @@ def build_spz_wheel(profile) {
               } // setup
 
               smartStage("Wheel-${profile.name}") {
-                def wheel_version = "v${env.bump_tag}"
+                def wheel_version = "${env.bump_tag}"
                 def release_mode = "release"
                 utils.pythonWheelOps(wheel_version, release_mode, profile)
               } // wheel

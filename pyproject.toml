@@ -59,6 +59,7 @@ MACOSX_DEPLOYMENT_TARGET = "10.14"
 [[tool.uv.index]]
 name = "adobeshared-release"
 url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release/simple"
+publish-url = "https://artifactory-uw2.adobeitc.com/artifactory/api/pypi/pypi-adobeshared-release"
 authenticate = "always"  # Use .netrc for authentication
 
 [[tool.uv.index]]
