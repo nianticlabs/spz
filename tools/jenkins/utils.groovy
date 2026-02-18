@@ -29,14 +29,16 @@ def pythonWheelOps(wheel_version, release_mode, profile, is_pr=false) {
   // Step 1: Build the wheel
   echo "Building wheel version ${wheel_version}..."
 
-  // For scikit-build-core with regex version provider, we must modify CMakeLists.txt
-  // since environment variable overrides don't work with this provider
+  // For scikit-build-core, we modify pyproject.toml to use a static version
+  // CMake project() VERSION must be numeric-only, so we can't use dev versions there
+  // By changing 'dynamic = ["version"]' to 'version = "..."', scikit-build-core
+  // will use the static version instead of reading from CMakeLists.txt
   if (wheel_version != "1.1.0") {
-    echo "Modifying CMakeLists.txt to set version ${wheel_version}..."
+    echo "Modifying pyproject.toml to set version ${wheel_version}..."
     if (nodeUtils.shyIsUnix()) {
-      cmd("sed -i 's/VERSION 1\\.1\\.0/VERSION ${wheel_version}/' CMakeLists.txt")
+      cmd("sed -i 's/dynamic = \\[\"version\"\\]/version = \"${wheel_version}\"/' pyproject.toml")
     } else {
-      cmd("powershell -Command \"(Get-Content CMakeLists.txt) -replace 'VERSION 1\\.1\\.0', 'VERSION ${wheel_version}' | Set-Content CMakeLists.txt\"")
+      cmd("powershell -Command \"(Get-Content pyproject.toml) -replace 'dynamic = \\[\\\"version\\\"\\]', 'version = \\\"${wheel_version}\\\"' | Set-Content pyproject.toml\"")
     }
   }
 
