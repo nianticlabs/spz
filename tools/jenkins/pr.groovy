@@ -17,7 +17,7 @@ def profiles = [
   [host:'windows', name: 'Windows' , label: 'builder&&win', timeout: '60', timeout_unit: 'MINUTES', toolchain: cmd.vs(2022, 'x64', '14.38')],
 ]
 
-def wheel_profile = [name:'linux', platform: 'linux', label: 'builder&&linux', zap_py_venv: false, timeout: [time: '60', unit: 'MINUTES']]
+def wheel_profile = [name:'linux', platform: 'linux', label: 'builder&&linux', zap_py_venv: false, timeout: [time: '60', unit: 'MINUTES'], toolchain: cmd.useGcc(11)]
 
 smartStage("Load utils.groovy") {
     node('builder') {
