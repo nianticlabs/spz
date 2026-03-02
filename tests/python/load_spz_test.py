@@ -886,6 +886,65 @@ def test_io_consistency_spz_format():
         original = loaded
 
 
+def test_multistream_format_magic():
+    """Verify that saved files use the SPZ2 multi-stream format, not plain GZip."""
+    src = make_test_gaussian_cloud(include_sh=True)
+    path = os.path.join(tempfile.gettempdir(), "magic_check.spz")
+    assert spz.save_spz(src, spz.PackOptions(), path)
+    with open(path, "rb") as f:
+        data = f.read()
+    assert data[:4] == b'SPZ2', f"Expected SPZ2 magic, got {data[:4]!r}"
+    num_streams = data[4] | (data[5] << 8)
+    # header + positions + alphas + colors + scales + rotations + sh = 7 streams max
+    assert 1 <= num_streams <= 7
+
+
+def test_multistream_backward_compat():
+    """Verify that old single-stream GZip files still load via the legacy fallback path."""
+    import gzip
+    import io
+    import struct
+
+    # Build a minimal valid SPZ v3 file: 0 points, shDegree=0.
+    # PackedGaussiansHeader layout: magic(u32) version(u32) numPoints(u32) shDeg(u8) fracBits(u8) flags(u8) reserved(u8)
+    header = struct.pack('<IIIB B B B', 0x5053474e, 3, 0, 0, 12, 0, 0)
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode='wb') as gz:
+        gz.write(header)
+    old_format_bytes = buf.getvalue()
+
+    # Sanity check: this file starts with GZip magic, not SPZ2
+    assert old_format_bytes[:2] == b'\x1f\x8b'
+
+    path = os.path.join(tempfile.gettempdir(), "legacy_format.spz")
+    with open(path, "wb") as f:
+        f.write(old_format_bytes)
+
+    loaded = spz.load_spz(path, spz.UnpackOptions())
+    assert loaded.num_points == 0
+    assert loaded.sh_degree == 0
+
+
+def test_multistream_toc_validity():
+    """Parse the TOC manually and verify that compressed sizes account for the entire file."""
+    src = make_test_gaussian_cloud(include_sh=True)
+    path = os.path.join(tempfile.gettempdir(), "toc_validity.spz")
+    assert spz.save_spz(src, spz.PackOptions(), path)
+    with open(path, "rb") as f:
+        data = f.read()
+    assert data[:4] == b'SPZ2'
+    num_streams = data[4] | (data[5] << 8)
+    toc_size = 8 + num_streams * 16
+    total_compressed = sum(
+        int.from_bytes(data[8 + i * 16: 8 + i * 16 + 8], 'little')
+        for i in range(num_streams)
+    )
+    assert toc_size + total_compressed == len(data), (
+        f"TOC compressed sizes ({total_compressed}) + TOC header ({toc_size}) "
+        f"!= file size ({len(data)})"
+    )
+
+
 def test_io_consistency_ply_format():
     """Test that PLY format maintains consistency and compatibility."""
     original = make_test_gaussian_cloud(include_sh=True)
