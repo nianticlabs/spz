@@ -154,7 +154,7 @@ GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &opt
 
 // Loads Gaussian splat from a file / byte pointer / vector in packed format.
 PackedGaussians loadSpzPacked(const std::string &filename);
-PackedGaussians loadSpzPacked(const uint8_t *data, int32_t size);
+PackedGaussians loadSpzPacked(const uint8_t *data, size_t size);
 PackedGaussians loadSpzPacked(const std::vector<uint8_t> &data);
 
 // Saves Gaussian splat in packed format to a file
@@ -165,7 +165,7 @@ bool saveSpz(
 GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o);
 
 // Loads Gaussian splat from a byte pointer in packed format.
-GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &options);
+GaussianCloud loadSpz(const uint8_t *data, size_t size, const UnpackOptions &options);
 
 // Saves Gaussian splat data in .ply format
 bool saveSplatToPly(
