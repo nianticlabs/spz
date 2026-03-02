@@ -10,7 +10,9 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <future>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -141,29 +143,51 @@ struct PackedGaussiansHeader {
 bool decompressGzippedImpl(
   const uint8_t *compressed, size_t size, int32_t windowSize, std::vector<uint8_t> *out) {
   std::vector<uint8_t> buffer(8192);
-  z_stream stream = {};
-  stream.next_in = const_cast<Bytef *>(compressed);
-  stream.avail_in = size;
-  if (inflateInit2(&stream, windowSize) != Z_OK) {
-    return false;
-  }
   out->clear();
-  bool success = false;
-  while (true) {
-    stream.next_out = buffer.data();
-    stream.avail_out = buffer.size();
-    int32_t res = inflate(&stream, Z_NO_FLUSH);
-    if (res != Z_OK && res != Z_STREAM_END) {
-      break;
+  const uint8_t *pos = compressed;
+  size_t remaining = size;
+  while (remaining > 0) {
+    z_stream stream = {};
+    if (inflateInit2(&stream, windowSize) != Z_OK) {
+      return false;
     }
-    out->insert(out->end(), buffer.data(), buffer.data() + buffer.size() - stream.avail_out);
-    if (res == Z_STREAM_END) {
-      success = true;
-      break;
+    // Feed input in chunks to avoid truncating size_t -> uInt for buffers >4 GB.
+    size_t posOffset = 0;
+    auto feedMore = [&]() {
+      if (stream.avail_in == 0 && posOffset < remaining) {
+        uInt chunk = static_cast<uInt>(
+          std::min(remaining - posOffset,
+                   static_cast<size_t>(std::numeric_limits<uInt>::max())));
+        stream.next_in = const_cast<Bytef *>(pos + posOffset);
+        stream.avail_in = chunk;
+        posOffset += chunk;
+      }
+    };
+    feedMore();
+    bool streamSuccess = false;
+    while (true) {
+      stream.next_out = buffer.data();
+      stream.avail_out = buffer.size();
+      feedMore();
+      int32_t res = inflate(&stream, Z_NO_FLUSH);
+      if (res != Z_OK && res != Z_STREAM_END) {
+        inflateEnd(&stream);
+        return false;
+      }
+      out->insert(out->end(), buffer.data(), buffer.data() + buffer.size() - stream.avail_out);
+      if (res == Z_STREAM_END) {
+        streamSuccess = true;
+        break;
+      }
     }
+    // Leftover = bytes fed but not consumed + bytes not yet fed.
+    size_t leftover = stream.avail_in + (remaining - posOffset);
+    inflateEnd(&stream);
+    if (!streamSuccess) return false;
+    pos += remaining - leftover;
+    remaining = leftover;
   }
-  inflateEnd(&stream);
-  return success;
+  return true;
 }
 
 bool decompressGzipped(const uint8_t *compressed, size_t size, std::vector<uint8_t> *out) {
@@ -181,6 +205,69 @@ bool decompressGzipped(const uint8_t *compressed, size_t size, std::string *out)
   return true;
 }
 
+// TOC magic identifying the parallel multi-stream format. Distinct from GZip's 0x1f8b prefix so
+// that old single-stream files can still be detected and read via the legacy fallback path.
+constexpr uint8_t kSpzMultiStreamMagic[4] = {0x53, 0x50, 0x5A, 0x32};  // "SPZ2"
+
+// Decompresses a file written by the multi-stream writer: a TOC followed by N independent GZip
+// streams. The TOC encodes each stream's compressed and uncompressed size, which lets all streams
+// be decompressed in parallel into pre-allocated positions in the output buffer.
+//
+// TOC layout (all fields little-endian):
+//   Bytes 0–3:  magic (kSpzMultiStreamMagic)
+//   Bytes 4–5:  numStreams (uint16_t)
+//   Bytes 6–7:  reserved
+//   Per stream: compressedSize (uint64_t) + uncompressedSize (uint64_t)
+bool decompressMultiStream(const uint8_t *data, size_t size, std::vector<uint8_t> *out) {
+  if (size < 8) return false;
+  const uint16_t numStreams =
+    static_cast<uint16_t>(data[4]) | (static_cast<uint16_t>(data[5]) << 8);
+  const size_t tocSize = 8 + numStreams * 16;
+  if (size < tocSize) return false;
+
+  struct StreamInfo {
+    uint64_t compressedSize;
+    uint64_t uncompressedSize;
+    size_t compressedOffset;
+    size_t uncompressedOffset;
+  };
+  std::vector<StreamInfo> infos(numStreams);
+  size_t compressedOffset = tocSize;
+  size_t uncompressedOffset = 0;
+  for (uint16_t i = 0; i < numStreams; i++) {
+    size_t e = 8 + i * 16;
+    infos[i].compressedSize = 0;
+    for (int b = 0; b < 8; b++) infos[i].compressedSize |= (uint64_t)data[e+b] << (8*b);
+    infos[i].uncompressedSize = 0;
+    for (int b = 0; b < 8; b++) infos[i].uncompressedSize |= (uint64_t)data[e+8+b] << (8*b);
+    infos[i].compressedOffset = compressedOffset;
+    infos[i].uncompressedOffset = uncompressedOffset;
+    compressedOffset += infos[i].compressedSize;
+    uncompressedOffset += infos[i].uncompressedSize;
+  }
+  if (compressedOffset != size) return false;
+
+  out->resize(uncompressedOffset);
+  uint8_t *outPtr = out->data();
+
+  std::vector<std::future<bool>> futures;
+  for (const auto &info : infos) {
+    futures.push_back(std::async(std::launch::async, [data, outPtr, info]() -> bool {
+      std::vector<uint8_t> chunk;
+      if (!decompressGzipped(data + info.compressedOffset, info.compressedSize, &chunk)) {
+        return false;
+      }
+      if (chunk.size() != info.uncompressedSize) return false;
+      std::copy(chunk.begin(), chunk.end(), outPtr + info.uncompressedOffset);
+      return true;
+    }));
+  }
+  for (auto &f : futures) {
+    if (!f.get()) return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out) {
@@ -193,13 +280,21 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   }
   out->clear();
   out->reserve(size / 4);
-  stream.next_in = const_cast<Bytef *>(reinterpret_cast<const Bytef *>(data));
-  stream.avail_in = size;
+  // Feed input in chunks to avoid truncating size_t -> uInt for buffers >4 GB.
+  size_t fed = 0;
   bool success = false;
   while (true) {
+    if (stream.avail_in == 0 && fed < size) {
+      uInt chunk = static_cast<uInt>(
+        std::min(size - fed,
+                 static_cast<size_t>(std::numeric_limits<uInt>::max())));
+      stream.next_in = const_cast<Bytef *>(reinterpret_cast<const Bytef *>(data + fed));
+      stream.avail_in = chunk;
+      fed += chunk;
+    }
     stream.next_out = buffer.data();
     stream.avail_out = buffer.size();
-    int32_t res = deflate(&stream, Z_FINISH);
+    int32_t res = deflate(&stream, fed == size ? Z_FINISH : Z_NO_FLUSH);
     if (res != Z_OK && res != Z_STREAM_END) {
       break;
     }
@@ -596,26 +691,85 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
 }
 
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out) {
-  std::string data;
-  {
-    PackedGaussians packed = packGaussians(g, o);
-    std::stringstream ss;
-    serializePackedGaussians(packed, &ss);
-    data = ss.str();
+  PackedGaussians packed = packGaussians(g, o);
+
+  PackedGaussiansHeader header;
+  header.numPoints = packed.numPoints;
+  header.shDegree = packed.shDegree;
+  header.fractionalBits = packed.fractionalBits;
+  header.flags = packed.antialiased ? FlagAntialiased : 0;
+
+  // Each attribute is compressed as an independent GZip stream in parallel. A TOC is prepended so
+  // the reader can decompress all streams in parallel too without scanning for stream boundaries.
+  struct Stream {
+    const uint8_t *data;
+    size_t size;
+  };
+  const Stream streams[] = {
+    {reinterpret_cast<const uint8_t *>(&header), sizeof(header)},
+    {packed.positions.data(), packed.positions.size()},
+    {packed.alphas.data(),    packed.alphas.size()},
+    {packed.colors.data(),    packed.colors.size()},
+    {packed.scales.data(),    packed.scales.size()},
+    {packed.rotations.data(), packed.rotations.size()},
+    {packed.sh.data(),        packed.sh.size()},
+  };
+
+  std::vector<uint64_t> uncompressedSizes;
+  std::vector<std::future<std::vector<uint8_t>>> futures;
+  for (const auto &s : streams) {
+    if (s.size == 0) continue;
+    uncompressedSizes.push_back(s.size);
+    futures.push_back(std::async(std::launch::async, [s]() -> std::vector<uint8_t> {
+      std::vector<uint8_t> chunk;
+      if (!compressGzipped(s.data, s.size, &chunk)) return {};
+      return chunk;
+    }));
   }
-  return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
+
+  std::vector<std::vector<uint8_t>> chunks;
+  for (auto &f : futures) {
+    chunks.push_back(f.get());
+    if (chunks.back().empty()) return false;
+  }
+
+  // Write TOC: magic(4) + numStreams(2) + reserved(2) + [compressedSize(8) + uncompressedSize(8)] * N
+  const uint16_t numStreams = static_cast<uint16_t>(chunks.size());
+  const size_t tocSize = 8 + numStreams * 16;
+  out->resize(tocSize);
+  uint8_t *toc = out->data();
+  std::copy(kSpzMultiStreamMagic, kSpzMultiStreamMagic + 4, toc);
+  toc[4] = numStreams & 0xff;
+  toc[5] = (numStreams >> 8) & 0xff;
+  toc[6] = 0;
+  toc[7] = 0;
+  for (uint16_t i = 0; i < numStreams; i++) {
+    const uint64_t cs = chunks[i].size();
+    const uint64_t us = uncompressedSizes[i];
+    size_t e = 8 + i * 16;
+    for (int b = 0; b < 8; b++) toc[e+b]   = (cs >> (8*b)) & 0xff;
+    for (int b = 0; b < 8; b++) toc[e+8+b] = (us >> (8*b)) & 0xff;
+  }
+  for (const auto &chunk : chunks) {
+    out->insert(out->end(), chunk.begin(), chunk.end());
+  }
+  return true;
 }
 
-PackedGaussians loadSpzPacked(const uint8_t *data, int32_t size) {
-  std::string decompressed;
-  if (!decompressGzipped(data, size, &decompressed))
-    return {};
-  std::stringstream stream(std::move(decompressed));
+PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
+  std::vector<uint8_t> decompressed;
+  if (size >= 4 && std::equal(data, data + 4, kSpzMultiStreamMagic)) {
+    if (!decompressMultiStream(data, size, &decompressed)) return {};
+  } else {
+    if (!decompressGzipped(data, size, &decompressed)) return {};
+  }
+  std::string str(reinterpret_cast<const char *>(decompressed.data()), decompressed.size());
+  std::stringstream stream(std::move(str));
   return deserializePackedGaussians(stream);
 }
 
 PackedGaussians loadSpzPacked(const std::vector<uint8_t> &data) {
-  return loadSpzPacked(data.data(), static_cast<int>(data.size()));
+  return loadSpzPacked(data.data(), data.size());
 }
 
 PackedGaussians loadSpzPacked(const std::string &filename) {
@@ -635,7 +789,7 @@ GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &o) 
   return unpackGaussians(loadSpzPacked(data), o);
 }
 
-GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &o) {
+GaussianCloud loadSpz(const uint8_t *data, size_t size, const UnpackOptions &o) {
   return unpackGaussians(loadSpzPacked(data, size), o);
 }
 
