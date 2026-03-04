@@ -38,7 +38,6 @@ SOFTWARE.
 #include <cmath>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -165,6 +164,7 @@ bool decompressGzippedImpl(
     return false;
   }
   out->clear();
+  out->reserve(size * 3);
   bool success = false;
   while (true) {
     stream.next_out = buffer.data();
@@ -189,14 +189,28 @@ bool decompressGzipped(const uint8_t *compressed, size_t size, std::vector<uint8
   return decompressGzippedImpl(compressed, size, 16 | MAX_WBITS, out);
 }
 
-bool decompressGzipped(const uint8_t *compressed, size_t size, std::string *out) {
-  std::vector<uint8_t> buffer;
-  if (!decompressGzipped(compressed, size, &buffer)) {
-    return false;
+// A read-only streambuf over a contiguous byte range, avoiding any copy.
+struct membuf : std::streambuf {
+  membuf(const uint8_t *data, size_t size) {
+    auto *p = reinterpret_cast<char *>(const_cast<uint8_t *>(data));
+    setg(p, p, p + size);
   }
-  out->assign(reinterpret_cast<const char *>(buffer.data()), buffer.size());
-  return true;
-}
+};
+
+// A write-only streambuf that appends directly into a vector<uint8_t>, avoiding any copy.
+struct vecbuf : std::streambuf {
+  explicit vecbuf(std::vector<uint8_t> *out) : out_(out) {}
+  std::streamsize xsputn(const char *s, std::streamsize n) override {
+    out_->insert(out_->end(), reinterpret_cast<const uint8_t *>(s),
+                 reinterpret_cast<const uint8_t *>(s) + n);
+    return n;
+  }
+  int overflow(int c) override {
+    if (c != EOF) out_->push_back(static_cast<uint8_t>(c));
+    return c;
+  }
+  std::vector<uint8_t> *out_;
+};
 
 }  // namespace
 
@@ -691,21 +705,22 @@ if (!in) {
 }
 
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out) {
-  std::string data;
+  std::vector<uint8_t> serialized;
   {
     PackedGaussians packed = packGaussians(g, o);
-    std::stringstream ss;
-    serializePackedGaussians(packed, &ss);
-    data = ss.str();
+    vecbuf vb(&serialized);
+    std::ostream stream(&vb);
+    serializePackedGaussians(packed, &stream);
   }
-  return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
+  return compressGzipped(serialized.data(), serialized.size(), out);
 }
 
 PackedGaussians loadSpzPacked(const uint8_t *data, int32_t size) {
-  std::string decompressed;
+  std::vector<uint8_t> decompressed;
   if (!decompressGzipped(data, size, &decompressed))
     return {};
-  std::stringstream stream(std::move(decompressed));
+  membuf buf(decompressed.data(), decompressed.size());
+  std::istream stream(&buf);
   return deserializePackedGaussians(stream);
 }
 
