@@ -1,4 +1,32 @@
+/*
+MIT License
+
+Copyright (c) 2025 Niantic Labs
+Copyright (c) 2025 Adobe Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 #include "load-spz.h"
+#ifdef SPZ_BUILD_EXTENSIONS
+#include "splat-extensions.h"
+#endif
 
 #include <zlib.h>
 
@@ -8,36 +36,14 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <unordered_map>
 #include <vector>
 
 namespace spz {
 
 namespace {
-
-#ifdef ANDROID
-static constexpr char LOG_TAG[] = "SPZ";
-template <class... Args>
-static void SpzLog(const char *fmt, Args &&...args) {
-  __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt, std::forward<Args>(args)...);
-}
-#else
-template <class... Args>
-static void SpzLog(const char *fmt, Args &&...args) {
-  printf(fmt, std::forward<Args>(args)...);
-  printf("\n");
-  fflush(stdout);
-}
-#endif  // ANDROID
-
-template <class... Args>
-static void SpzLog(const char *fmt) {
-  SpzLog("%s", fmt);
-}
 
 // Scale factor for DC color components. To convert to RGB, we should multiply by 0.282, but it can
 // be useful to represent base colors that are out of range if the higher spherical harmonics bands
@@ -52,7 +58,9 @@ int32_t degreeForDim(int32_t dim) {
     return 1;
   if (dim < 15)
     return 2;
-  return 3;
+  if (dim < 24)
+    return 3;
+  return 4;
 }
 
 int32_t dimForDegree(int32_t degree) {
@@ -65,6 +73,8 @@ int32_t dimForDegree(int32_t degree) {
       return 8;
     case 3:
       return 15;
+    case 4:
+      return 24;
     default:
       SpzLog("[SPZ: ERROR] Unsupported SH degree: %d\n", degree);
       return 0;
@@ -106,7 +116,7 @@ size_t countBytes(std::vector<T> vec) {
 bool checkSizes(const GaussianCloud &g) {
   CHECK_GE(g.numPoints, 0);
   CHECK_GE(g.shDegree, 0);
-  CHECK_LE(g.shDegree, 3);
+  CHECK_LE(g.shDegree, SH_MAX_DEGREE);
   CHECK_EQ(g.positions.size(), g.numPoints * 3);
   CHECK_EQ(g.scales.size(), g.numPoints * 3);
   CHECK_EQ(g.rotations.size(), g.numPoints * 4);
@@ -127,10 +137,16 @@ bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
 }
 
 constexpr uint8_t FlagAntialiased = 0x1;
+#ifdef SPZ_BUILD_EXTENSIONS
+constexpr uint8_t FlagHasExtensions = 0x2;
+#endif
 
+// We always pad the attributes in this header explicitly to the 4-byte boundary to ensure compatibility when
+// reading from files that may have been written with different compilers or settings.
+// Otherwise, some compilers may align a float or uint32_t to 4 bytes (and some may not) and break the compatibility.
 struct PackedGaussiansHeader {
   uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
-  uint32_t version = 3;
+  uint32_t version = LATEST_SPZ_HEADER_VERSION;
   uint32_t numPoints = 0;
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
@@ -148,6 +164,7 @@ bool decompressGzippedImpl(
     return false;
   }
   out->clear();
+  out->reserve(size * 3);
   bool success = false;
   while (true) {
     stream.next_out = buffer.data();
@@ -172,14 +189,28 @@ bool decompressGzipped(const uint8_t *compressed, size_t size, std::vector<uint8
   return decompressGzippedImpl(compressed, size, 16 | MAX_WBITS, out);
 }
 
-bool decompressGzipped(const uint8_t *compressed, size_t size, std::string *out) {
-  std::vector<uint8_t> buffer;
-  if (!decompressGzipped(compressed, size, &buffer)) {
-    return false;
+// A read-only streambuf over a contiguous byte range, avoiding any copy.
+struct membuf : std::streambuf {
+  membuf(const uint8_t *data, size_t size) {
+    auto *p = reinterpret_cast<char *>(const_cast<uint8_t *>(data));
+    setg(p, p, p + size);
   }
-  out->assign(reinterpret_cast<const char *>(buffer.data()), buffer.size());
-  return true;
-}
+};
+
+// A write-only streambuf that appends directly into a vector<uint8_t>, avoiding any copy.
+struct vecbuf : std::streambuf {
+  explicit vecbuf(std::vector<uint8_t> *out) : out_(out) {}
+  std::streamsize xsputn(const char *s, std::streamsize n) override {
+    out_->insert(out_->end(), reinterpret_cast<const uint8_t *>(s),
+                 reinterpret_cast<const uint8_t *>(s) + n);
+    return n;
+  }
+  int overflow(int c) override {
+    if (c != EOF) out_->push_back(static_cast<uint8_t>(c));
+    return c;
+  }
+  std::vector<uint8_t> *out_;
+};
 
 }  // namespace
 
@@ -211,6 +242,23 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   }
   deflateEnd(&stream);
   return success;
+}
+
+// Backward compatibility function for version 2. In version 2, rotations are represented as the
+// (x, y, z) components of the normalized rotation quaternion, with each component encoded as an
+// 8-bit signed integer. Version 3+ uses packQuaternionSmallestThree for better accuracy.
+void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const CoordinateConverter& c) {
+    // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
+    // NOTE: These are already in xyzw order.
+    Quat4f q = normalized(quat4f(rotation));
+    q[0] *= c.flipQ[0];
+    q[1] *= c.flipQ[1];
+    q[2] *= c.flipQ[2];
+    q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
+    q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
+    r[0] = toUint8(q[0]);
+    r[1] = toUint8(q[1]);
+    r[2] = toUint8(q[2]);
 }
 
 void packQuaternionSmallestThree(uint8_t r[4], const float rotation[4], const CoordinateConverter& c) {
@@ -258,21 +306,37 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (!checkSizes(g)) {
     return {};
   }
+
+  // Validate SH quantization bit parameters
+  if (o.sh1Bits > 8 || o.shRestBits > 8 || o.sh1Bits < 1 || o.shRestBits < 1) {
+    SpzLog("[SPZ ERROR] SH quantization bits cannot exceed 8 or be less than 1 (sh1Bits=%d, shRestBits=%d)",
+           o.sh1Bits, o.shRestBits);
+    return {};
+  }
+
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
+  if (o.version < 3 && g.shDegree > 3) {
+    SpzLog("[SPZ WARNING] SPZ with SH degrees %d will not be loadable in a legacy loader of version %d",
+        g.shDegree, o.version);
+  }
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
 
   // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
   // we can use different values on a per-splat basis and still be compatible with the decoder.
   PackedGaussians packed;
+  packed.version = o.version;
   packed.numPoints = g.numPoints;
   packed.shDegree = g.shDegree;
   packed.fractionalBits = 12;
   packed.antialiased = g.antialiased;
-  packed.usesQuaternionSmallestThree = true;
+  // Turn off quaternion-smallest-three for backward compatibility, since version 2 does not
+  // support it.
+  packed.usesQuaternionSmallestThree = o.version >= 3;
+
+  packed.rotations.resize(numPoints * (packed.usesQuaternionSmallestThree ? 4 : 3));
   packed.positions.resize(numPoints * 3 * 3);
   packed.scales.resize(numPoints * 3);
-  packed.rotations.resize(numPoints * 4);
   packed.alphas.resize(numPoints);
   packed.colors.resize(numPoints * 3);
   packed.sh.resize(numPoints * shDim * 3);
@@ -291,9 +355,16 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     packed.scales[i] = toUint8((g.scales[i] + 10.0f) * 16.0f);
   }
 
-  for (size_t i = 0; i < numPoints; i++)
-  {
-    packQuaternionSmallestThree(&packed.rotations[4 * i], &g.rotations[4 * i], c);
+  if (packed.usesQuaternionSmallestThree) {
+    for (size_t i = 0; i < numPoints; i++)
+    {
+      packQuaternionSmallestThree(&packed.rotations[4 * i], &g.rotations[4 * i], c);
+    }
+  } else {
+    for (size_t i = 0; i < numPoints; i++)
+    {
+      packQuaternionFirstThree(&packed.rotations[3 * i], &g.rotations[4 * i], c);
+    }
   }
 
   for (size_t i = 0; i < numPoints; i++) {
@@ -307,10 +378,11 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
 
   if (g.shDegree > 0) {
-    // Spherical harmonics quantization parameters. The data format uses 8 bits per coefficient, but
-    // when packing, we can quantize to fewer bits for better compression.
-    constexpr int32_t sh1Bits = 5;
-    constexpr int32_t shRestBits = 4;
+    // Use configurable spherical harmonics quantization parameters from PackOptions.
+    // Quantization reduces information entropy for better g-zipping compression.
+    // Note: Unpacking doesn't need these bits since g-unzipping fills zero bits automatically.
+    const uint8_t sh1Bits = o.sh1Bits;
+    const uint8_t shRestBits = o.shRestBits;
     const int32_t shPerPoint = dimForDegree(g.shDegree) * 3;
     for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
       size_t j = 0, k = 0;
@@ -420,7 +492,7 @@ UnpackedGaussian PackedGaussian::unpack(
     result.color[i] = ((color[i] / 255.0f) - 0.5f) / colorScale;
   }
 
-  for (size_t i = 0; i < 15; i++) {
+  for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
     result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i]);
     result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i]);
     result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i]);
@@ -449,7 +521,7 @@ PackedGaussian PackedGaussians::at(int32_t i) const {
     result.shG[j] = sh[1];
     result.shB[j] = sh[2];
   }
-  for (int32_t j = shDim; j < 15; ++j) {
+  for (int32_t j = shDim; j < SH_MAX_COEFFS; ++j) {
     result.shR[j] = 128;
     result.shG[j] = 128;
     result.shB[j] = 128;
@@ -477,6 +549,15 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   result.numPoints = packed.numPoints;
   result.shDegree = packed.shDegree;
   result.antialiased = packed.antialiased;
+
+#ifdef SPZ_BUILD_EXTENSIONS
+  // Copy all extensions from PackedGaussians to GaussianCloud.
+  // Note: Some extensions (like SH quantization) are only used during packing and may not
+  // be needed in the unpacked cloud, but we preserve them for metadata completeness
+  // and future extensibility.
+  result.extensions = packed.extensions;
+#endif
+
   result.positions.resize(numPoints * 3);
   result.scales.resize(numPoints * 3);
   result.rotations.resize(numPoints * 4);
@@ -532,17 +613,28 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) {
   PackedGaussiansHeader header;
+  header.version = packed.version;
   header.numPoints = static_cast<uint32_t>(packed.numPoints);
   header.shDegree = static_cast<uint8_t>(packed.shDegree);
   header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
-  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0);
+  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0)
+#ifdef SPZ_BUILD_EXTENSIONS
+    | static_cast<uint8_t>(packed.extensions.empty() ? 0 : FlagHasExtensions)
+#endif
+    ;
   out->write(reinterpret_cast<const char *>(&header), sizeof(header));
+
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
   out->write(reinterpret_cast<const char *>(packed.colors.data()), countBytes(packed.colors));
   out->write(reinterpret_cast<const char *>(packed.scales.data()), countBytes(packed.scales));
   out->write(reinterpret_cast<const char *>(packed.rotations.data()), countBytes(packed.rotations));
   out->write(reinterpret_cast<const char *>(packed.sh.data()), countBytes(packed.sh));
+
+  // Write extensions at the end
+#ifdef SPZ_BUILD_EXTENSIONS
+  writeAllExtensions(packed.extensions, *out);
+#endif
 }
 
 PackedGaussians deserializePackedGaussians(std::istream &in) {
@@ -554,7 +646,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: header not found");
     return {};
   }
-  if (header.version < 1 || header.version > 3) {
+  if (header.version < 1 || header.version > LATEST_SPZ_HEADER_VERSION) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
@@ -562,7 +654,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
     return {};
   }
-  if (header.shDegree > 3) {
+  if (header.shDegree > SH_MAX_DEGREE) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Unsupported SH degree: %d", header.shDegree);
     return {};
   }
@@ -570,7 +662,15 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
   const bool usesQuaternionSmallestThree = header.version >= 3;
+  const bool hasExtensions =
+#ifdef SPZ_BUILD_EXTENSIONS
+    (header.flags & FlagHasExtensions) != 0
+#else
+    false
+#endif
+  ;
   PackedGaussians result;
+  result.version = header.version;
   result.numPoints = numPoints;
   result.shDegree = header.shDegree;
   result.fractionalBits = header.fractionalBits;
@@ -578,7 +678,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   result.positions.resize(numPoints * 3 * (usesFloat16 ? 2 : 3));
   result.scales.resize(numPoints * 3);
   result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
-  result.rotations.resize(numPoints * (usesQuaternionSmallestThree ? 4 : 3));  
+  result.rotations.resize(numPoints * (usesQuaternionSmallestThree ? 4 : 3));
   result.alphas.resize(numPoints);
   result.colors.resize(numPoints * 3);
   result.sh.resize(numPoints * shDim * 3);
@@ -588,29 +688,39 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   in.read(reinterpret_cast<char *>(result.scales.data()), countBytes(result.scales));
   in.read(reinterpret_cast<char *>(result.rotations.data()), countBytes(result.rotations));
   in.read(reinterpret_cast<char *>(result.sh.data()), countBytes(result.sh));
-  if (!in) {
+
+  // Read extensions at the end
+#ifdef SPZ_BUILD_EXTENSIONS
+  if (hasExtensions) {
+    readAllExtensions(in, result.extensions);
+  }
+#endif
+
+if (!in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: read error");
     return {};
   }
+
   return result;
 }
 
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out) {
-  std::string data;
+  std::vector<uint8_t> serialized;
   {
     PackedGaussians packed = packGaussians(g, o);
-    std::stringstream ss;
-    serializePackedGaussians(packed, &ss);
-    data = ss.str();
+    vecbuf vb(&serialized);
+    std::ostream stream(&vb);
+    serializePackedGaussians(packed, &stream);
   }
-  return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
+  return compressGzipped(serialized.data(), serialized.size(), out);
 }
 
 PackedGaussians loadSpzPacked(const uint8_t *data, int32_t size) {
-  std::string decompressed;
+  std::vector<uint8_t> decompressed;
   if (!decompressGzipped(data, size, &decompressed))
     return {};
-  std::stringstream stream(std::move(decompressed));
+  membuf buf(decompressed.data(), decompressed.size());
+  std::istream stream(&buf);
   return deserializePackedGaussians(stream);
 }
 
@@ -722,17 +832,84 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   SpzLog("[SPZ] Loading %d points", numPoints);
   std::unordered_map<std::string, int> fields;  // name -> index
+
+  // Helper function to get property size from PLY type string
+  auto getPropertySize = [](const std::string& line) -> size_t {
+    if (line.find("property float ") == 0 || line.find("property int ") == 0 ||
+        line.find("property uint ") == 0) {
+      return 4;
+    } else if (line.find("property double ") == 0) {
+      return 8;
+    } else if (line.find("property char ") == 0 || line.find("property uchar ") == 0) {
+      return 1;
+    } else if (line.find("property short ") == 0 || line.find("property ushort ") == 0) {
+      return 2;
+    }
+    return 4;  // Default assumption
+  };
+
+  // Track extra elements (non-vertex) to handle their data
+  std::vector<PlyExtraElement> extraElements;
+
+  // State machine for parsing header
+  enum class ParseState { IN_VERTEX, IN_EXTRA_ELEMENT };
+  ParseState state = ParseState::IN_VERTEX;
+  std::string currentElementName;
+  int32_t currentElementCount = 0;
+  size_t currentElementBytes = 0;
+  bool currentElementIsKnown = false;
+
   for (int32_t i = 0;; i++) {
     if (!getNextHeaderLine(in, line)) {
       SpzLog("[SPZ ERROR] %s: unexpected EOF while reading header properties.", filename.c_str());
       in.close();
       return {};
     }
-    if (line == "end_header")
+    if (line == "end_header") {
+      // Finalize any pending extra element
+      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount > 0) {
+        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes, currentElementIsKnown});
+      }
       break;
+    }
 
+    // Check for new element definitions (non-vertex)
+    if (line.find("element ") == 0 && line.find("element vertex ") != 0) {
+      // Finalize previous extra element if any
+      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount > 0) {
+        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes, currentElementIsKnown});
+      }
+
+      // Parse element name and count
+      size_t spacePos = line.find(' ', 8);  // After "element "
+      if (spacePos != std::string::npos) {
+        currentElementName = line.substr(8, spacePos - 8);
+        currentElementCount = std::stoi(line.substr(spacePos + 1));
+        currentElementBytes = 0;
+
+        // Check if this is a known element we handle specially
+        currentElementIsKnown = (currentElementName == "safe_orbit_camera_elevation_min_max_radians" ||
+                                  currentElementName == "safe_orbit_camera_radius_min");
+
+        state = ParseState::IN_EXTRA_ELEMENT;
+        if (!currentElementIsKnown) {
+          SpzLog("[SPZ] Found extra element: %s (%d items)", currentElementName.c_str(), currentElementCount);
+        }
+      }
+      continue;
+    }
+
+    // Handle properties based on current state
+    if (state == ParseState::IN_EXTRA_ELEMENT) {
+      if (line.find("property ") == 0) {
+        currentElementBytes += getPropertySize(line);
+      }
+      continue;
+    }
+
+    // We're in vertex element - only accept float properties
     if (line.find("property float ") != 0) {
-      SpzLog("[SPZ ERROR] %s: unsupported property data type: %s", filename.c_str(), line.c_str());
+      SpzLog("[SPZ ERROR] %s: unsupported vertex property type: %s", filename.c_str(), line.c_str());
       in.close();
       return {};
     }
@@ -790,7 +967,8 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   // Spherical harmonics are optional and variable in size (depending on degree)
   std::vector<int> shIdx;
-  for (int32_t i = 0; i < 45; i++) {
+  const int32_t shMaxCoeffsRGB = SH_MAX_COEFFS * 3;
+  for (int32_t i = 0; i < shMaxCoeffsRGB; i++) {
     const auto &itr = fields.find("f_rest_" + std::to_string(i));
     if (itr == fields.end())
       break;
@@ -805,9 +983,24 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     in.close();
     return {};
   }
-  in.close();
 
   GaussianCloud result;
+#ifdef SPZ_BUILD_EXTENSIONS
+  readExtensionsFromPly(in, extraElements, result.extensions);
+#endif
+
+  // Skip data for extra elements (they appear after vertex and safe orbit data in the file)
+  for (const auto& elem : extraElements) {
+    if (elem.isKnown) continue;  // Already handled above
+    size_t bytesToSkip = elem.count * elem.bytesPerElement;
+    if (bytesToSkip > 0) {
+      in.seekg(bytesToSkip, std::ios::cur);
+      SpzLog("[SPZ] Skipped %zu bytes for element '%s'", bytesToSkip, elem.name.c_str());
+    }
+  }
+
+  in.close();
+
   result.numPoints = numPoints;
   result.shDegree = degreeForDim(shDim);
   result.positions.reserve(numPoints * 3);
@@ -923,14 +1116,32 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out << "property float rot_1\n";
   out << "property float rot_2\n";
   out << "property float rot_3\n";
+
+#ifdef SPZ_BUILD_EXTENSIONS
+  writeExtensionsToPlyHeader(data.extensions, out);
+#endif
+
   out << "end_header\n";
   out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
+
+#ifdef SPZ_BUILD_EXTENSIONS
+  writeExtensionsToPlyData(data.extensions, out);
+#endif
+
   out.close();
   if (!out.good()) {
     SpzLog("[SPZ ERROR] Failed to write to: %s", filename.c_str());
     return false;
   }
   return true;
+}
+
+bool hasExtensionSupport() {
+#ifdef SPZ_BUILD_EXTENSIONS
+  return true;
+#else
+  return false;
+#endif
 }
 
 }  // namespace spz

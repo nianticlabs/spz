@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2024 Niantic Labs
+Copyright (c) 2025 Adobe Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +22,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "splat-c-types.h"
+#ifndef SPZ_EMSCRIPTEN_UTILS_H_
+#define SPZ_EMSCRIPTEN_UTILS_H_
 
-// Empty.
+#include <emscripten/val.h>
+#include <vector>
+
+// Utility functions for converting between C++ vectors and JavaScript arrays
+template <typename T>
+inline ::emscripten::val jsArrayFromVector(const std::vector<T>& vec) {
+  ::emscripten::val array = ::emscripten::val::array();
+  for (const auto& item : vec) {
+    array.call<void>("push", item);
+  }
+  return array;
+}
+
+template <typename T>
+inline void vectorFromJsArray(const ::emscripten::val& array, std::vector<T>& out) {
+  const size_t length = array["length"].as<size_t>();
+  out.resize(length);
+  for (size_t i = 0; i < length; ++i) {
+    out[i] = array[i].as<T>();
+  }
+}
+
+#endif  // SPZ_EMSCRIPTEN_UTILS_H_
+

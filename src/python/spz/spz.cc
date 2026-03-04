@@ -2,6 +2,8 @@
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
+#include <nanobind/stl/shared_ptr.h>
 #include <nanobind/ndarray.h>
 
 #include <vector>
@@ -11,6 +13,9 @@
 
 #include "src/cc/load-spz.h"
 #include "src/cc/splat-types.h"
+#ifdef SPZ_BUILD_EXTENSIONS
+#include "extensions/python/splat-extensions.h"
+#endif
 
 namespace nb = nanobind;
 
@@ -39,7 +44,7 @@ static inline void ensure_multiple(const char *name, size_t size, size_t k) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Convert a `const std::vector<float>&` into a *new* NumPy float32 1-D array.
 // The array owns its own copy of the data, so Python can out-live the C++ vector.
-// 
+//
 // This lambda is used as a getter for properties like positions, scales, etc.
 // It creates a new numpy array that owns its own copy of the data, ensuring
 // memory safety when the original C++ object is destroyed.
@@ -81,7 +86,7 @@ static auto vector_getter = [](const std::vector<float>& vec) -> NdArray1D {
 // ──────────────────────────────────────────────────────────────────────────────
 // Copy data from a NumPy array back into a std::vector<float>&.
 // Expands or shrinks the vector as needed.
-// 
+//
 // This lambda is used as a setter for properties like positions, scales, etc.
 // It copies the data from the numpy array into the C++ vector. The nanobind
 // NdArray1D type alias already ensures type safety - only float32 arrays are
@@ -115,19 +120,19 @@ NB_MODULE(spz, m) {
     // Coordinate system enum with comprehensive documentation
     nb::enum_<spz::CoordinateSystem>(m, "CoordinateSystem", R"doc(
         Coordinate system conventions for 3D Gaussian splats.
-        
+
         These enums define the handedness and axis orientations used in different 3D graphics
         systems and file formats. Each value encodes three axes directions:
         - First letter: Right (R) or Left (L) - defines the X-axis direction
-        - Second letter: Up (U) or Down (D) - defines the Y-axis direction  
+        - Second letter: Up (U) or Down (D) - defines the Y-axis direction
         - Third letter: Front (F) or Back (B) - defines the Z-axis direction
-        
+
         Common usage patterns:
         - RDF: Standard PLY file format (right-handed, Y-down, Z-forward)
         - RUB: Three.js coordinate system (right-handed, Y-up, Z-backward)
         - LUF: glTF/GLB format (left-handed, Y-up, Z-forward)
         - RUF: Unity game engine (left-handed, Y-up, Z-forward)
-        
+
         Use convert_coordinates() to transform between different coordinate systems.
     )doc")
         .value("UNSPECIFIED", spz::CoordinateSystem::UNSPECIFIED, "Unspecified coordinate system")
@@ -144,10 +149,17 @@ NB_MODULE(spz, m) {
     // -------------------------------------------------------------------------
     // Options structs
     // -------------------------------------------------------------------------
-    nb::class_<spz::PackOptions>(m, "PackOptions")
+    nb::class_<spz::PackOptions> pack_options(m, "PackOptions");
+    pack_options
         .def(nb::init<>())
+        .def_rw("version", &spz::PackOptions::version,
+                "SPZ version of the input splat")
         .def_rw("from_coord", &spz::PackOptions::from,
-                "Coordinate system of the input splat");
+                "Coordinate system of the input splat")
+        .def_rw("sh1_bits", &spz::PackOptions::sh1Bits,
+                "Bits used for first-order spherical harmonics quantization")
+        .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
+                "Bits used for non-first-order spherical harmonics quantization");
 
     nb::class_<spz::UnpackOptions>(m, "UnpackOptions")
         .def(nb::init<>())
@@ -155,11 +167,18 @@ NB_MODULE(spz, m) {
                 "Desired coordinate system of the output splat");
 
     // -------------------------------------------------------------------------
+    // Extensions structs
+    // -------------------------------------------------------------------------
+#ifdef SPZ_BUILD_EXTENSIONS
+    spz::python::register_extensions(m);
+#endif
+
+    // -------------------------------------------------------------------------
     // GaussianCloud - Main data structure for 3D Gaussian splats
     // -------------------------------------------------------------------------
     // This class represents a collection of 3D Gaussian splats, each defined by:
     // - Position (xyz coordinates)
-    // - Scale (log-scale size factors for x,y,z axes)  
+    // - Scale (log-scale size factors for x,y,z axes)
     // - Rotation (quaternion for orientation)
     // - Alpha (opacity before sigmoid activation)
     // - Color (base RGB values)
@@ -190,8 +209,9 @@ NB_MODULE(spz, m) {
         .def_prop_rw("sh_degree",
                      [](const spz::GaussianCloud &self) { return self.shDegree; },
                      [](spz::GaussianCloud &self, int32_t deg) {
-                         if (deg < 0 || deg > 3) {
-                             throw nb::value_error("sh_degree must be in [0, 3]");
+                         if (deg < 0 || deg > spz::SH_MAX_DEGREE) {
+                             // Update this message when spz::SH_MAX_DEGREE is changed.
+                             throw nb::value_error("sh_degree must be in [0, 4]");
                          }
                          self.shDegree = deg;
                      },
@@ -201,7 +221,7 @@ NB_MODULE(spz, m) {
         // - Getter: Creates a new numpy array copy of the positions vector
         // - Setter: Copies data from numpy array into the positions vector
         // - nb::rv_policy::move: Optimizes return value handling
-        // - Array contains 3D coordinates as [x1,y1,z1,x2,y2,z2,...] 
+        // - Array contains 3D coordinates as [x1,y1,z1,x2,y2,z2,...]
         // - Accepts numeric arrays (int, float64, etc.) but converts to float32
         .def_prop_rw("positions",
                      [](const spz::GaussianCloud &self){ return vector_getter(self.positions); },
@@ -293,7 +313,7 @@ NB_MODULE(spz, m) {
                      [](spz::GaussianCloud &self, const NdArray1D &arr){
                          const size_t n = arr.shape(0);
                          ensure_multiple("sh", n, 3);
-                         // Compute dim per point per channel based on degree: 0, 3, 8, 15
+                         // Compute dim per point per channel based on degree: 0, 3, 8, 15, 24
                          int deg = self.shDegree;
                          int shDimPerChannel = (deg == 0) ? 0 : ((deg + 1) * (deg + 1) - 1);
                          if (shDimPerChannel == 0) {
@@ -317,6 +337,7 @@ NB_MODULE(spz, m) {
                     1 -> 9   (3 coeffs x 3 channels)
                     2 -> 24  (8 coeffs x 3 channels)
                     3 -> 45  (15 coeffs x 3 channels)
+                    4 -> 72  (24 coeffs x 3 channels)
                     The color channel is the inner (fastest varying) axis, and the coefficient is the outer
                     (slower varying) axis, i.e. for degree 1, the order of the 9 values is:
                     sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b.
@@ -338,7 +359,11 @@ NB_MODULE(spz, m) {
 
                  Applies the same internal logic as convert_coordinates(RUB, RDF).)doc")
         .def("median_volume", &spz::GaussianCloud::medianVolume,
-             "Return the median Gaussian volume.");
+             "Return the median Gaussian volume");
+
+#ifdef SPZ_BUILD_EXTENSIONS
+    spz::python::register_gaussian_cloud_extensions(cloud);
+#endif
 
     // -------------------------------------------------------------------------
     // Functions
@@ -359,4 +384,7 @@ NB_MODULE(spz, m) {
     m.def("save_splat_to_ply", (bool (*)(const spz::GaussianCloud &, const spz::PackOptions &, const std::string &)) &spz::saveSplatToPly,
           nb::arg("gaussians"), nb::arg("options"), nb::arg("filename"),
           "Write GaussianCloud data to a *.ply* file.");
+
+    m.def("has_extension_support", &spz::hasExtensionSupport,
+          "Returns True if the build has extension support enabled, False otherwise.");
 }
