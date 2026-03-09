@@ -63,10 +63,11 @@ constexpr int DEFAULT_SH1_BITS = 5;
 constexpr int DEFAULT_SH_REST_BITS = 4;
 
 // Latest version of the packed format, update this when changing the format.
-constexpr int LATEST_SPZ_HEADER_VERSION = 3;
+constexpr int LATEST_SPZ_HEADER_VERSION = 4;
 
-// Represents a single inflated gaussian. Each gaussian has 236 bytes. Although the data is easier
-// to intepret in this format, it is not more precise than the packed format, since it was inflated.
+// Represents a single inflated gaussian. Each gaussian has 344 bytes (position, rotation, scale,
+// color, alpha, and 24 SH coeffs x 3 channels). Although the data is easier to interpret in this
+// format, it is not more precise than the packed format, since it was inflated.
 struct UnpackedGaussian {
   std::array<float, 3> position;  // x, y, z
   std::array<float, 4> rotation;  // x, y, z, w
@@ -78,8 +79,8 @@ struct UnpackedGaussian {
   std::array<float, SH_MAX_COEFFS> shB;
 };
 
-// Represents a single low precision gaussian. Each gaussian has exactly 65 bytes, even if it does
-// not have full spherical harmonics.
+// Represents a single low precision gaussian. Each gaussian has exactly 92 bytes (for degree 4
+// spherical harmonics); the struct layout is fixed so that at() can index into non-interleaved buffers.
 struct PackedGaussian {
   std::array<uint8_t, 9> position{};
   std::array<uint8_t, 4> rotation{};
@@ -151,7 +152,7 @@ bool saveSpz(
 // Loads Gaussian splat from a vector of bytes in packed format.
 GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &options);
 
-// Loads Gaussian splat from a vector of bytes in packed format.
+// Loads Gaussian splat from a file / byte pointer / vector in packed format.
 PackedGaussians loadSpzPacked(const std::string &filename);
 PackedGaussians loadSpzPacked(const uint8_t *data, int32_t size);
 PackedGaussians loadSpzPacked(const std::vector<uint8_t> &data);

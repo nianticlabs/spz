@@ -32,6 +32,8 @@ SOFTWARE.
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 // C-compatible extension node structure (used for C interop)
@@ -54,24 +56,20 @@ struct SpzExtensionBase {
   explicit SpzExtensionBase(SpzExtensionType t) : extensionType(t) {
   }
   virtual ~SpzExtensionBase() = default;
+  virtual uint32_t payloadBytes() const = 0;
   virtual void write(std::ostream& os) const = 0;
   virtual SpzExtensionBase* copyAsRawData() const = 0;
+
+  // PLY extension I/O: check-and-read from PLY, write header lines, write data.
+  virtual std::optional<std::shared_ptr<SpzExtensionBase>> tryReadFromPly(
+      std::istream& in, const std::unordered_set<std::string>& elementNames) const = 0;
+  virtual void writePlyHeader(std::ostream& out) const = 0;
+  virtual void writePlyData(std::ostream& out) const = 0;
 };
 
 using SpzExtensionBasePtr = std::shared_ptr<SpzExtensionBase>;
 
-struct SpzExtensionSafeOrbitCameraAdobe : public SpzExtensionBase {
-  float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
-  float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
-  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
-
-  SpzExtensionSafeOrbitCameraAdobe();
-  void write(std::ostream& os) const override;
-  SpzExtensionBase* copyAsRawData() const override;
-  static std::optional<SpzExtensionBasePtr> read(std::istream& is);
-  static SpzExtensionType type();
-};
-
+// Built-in extension types are declared in their own headers, e.g. safe-orbit-camera-adobe.h
 void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out);
 
 void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostream& os);
@@ -81,6 +79,8 @@ void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElem
 void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
 
 void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
+
+bool isKnownPlyExtensionElement(const std::string& elementName);
 
 inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
   SpzExtensionNode* head = nullptr;

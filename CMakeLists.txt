@@ -64,9 +64,11 @@ set(spz_headers
 if(SPZ_BUILD_EXTENSIONS)
   list(APPEND spz_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.cc"
   )
   list(APPEND spz_headers
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.h"
   )
 endif()
 

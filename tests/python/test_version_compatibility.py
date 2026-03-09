@@ -13,7 +13,10 @@ def test_pack_options_version_property():
     """Test that PackOptions has version property."""
     opts = spz.PackOptions()
 
-    # Default should be latest version (3)
+    # Default should be latest version (4)
+    assert opts.version == 4
+
+    opts.version = 3
     assert opts.version == 3
 
     opts.version = 2
@@ -106,7 +109,7 @@ def test_spz_version_compatibility_positions():
     cloud.colors = np.zeros(9, dtype=np.float32)
     cloud.sh = np.array([], dtype=np.float32)
 
-    for version in [2, 3]:
+    for version in [2, 3, 4]:
         opts = spz.PackOptions()
         opts.version = version
 
@@ -119,8 +122,8 @@ def test_spz_version_compatibility_positions():
                                    err_msg=f"Position mismatch for version {version}")
 
 
-def test_spz_version_3_sh_degree_4():
-    """Test that version 3 correctly handles SH degree 4."""
+def test_spz_version_3_or_higher_sh_degree_4():
+    """Test that version 3+ correctly handles SH degree 4."""
     cloud = spz.GaussianCloud()
     cloud.sh_degree = 4
 
@@ -134,14 +137,14 @@ def test_spz_version_3_sh_degree_4():
     cloud.sh = rng.uniform(-0.5, 0.5, size=num_points * 72).astype(np.float32)
 
     opts = spz.PackOptions()
-    opts.version = 3
 
-    filename = os.path.join(tempfile.gettempdir(), "version_3_sh4.spz")
-    assert spz.save_spz(cloud, opts, filename) is True
-
-    loaded = spz.load_spz(filename, spz.UnpackOptions())
-    assert loaded.sh_degree == 4
-    assert len(loaded.sh) == num_points * 72
+    for version in [3, 4]:
+        opts.version = version
+        filename = os.path.join(tempfile.gettempdir(), f"version_{version}_sh4.spz")
+        assert spz.save_spz(cloud, opts, filename) is True
+        loaded = spz.load_spz(filename, spz.UnpackOptions())
+        assert loaded.sh_degree == 4
+        assert len(loaded.sh) == num_points * 72
 
 
 def test_version_roundtrip_consistency():
@@ -159,7 +162,7 @@ def test_version_roundtrip_consistency():
     cloud.colors = rng.uniform(0.0, 1.0, size=num_points * 3).astype(np.float32)
     cloud.sh = rng.uniform(-0.5, 0.5, size=num_points * 24).astype(np.float32)
 
-    for version in [2, 3]:
+    for version in [2, 3, 4]:
         opts = spz.PackOptions()
         opts.version = version
 
@@ -179,7 +182,7 @@ def test_version_roundtrip_consistency():
                                    err_msg=f"Position drift after roundtrips for version {version}")
 
 
-def test_version_3_with_all_features():
+def test_version_3_or_higher_with_all_features():
     """Test version 3 with SH degree 4, custom bits."""
     cloud = spz.GaussianCloud()
     cloud.sh_degree = 4
@@ -194,24 +197,25 @@ def test_version_3_with_all_features():
     cloud.colors = rng.uniform(-0.5, 1.5, size=num_points * 3).astype(np.float32)
     cloud.sh = rng.uniform(-1.0, 1.0, size=num_points * 72).astype(np.float32)
 
-    opts = spz.PackOptions()
-    opts.version = 3
-    opts.sh1_bits = 8
-    opts.sh_rest_bits = 6
-    opts.from_coord = spz.RUB
+    for version in [3, 4]:
+        opts = spz.PackOptions()
+        opts.version = version
+        opts.sh1_bits = 8
+        opts.sh_rest_bits = 6
+        opts.from_coord = spz.RUB
 
-    filename = os.path.join(tempfile.gettempdir(), "all_features.spz")
-    assert spz.save_spz(cloud, opts, filename) is True
+        filename = os.path.join(tempfile.gettempdir(), f"version_{version}_all_features.spz")
+        assert spz.save_spz(cloud, opts, filename) is True
 
-    unpack_opts = spz.UnpackOptions()
-    unpack_opts.to_coord = spz.RUB
+        unpack_opts = spz.UnpackOptions()
+        unpack_opts.to_coord = spz.RUB
 
-    loaded = spz.load_spz(filename, unpack_opts)
+        loaded = spz.load_spz(filename, unpack_opts)
 
-    assert loaded.num_points == num_points
-    assert loaded.sh_degree == 4
-    assert loaded.antialiased
-    assert len(loaded.sh) == num_points * 72
+        assert loaded.num_points == num_points
+        assert loaded.sh_degree == 4
+        assert loaded.antialiased
+        assert len(loaded.sh) == num_points * 72
 
-    np.testing.assert_allclose(loaded.sh, cloud.sh, rtol=0, atol=sh_epsilon(6))
+        np.testing.assert_allclose(loaded.sh, cloud.sh, rtol=0, atol=sh_epsilon(6))
 

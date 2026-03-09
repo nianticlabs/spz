@@ -23,7 +23,12 @@ SOFTWARE.
 */
 
 #include "splat-extensions.h"
+#include "safe-orbit-camera-adobe.h"
 #include "load-spz.h"
+
+#include <sstream>
+#include <string>
+#include <unordered_set>
 
 namespace spz {
 namespace {
@@ -32,81 +37,70 @@ bool readExact(std::istream& is, T& out) {
   return static_cast<bool>(is.read(reinterpret_cast<char*>(&out), sizeof(T)));
 }
 
-struct StreamMark {
-  std::istream& is;
-  std::streampos pos;
-  bool committed = false;
-  explicit StreamMark(std::istream& s) : is(s), pos(s.tellg()) {
-  }
-  void commit() {
-    committed = true;
-  }
-  ~StreamMark() {
-    if (!committed) {
-      is.clear();
-      is.seekg(pos);
-    }
-  }
-};
-
-std::optional<SpzExtensionBasePtr> tryParseExtension(std::istream& is) {
-  StreamMark mark(is);
-
+// Extension stream format: [u32 type][u32 byteLength][payload...] per record, until EOF.
+// Unknown types are skipped by advancing byteLength bytes so multiple vendors can coexist.
+bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
   uint32_t type_u32{};
   if (!readExact(is, type_u32))
-    return std::nullopt;  // EOF/short
+    return false;  // EOF or short read -> stop
+  uint32_t byteLength{};
+  if (!readExact(is, byteLength))
+    return false;
+
   SpzExtensionType type = static_cast<SpzExtensionType>(type_u32);
 
   switch (type) {
-    case SpzExtensionType::SPZ_ADOBE_safe_orbit_camera:
-      mark.commit();
-      return SpzExtensionSafeOrbitCameraAdobe::read(is);
+    case SpzExtensionType::SPZ_ADOBE_safe_orbit_camera: {
+      std::vector<char> payload(byteLength);
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      std::istringstream iss(std::string(payload.data(), payload.size()));
+      auto rec = SpzExtensionSafeOrbitCameraAdobe::read(iss);
+      if (rec)
+        out.push_back(std::move(*rec));
+      return true;  // continue to next record
+    }
     default:
-      // Unknown tag -> not one of our records.
-      return std::nullopt;
+      // Unknown type: skip payload and continue
+      SpzLog("[SPZ WARNING] Skipping unknown extension type: 0x%08x (%u bytes)", static_cast<unsigned>(type_u32), static_cast<unsigned>(byteLength));
+      if (byteLength > 0)
+        is.ignore(static_cast<std::streamsize>(byteLength));
+      return true;
   }
+}
+
+using PlyExemplarEntry = std::pair<const std::unordered_set<std::string>*, SpzExtensionBasePtr>;
+
+static const std::vector<PlyExemplarEntry>& getPlyExtensionRegistry() {
+  static const std::vector<PlyExemplarEntry> registry = {
+    {&SpzExtensionSafeOrbitCameraAdobe::kRequiredPlyElementNames, std::make_shared<SpzExtensionSafeOrbitCameraAdobe>()},
+  };
+  return registry;
+}
+
+const std::unordered_set<std::string>& getKnownPlyExtensionElementNames() {
+  static const std::unordered_set<std::string> known = []() {
+    std::unordered_set<std::string> out;
+    for (const auto& entry : getPlyExtensionRegistry())
+      for (const auto& name : *entry.first)
+        out.insert(name);
+    return out;
+  }();
+  return known;
 }
 }  // namespace
 
-SpzExtensionSafeOrbitCameraAdobe::SpzExtensionSafeOrbitCameraAdobe() : SpzExtensionBase(SpzExtensionType::SPZ_ADOBE_safe_orbit_camera) {
-}
-
-void SpzExtensionSafeOrbitCameraAdobe::write(std::ostream& os) const {
-  const uint32_t t = static_cast<uint32_t>(extensionType);
-  SpzLog("[SPZ] Writing extension: SafeOrbitCameraAdobe");
-  os.write(reinterpret_cast<const char*>(&t), sizeof(t));
-  os.write(reinterpret_cast<const char*>(&safeOrbitElevationMin), sizeof(safeOrbitElevationMin));
-  os.write(reinterpret_cast<const char*>(&safeOrbitElevationMax), sizeof(safeOrbitElevationMax));
-  os.write(reinterpret_cast<const char*>(&safeOrbitRadiusMin), sizeof(safeOrbitRadiusMin));
-}
-
-std::optional<SpzExtensionBasePtr> SpzExtensionSafeOrbitCameraAdobe::read(std::istream& is) {
-  StreamMark mark(is);
-  SpzLog("[SPZ] Found extension: SafeOrbitCameraAdobe");
-  auto rec = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>();
-  if (!readExact(is, rec->safeOrbitElevationMin) || !readExact(is, rec->safeOrbitElevationMax) || !readExact(is, rec->safeOrbitRadiusMin)) {
-    SpzLog("[SPZ ERROR] Failed to read all fields for SafeOrbitCameraAdobe");
-    return std::nullopt;
-  }
-
-  mark.commit();
-  return std::optional{std::move(rec)};
-}
-
-SpzExtensionType SpzExtensionSafeOrbitCameraAdobe::type() {
-  return SpzExtensionType::SPZ_ADOBE_safe_orbit_camera;
-}
-
-SpzExtensionBase* SpzExtensionSafeOrbitCameraAdobe::copyAsRawData() const {
-  return new SpzExtensionSafeOrbitCameraAdobe(*this);
+bool isKnownPlyExtensionElement(const std::string& elementName) {
+  return getKnownPlyExtensionElementNames().count(elementName) != 0;
 }
 
 void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
-  while (true) {
-    auto rec = tryParseExtension(is);
-    if (!rec)
-      break;
-    out.push_back(std::move(*rec));
+  while (tryParseExtension(is, out));
+
+  // Stopped because there are no more extension records (EOF). Clear stream state
+  // so the caller does not treat expected end-of-extensions as a read error.
+  if (is.eof()) {
+    is.clear();
   }
 }
 
@@ -116,54 +110,24 @@ void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostre
 }
 
 void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions) {
-  // Identify known extension elements
-  bool hasSafeOrbitElevation = false;
-  bool hasSafeOrbitRadius = false;
-  for (const auto& elem : extraElements) {
-    if (elem.name == "safe_orbit_camera_elevation_min_max_radians") {
-      hasSafeOrbitElevation = true;
-    } else if (elem.name == "safe_orbit_camera_radius_min") {
-      hasSafeOrbitRadius = true;
-    }
-  }
+  std::unordered_set<std::string> elementNames;
+  for (const auto& elem : extraElements)
+    elementNames.insert(elem.name);
 
-  // Read safe orbit data if present
-  if (hasSafeOrbitElevation && hasSafeOrbitRadius) {
-    float safeOrbitData[3];
-    in.read(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
-    if (in.good()) {
-      auto extSafeOrbit = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>();
-      extSafeOrbit->safeOrbitElevationMin = safeOrbitData[0];
-      extSafeOrbit->safeOrbitElevationMax = safeOrbitData[1];
-      extSafeOrbit->safeOrbitRadiusMin = safeOrbitData[2];
-      SpzLog("[SPZ] Loaded safe orbit data: elevation [%f, %f], radius min %f",
-             extSafeOrbit->safeOrbitElevationMin, extSafeOrbit->safeOrbitElevationMax, extSafeOrbit->safeOrbitRadiusMin);
-      extensions.push_back(extSafeOrbit);
-    }
+  for (const auto& entry : getPlyExtensionRegistry()) {
+    auto rec = entry.second->tryReadFromPly(in, elementNames);
+    if (rec)
+      extensions.push_back(std::move(*rec));
   }
 }
 
 void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out) {
-  // Add safe orbit elements if present
-  auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(extensions);
-  if (extSafeOrbit) {
-    out << "element safe_orbit_camera_elevation_min_max_radians 2\n";
-    out << "property float safe_orbit_camera_elevation_min_max_radians\n";
-    out << "element safe_orbit_camera_radius_min 1\n";
-    out << "property float safe_orbit_camera_radius_min\n";
-  }
+  for (const auto& ext : extensions)
+    ext->writePlyHeader(out);
 }
 
 void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out) {
-  // Write safe orbit data if present
-  auto extSafeOrbit = findExtensionByType<SpzExtensionSafeOrbitCameraAdobe>(extensions);
-  if (extSafeOrbit) {
-    float safeOrbitData[3] = {
-      extSafeOrbit->safeOrbitElevationMin,
-      extSafeOrbit->safeOrbitElevationMax,
-      extSafeOrbit->safeOrbitRadiusMin
-    };
-    out.write(reinterpret_cast<char *>(safeOrbitData), sizeof(safeOrbitData));
-  }
+  for (const auto& ext : extensions)
+    ext->writePlyData(out);
 }
 }  // namespace spz

@@ -13,3 +13,6 @@ export class SpzExtensionSafeOrbitCameraAdobe extends SpzExtensionBase {
   constructor();
   static type(): SpzExtensionType;
 }
+
+/** Returns true if the PLY extra element name is handled by an extension. */
+export function isKnownPlyExtensionElement(elementName: string): boolean;

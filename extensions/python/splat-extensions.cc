@@ -8,6 +8,7 @@
 #include "src/cc/load-spz.h"
 #include "src/cc/splat-types.h"
 #include "extensions/cc/splat-extensions.h"
+#include "extensions/cc/safe-orbit-camera-adobe.h"
 #include "extensions/python/splat-extensions.h"
 
 namespace nb = nanobind;
@@ -45,6 +46,8 @@ void register_extensions(nb::module_& m) {
                 "Minimum radius for safe orbit")
         .def_static("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type,
                     "Static method to get the extension type enum value");
+    m.def("is_known_ply_extension_element", &spz::isKnownPlyExtensionElement, nb::arg("element_name"),
+          "Returns True if the PLY extra element name is handled by an extension.");
 }
 
 // Register extension-related properties for GaussianCloud

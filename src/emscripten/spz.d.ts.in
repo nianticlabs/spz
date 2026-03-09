@@ -69,6 +69,9 @@ export interface SpzModule {
   loadSpzFromBuffer(data: Uint8Array, options: UnpackOptions): GaussianCloud;
   saveSpzToBuffer(cloud: GaussianCloud, options: PackOptions): Uint8Array;
 
+  /** Returns true if the build has extension support enabled, false otherwise. */
+  SpzHasExtensionSupport(): boolean;
+
   LATEST_SPZ_HEADER_VERSION: number;
 }
 

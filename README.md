@@ -206,6 +206,8 @@ This allows users to trade off between file size and quality. The library mainta
 
 ### Extensions
 
+SPZ supports vendor-specific extensions (e.g. camera limits) so multiple vendors can coexist in the same file. The extension stream uses a per-record length so unknown types are skipped. For the extension format and how to add or use extensions, see [extensions/README.md](extensions/README.md).
+
 ### Camera Orbit Limitation
 
 With extension `SPZ_ADOBE_safe_orbit_camera`, SPZ supports storing camera limits which can be used to restrict the view in a render. This extension includes:

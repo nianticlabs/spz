@@ -26,6 +26,7 @@ SOFTWARE.
 
 #include "src/cc/load-spz.h"
 #include "extensions/cc/splat-extensions.h"
+#include "extensions/cc/safe-orbit-camera-adobe.h"
 #include "extensions/emscripten/splat-extensions.h"
 #include "src/emscripten/utils.h"
 
@@ -47,6 +48,8 @@ void register_extensions() {
       .property("safeOrbitElevationMax", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
       .property("safeOrbitRadiusMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)
       .class_function("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type);
+
+  ::emscripten::function("isKnownPlyExtensionElement", &spz::isKnownPlyExtensionElement);
 }
 
 }  // namespace emscripten

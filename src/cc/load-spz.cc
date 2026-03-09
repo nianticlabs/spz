@@ -84,7 +84,7 @@ int32_t dimForDegree(int32_t degree) {
 
 uint8_t toUint8(float x) { return static_cast<uint8_t>(std::clamp(std::round(x), 0.0f, 255.0f)); }
 
-// Quantizes to 8 bits, the round to nearest bucket center. 0 always maps to a bucket center.
+// Quantizes to 8 bits, then rounds to nearest bucket center. 0 always maps to a bucket center.
 uint8_t quantizeSH(float x, int32_t bucketSize) {
   int32_t q = static_cast<int>(std::round(x * 128.0f) + 128.0f);
   q = (q + bucketSize / 2) / bucketSize * bucketSize;
@@ -138,9 +138,7 @@ bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
 }
 
 constexpr uint8_t FlagAntialiased = 0x1;
-#ifdef SPZ_BUILD_EXTENSIONS
 constexpr uint8_t FlagHasExtensions = 0x2;
-#endif
 
 // We always pad the attributes in this header explicitly to the 4-byte boundary to ensure compatibility when
 // reading from files that may have been written with different compilers or settings.
@@ -326,6 +324,10 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.alphas.resize(numPoints);
   packed.colors.resize(numPoints * 3);
   packed.sh.resize(numPoints * shDim * 3);
+
+#ifdef SPZ_BUILD_EXTENSIONS
+  packed.extensions = g.extensions;
+#endif
 
   // Store coordinates as 24-bit fixed point values.
   const float scale = (1 << packed.fractionalBits);
@@ -648,13 +650,8 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
   const bool usesQuaternionSmallestThree = header.version >= 3;
-  const bool hasExtensions =
-#ifdef SPZ_BUILD_EXTENSIONS
-    (header.flags & FlagHasExtensions) != 0
-#else
-    false
-#endif
-  ;
+  const bool hasExtensions = (header.flags & FlagHasExtensions) != 0;
+
   PackedGaussians result;
   result.version = header.version;
   result.numPoints = numPoints;
@@ -676,13 +673,16 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   in.read(reinterpret_cast<char *>(result.sh.data()), countBytes(result.sh));
 
   // Read extensions at the end
-#ifdef SPZ_BUILD_EXTENSIONS
   if (hasExtensions) {
+#ifdef SPZ_BUILD_EXTENSIONS
     readAllExtensions(in, result.extensions);
-  }
+#else
+    SpzLog(
+        "[SPZ WARNING] deserializePackedGaussians: the stream has extensions but extensions are unsupported in the current build of SPZ");
 #endif
+  }
 
-if (!in) {
+  if (!in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: read error");
     return {};
   }
@@ -872,9 +872,12 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
         currentElementCount = std::stoi(line.substr(spacePos + 1));
         currentElementBytes = 0;
 
-        // Check if this is a known element we handle specially
-        currentElementIsKnown = (currentElementName == "safe_orbit_camera_elevation_min_max_radians" ||
-                                  currentElementName == "safe_orbit_camera_radius_min");
+        // Check if this is a known element we handle specially (via extensions)
+#ifdef SPZ_BUILD_EXTENSIONS
+        currentElementIsKnown = isKnownPlyExtensionElement(currentElementName);
+#else
+        currentElementIsKnown = false;
+#endif
 
         state = ParseState::IN_EXTRA_ELEMENT;
         if (!currentElementIsKnown) {
