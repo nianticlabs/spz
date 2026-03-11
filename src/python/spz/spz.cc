@@ -215,7 +215,7 @@ NB_MODULE(spz, m) {
                          }
                          self.shDegree = deg;
                      },
-                     "Degree of spherical harmonics for this splat (restricted to 0..3).")
+                     "Degree of spherical harmonics for this splat (restricted to 0..4).")
         .def_rw("antialiased", &spz::GaussianCloud::antialiased, "Whether the gaussians should be rendered in antialiased mode (mip splatting).")
         // Bind the 'positions' property as a read-write numpy array
         // - Getter: Creates a new numpy array copy of the positions vector

@@ -177,14 +177,14 @@ spz.save_spz(cloud, spz.PackOptions(), "modified.spz")
 
 The Python bindings enforce consistency across fields and provide clear errors:
 
-- num_points is read‑only and derived from positions.size() / 3.
+- num_points is read‑only and derived from `positions.size() / 3` from the C++ side.
   - Set positions first to establish the point count.
 - positions: length must be a multiple of 3. Setting positions updates num_points.
 - scales: length must be a multiple of 3; if num_points > 0, length must equal num_points * 3.
 - rotations: length must be a multiple of 4; if num_points > 0, length must equal num_points * 4.
 - alphas: if num_points > 0, length must equal num_points.
 - colors: length must be a multiple of 3; if num_points > 0, length must equal num_points * 3.
-- sh_degree: must be in [0, 3]. Set sh_degree before assigning sh.
+- sh_degree: must be in [0, 4]. Set sh_degree before assigning sh.
 - sh:
   - If sh_degree == 0, sh must be empty.
   - Otherwise, length must be a multiple of (((sh_degree + 1)^2 − 1) * 3).
@@ -223,6 +223,7 @@ pip install pytest scipy
 
 # Run the test suite
 python -m pytest tests/python/
+```
 
 ### Requirements
 

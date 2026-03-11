@@ -51,7 +51,7 @@ bool saveSpz(
    const GaussianCloud &gaussians, const PackOptions &options, std::vector<uint8_t> *output);
 ```
 
-Converts a cloud of Gaussians in `.spz` format to a vector of bytes.
+Converts a cloud of Gaussians to `.spz` format and writes the result to a vector of bytes.
 
    - `gaussians`: The Gaussians to save
    - `options`: Flags that control the packing behavior, including SH quantization parameters.
@@ -102,14 +102,14 @@ Loads a cloud of Gaussians from a file in `.spz` format.
 
 ### Typescript
 
-Check [src/emscripten/spz.d.ts](src/emscripten/spz.d.ts) for the Typescript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
+Check [src/emscripten/spz.d.ts.in](src/emscripten/spz.d.ts.in) (source) or `dist/spz.d.ts` (after building with CMake) for the TypeScript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
 
 ### PackOptions
 
 The `PackOptions` struct supports the following fields:
 
 - `from`: Source coordinate system (default: `UNSPECIFIED`)
-- `version`: Version of the packed format (default: `3`)
+- `version`: Version of the packed format (default: `4`)
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
 
@@ -121,7 +121,7 @@ alphas, colors, scales, rotations, spherical harmonics.
 
 ### Header
 
-**Version 3 (current):**
+**Version 4 (current):**
 ```c
 struct PackedGaussiansHeader {
   uint32_t magic;
@@ -137,13 +137,14 @@ struct PackedGaussiansHeader {
 All values are little-endian.
 
 1. **magic**: This is always 0x5053474e
-2. **version**: Currently, the only valid versions are 2 and 3
+2. **version**: Valid versions are 1, 2, 3, and 4 (version 4 is current).
 3. **numPoints**: The number of gaussians
 4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 4 (inclusive).
 5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
    the fixed-point encoding.
 6. **flags**: A bit field containing flags.
    - `0x1`: whether the splat was trained with [antialiasing](https://niujinshuchong.github.io/mip-splatting/).
+   - `0x2`: whether the stream contains vendor-specific extensions after the gaussian data.
 7. **reserved**: Reserved for future use. Must be 0.
 
 ### Positions
@@ -157,7 +158,7 @@ Scales are represented as `(x, y, z)` components, each represented as an 8-bit l
 
 ### Rotation
 
-In version 3, rotations are represented as the smallest three components of the normalized rotation quaternion, for optimal rotation accuracy.
+In version 3 and 4, rotations are represented as the smallest three components of the normalized rotation quaternion, for optimal rotation accuracy.
 The largest component can be derived from the others and is not stored. Its index is stored on 2 bits
 and each of the smallest three components is encoded as a 10-bit signed integer.
 
