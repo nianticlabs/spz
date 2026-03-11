@@ -646,6 +646,16 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: Unsupported SH degree: %d", header.shDegree);
     return {};
   }
+  SpzLog(
+    "[SPZ] deserializePackedGaussians: version=%d, numPoints=%d, shDegree=%d, fractionalBits=%d, antialiased=%d, hasExtensions=%d",
+    header.version, 
+    header.numPoints, 
+    header.shDegree, 
+    header.fractionalBits, 
+    int((header.flags & FlagAntialiased) != 0), 
+    int((header.flags & FlagHasExtensions) != 0)
+  );
+
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesFloat16 = header.version == 1;
