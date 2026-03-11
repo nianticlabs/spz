@@ -1,0 +1,18 @@
+export enum SpzExtensionType {
+  SPZ_ADOBE_safe_orbit_camera = 0xADBE0002,
+}
+
+export class SpzExtensionBase {
+  readonly extensionType: SpzExtensionType;
+}
+
+export class SpzExtensionSafeOrbitCameraAdobe extends SpzExtensionBase {
+  safeOrbitElevationMin: number;
+  safeOrbitElevationMax: number;
+  safeOrbitRadiusMin: number;
+  constructor();
+  static type(): SpzExtensionType;
+}
+
+/** Returns true if the PLY extra element name is handled by an extension. */
+export function isKnownPlyExtensionElement(elementName: string): boolean;

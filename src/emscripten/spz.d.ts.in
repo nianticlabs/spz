@@ -1,0 +1,79 @@
+/*
+MIT License
+
+Copyright (c) 2025 Adobe Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+export enum CoordinateSystem {
+  UNSPECIFIED,
+  LDB,
+  RDB,
+  LUB,
+  RUB,
+  LDF,
+  RDF,
+  LUF,
+  RUF,
+}
+
+@SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS@
+
+export interface PackOptions {
+  version: number;
+  from: CoordinateSystem;
+  sh1Bits: number;
+  shRestBits: number;
+}
+
+export interface UnpackOptions {
+  to: CoordinateSystem;
+}
+
+export class GaussianCloud {
+  numPoints: number;
+  shDegree: number;
+  antialiased: boolean;
+@SPZ_EXTENSIONS_GAUSSIAN_CLOUD_FIELD@
+  positions: Float32Array;
+  scales: Float32Array;
+  rotations: Float32Array;
+  alphas: Float32Array;
+  colors: Float32Array;
+  sh: Float32Array;
+}
+
+// Wrappers for the module interface
+export interface SpzModule {
+  // Enum
+  CoordinateSystem: typeof CoordinateSystem;
+@SPZ_EXTENSIONS_MODULE_INTERFACE@
+  // Loaders / Savers
+  loadSpzFromBuffer(data: Uint8Array, options: UnpackOptions): GaussianCloud;
+  saveSpzToBuffer(cloud: GaussianCloud, options: PackOptions): Uint8Array;
+
+  /** Returns true if the build has extension support enabled, false otherwise. */
+  SpzHasExtensionSupport(): boolean;
+
+  LATEST_SPZ_HEADER_VERSION: number;
+}
+
+export default function createSpzModule(overrides?: any): Promise<SpzModule>;
+
