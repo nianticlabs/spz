@@ -779,6 +779,7 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
   PackedGaussians packed = packGaussians(g, o);
 
   PackedGaussiansHeader header;
+  header.version = static_cast<uint32_t>(packed.version);
   header.numPoints = packed.numPoints;
   header.shDegree = packed.shDegree;
   header.fractionalBits = packed.fractionalBits;
