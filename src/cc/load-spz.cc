@@ -29,6 +29,7 @@ SOFTWARE.
 #endif
 
 #include <zlib.h>
+#include <zstd.h>
 
 #ifdef ANDROID
 #include <android/log.h>
@@ -38,8 +39,8 @@ SOFTWARE.
 #include <cmath>
 #include <fstream>
 #include <future>
-#include <iostream>
 #include <limits>
+#include <iostream>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -155,18 +156,16 @@ struct PackedGaussiansHeader {
   uint8_t reserved = 0;
 };
 
-bool decompressGzippedImpl(
-  const uint8_t *compressed, size_t size, int32_t windowSize, std::vector<uint8_t> *out) {
+bool decompressGzipped(const uint8_t *compressed, size_t size, std::vector<uint8_t> *out) {
   std::vector<uint8_t> buffer(8192);
   out->clear();
   const uint8_t *pos = compressed;
   size_t remaining = size;
   while (remaining > 0) {
     z_stream stream = {};
-    if (inflateInit2(&stream, windowSize) != Z_OK) {
+    if (inflateInit2(&stream, 16 | MAX_WBITS) != Z_OK) {
       return false;
     }
-    // Feed input in chunks to avoid truncating size_t -> uInt for buffers >4 GB.
     size_t posOffset = 0;
     auto feedMore = [&]() {
       if (stream.avail_in == 0 && posOffset < remaining) {
@@ -195,7 +194,6 @@ bool decompressGzippedImpl(
         break;
       }
     }
-    // Leftover = bytes fed but not consumed + bytes not yet fed.
     size_t leftover = stream.avail_in + (remaining - posOffset);
     inflateEnd(&stream);
     if (!streamSuccess) return false;
@@ -205,26 +203,29 @@ bool decompressGzippedImpl(
   return true;
 }
 
-bool decompressGzipped(const uint8_t *compressed, size_t size, std::vector<uint8_t> *out) {
-  // Here 16 means enable automatic gzip header detection; consider switching this to 32 to enable
-  // both automated gzip and zlib header detection.
-  return decompressGzippedImpl(compressed, size, 16 | MAX_WBITS, out);
-}
+bool decompressZstd(const uint8_t *compressed, size_t size, std::vector<uint8_t> *out) {
+  unsigned long long const decompressedSize = ZSTD_getFrameContentSize(compressed, size);
+  if (decompressedSize == ZSTD_CONTENTSIZE_ERROR) return false;
 
-bool decompressGzipped(const uint8_t *compressed, size_t size, std::string *out) {
-  std::vector<uint8_t> buffer;
-  if (!decompressGzipped(compressed, size, &buffer)) {
-    return false;
+  if (decompressedSize == ZSTD_CONTENTSIZE_UNKNOWN) {
+    // Heuristic fallback when content size is not stored in the frame header.
+    out->resize(size * 6);
+    size_t const ret = ZSTD_decompress(out->data(), out->size(), compressed, size);
+    if (ZSTD_isError(ret)) return false;
+    out->resize(ret);
+    return true;
   }
-  out->assign(reinterpret_cast<const char *>(buffer.data()), buffer.size());
-  return true;
+
+  out->resize(static_cast<size_t>(decompressedSize));
+  size_t const ret = ZSTD_decompress(out->data(), out->size(), compressed, size);
+  if (ZSTD_isError(ret)) return false;
+  return ret == static_cast<size_t>(decompressedSize);
 }
 
-// TOC magic identifying the parallel multi-stream format. Distinct from GZip's 0x1f8b prefix so
-// that old single-stream files can still be detected and read via the legacy fallback path.
+// TOC magic identifying the parallel multi-stream format.
 constexpr uint8_t kSpzMultiStreamMagic[4] = {0x53, 0x50, 0x5A, 0x32};  // "SPZ2"
 
-// Decompresses a file written by the multi-stream writer: a TOC followed by N independent GZip
+// Decompresses a file written by the multi-stream writer: a TOC followed by N independent ZSTD
 // streams. The TOC encodes each stream's compressed and uncompressed size, which lets all streams
 // be decompressed in parallel into pre-allocated positions in the output buffer.
 //
@@ -269,7 +270,7 @@ bool decompressMultiStream(const uint8_t *data, size_t size, std::vector<uint8_t
   for (const auto &info : infos) {
     futures.push_back(std::async(std::launch::async, [data, outPtr, info]() -> bool {
       std::vector<uint8_t> chunk;
-      if (!decompressGzipped(data + info.compressedOffset, info.compressedSize, &chunk)) {
+      if (!decompressZstd(data + info.compressedOffset, info.compressedSize, &chunk)) {
         return false;
       }
       if (chunk.size() != info.uncompressedSize) return false;
@@ -285,42 +286,21 @@ bool decompressMultiStream(const uint8_t *data, size_t size, std::vector<uint8_t
 
 }  // namespace
 
-bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out) {
-  std::vector<uint8_t> buffer(8192);
-  z_stream stream = {};
-  if (
-    deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 16 + MAX_WBITS, 9, Z_DEFAULT_STRATEGY)
-    != Z_OK) {
-    return false;
-  }
-  out->clear();
-  out->reserve(size / 4);
-  // Feed input in chunks to avoid truncating size_t -> uInt for buffers >4 GB.
-  size_t fed = 0;
-  bool success = false;
-  while (true) {
-    if (stream.avail_in == 0 && fed < size) {
-      uInt chunk = static_cast<uInt>(
-        std::min(size - fed,
-                 static_cast<size_t>(std::numeric_limits<uInt>::max())));
-      stream.next_in = const_cast<Bytef *>(reinterpret_cast<const Bytef *>(data + fed));
-      stream.avail_in = chunk;
-      fed += chunk;
-    }
-    stream.next_out = buffer.data();
-    stream.avail_out = buffer.size();
-    int32_t res = deflate(&stream, fed == size ? Z_FINISH : Z_NO_FLUSH);
-    if (res != Z_OK && res != Z_STREAM_END) {
-      break;
-    }
-    out->insert(out->end(), buffer.data(), buffer.data() + buffer.size() - stream.avail_out);
-    if (res == Z_STREAM_END) {
-      success = true;
-      break;
-    }
-  }
-  deflateEnd(&stream);
-  return success;
+bool compressZstd(const uint8_t *data, size_t size, std::vector<uint8_t> *out,
+                  int compressionLevel = 12) {
+  size_t const bound = ZSTD_compressBound(size);
+  out->resize(bound);
+
+  ZSTD_CCtx *cctx = ZSTD_createCCtx();
+  if (!cctx) return false;
+  ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, compressionLevel);
+
+  size_t const compressedSize = ZSTD_compress2(cctx, out->data(), bound, data, size);
+  ZSTD_freeCCtx(cctx);
+
+  if (ZSTD_isError(compressedSize)) return false;
+  out->resize(compressedSize);
+  return true;
 }
 
 // Backward compatibility function for version 2. In version 2, rotations are represented as the
@@ -804,7 +784,7 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
   header.fractionalBits = packed.fractionalBits;
   header.flags = packed.antialiased ? FlagAntialiased : 0;
 
-  // Each attribute is compressed as an independent GZip stream in parallel. A TOC is prepended so
+  // Each attribute is compressed as an independent ZSTD stream in parallel. A TOC is prepended so
   // the reader can decompress all streams in parallel too without scanning for stream boundaries.
   struct Stream {
     const uint8_t *data;
@@ -827,7 +807,7 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
     uncompressedSizes.push_back(s.size);
     futures.push_back(std::async(std::launch::async, [s]() -> std::vector<uint8_t> {
       std::vector<uint8_t> chunk;
-      if (!compressGzipped(s.data, s.size, &chunk)) return {};
+      if (!compressZstd(s.data, s.size, &chunk)) return {};
       return chunk;
     }));
   }
@@ -865,8 +845,12 @@ PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
   std::vector<uint8_t> decompressed;
   if (size >= 4 && std::equal(data, data + 4, kSpzMultiStreamMagic)) {
     if (!decompressMultiStream(data, size, &decompressed)) return {};
-  } else {
+  } else if (size >= 2 && data[0] == 0x1f && data[1] == 0x8b) {
+    // Legacy single-stream GZip format.
     if (!decompressGzipped(data, size, &decompressed)) return {};
+  } else {
+    SpzLog("[SPZ ERROR] loadSpzPacked: unrecognized format");
+    return {};
   }
   std::string str(reinterpret_cast<const char *>(decompressed.data()), decompressed.size());
   std::stringstream stream(std::move(str));
@@ -973,7 +957,7 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     return {};
   }
   int32_t numPoints = std::stoi(line.substr(std::strlen("element vertex ")));
-  if (numPoints <= 0 || numPoints > 10 * 1024 * 1024) {
+  if (numPoints <= 0) {
     SpzLog("[SPZ ERROR] %s: invalid vertex count: %d", filename.c_str(), numPoints);
     in.close();
     return {};

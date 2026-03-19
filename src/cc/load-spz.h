@@ -176,8 +176,6 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out);
 
-bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out);
-
 // Returns true if the build has extension support enabled, false otherwise
 bool hasExtensionSupport();
 }  // namespace spz
