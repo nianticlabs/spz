@@ -49,6 +49,14 @@ if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
   endif()
 endif()
 
+# zstd is required for ZSTD compression/decompression
+find_package(zstd REQUIRED)
+if(TARGET zstd::libzstd_static)
+  add_library(zstd::zstd ALIAS zstd::libzstd_static)
+elseif(NOT TARGET zstd::zstd)
+  add_library(zstd::zstd ALIAS zstd::libzstd_shared)
+endif()
+
 set(spz_sources
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.cc"
@@ -77,10 +85,11 @@ add_library(spz ${spz_sources})
 add_library(spz::spz ALIAS spz)
 
 if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
-  target_link_libraries(spz PRIVATE ${zlib_linkage_target})
+  target_link_libraries(spz PRIVATE ${zlib_linkage_target} zstd::zstd)
 else()
   target_compile_options(spz PUBLIC --use-port=zlib)
   target_link_options(spz PUBLIC --use-port=zlib)
+  target_link_libraries(spz PRIVATE zstd::zstd)
 endif()
 
 if(ANDROID)
