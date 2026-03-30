@@ -178,4 +178,17 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out);
 
 // Returns true if the build has extension support enabled, false otherwise
 bool hasExtensionSupport();
+
+// Metadata readable from an SPZS file without decompressing the attribute streams.
+struct SpzFileMetadata {
+  int version = 0;
+  int numPoints = 0;
+  int shDegree = 0;
+  bool antialiased = false;
+  bool hasExtensions = false;
+};
+
+// Reads basic metadata (numPoints, shDegree, version, flags) from an SPZS file header without
+// decompressing any attribute data. Returns false if the data is not a valid SPZS file.
+bool peekSpzMetadata(const uint8_t *data, size_t size, SpzFileMetadata *metadata);
 }  // namespace spz
