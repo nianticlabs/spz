@@ -37,6 +37,7 @@ SOFTWARE.
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <future>
 #include <limits>
@@ -223,22 +224,27 @@ bool decompressZstd(const uint8_t *compressed, size_t size, std::vector<uint8_t>
 }
 
 // TOC magic identifying the parallel multi-stream format.
-constexpr uint8_t kSpzMultiStreamMagic[4] = {0x53, 0x50, 0x5A, 0x32};  // "SPZ2"
+constexpr uint8_t kSpzMultiStreamMagic[4] = {0x53, 0x50, 0x5A, 0x53};  // "SPZS"
 
-// Decompresses a file written by the multi-stream writer: a TOC followed by N independent ZSTD
-// streams. The TOC encodes each stream's compressed and uncompressed size, which lets all streams
-// be decompressed in parallel into pre-allocated positions in the output buffer.
+// Decompresses a file written by the multi-stream writer: an uncompressed PackedGaussiansHeader
+// followed by a TOC and N independent ZSTD streams. The TOC encodes each stream's compressed and
+// uncompressed size, which lets all streams be decompressed in parallel into pre-allocated
+// positions in the output buffer. The plaintext header allows metadata (numPoints, shDegree, etc.)
+// to be inspected without decompressing anything.
 //
-// TOC layout (all fields little-endian):
-//   Bytes 0–3:  magic (kSpzMultiStreamMagic)
-//   Bytes 4–5:  numStreams (uint16_t)
-//   Bytes 6–7:  reserved
-//   Per stream: compressedSize (uint64_t) + uncompressedSize (uint64_t)
+// File layout (all fields little-endian):
+//   Bytes  0– 3:  magic (kSpzMultiStreamMagic = "SPZS")
+//   Bytes  4– 5:  numStreams (uint16_t)
+//   Bytes  6– 7:  reserved
+//   Bytes  8–23:  PackedGaussiansHeader (16 bytes, uncompressed)
+//   Per stream:   compressedSize (uint64_t) + uncompressedSize (uint64_t)
+//   Stream data:  N independent ZSTD-compressed attribute streams
 bool decompressMultiStream(const uint8_t *data, size_t size, std::vector<uint8_t> *out) {
-  if (size < 8) return false;
+  if (size < 24) return false;
   const uint16_t numStreams =
     static_cast<uint16_t>(data[4]) | (static_cast<uint16_t>(data[5]) << 8);
-  const size_t tocSize = 8 + numStreams * 16;
+  // Header occupies bytes 8–23; TOC entries start at byte 24.
+  const size_t tocSize = 24 + numStreams * 16;
   if (size < tocSize) return false;
 
   struct StreamInfo {
@@ -251,7 +257,7 @@ bool decompressMultiStream(const uint8_t *data, size_t size, std::vector<uint8_t
   size_t compressedOffset = tocSize;
   size_t uncompressedOffset = 0;
   for (uint16_t i = 0; i < numStreams; i++) {
-    size_t e = 8 + i * 16;
+    size_t e = 24 + i * 16;
     infos[i].compressedSize = 0;
     for (int b = 0; b < 8; b++) infos[i].compressedSize |= (uint64_t)data[e+b] << (8*b);
     infos[i].uncompressedSize = 0;
@@ -701,8 +707,6 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
 }
 
 PackedGaussians deserializePackedGaussians(std::istream &in) {
-  constexpr int32_t maxPointsToRead = 10000000;
-
   PackedGaussiansHeader header;
   in.read(reinterpret_cast<char *>(&header), sizeof(header));
   if (!in || header.magic != PackedGaussiansHeader().magic) {
@@ -713,8 +717,8 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
-  if (header.numPoints > maxPointsToRead) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: Too many points: %d", header.numPoints);
+  if (header.numPoints <= 0) {
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: invalid point count: %d", header.numPoints);
     return {};
   }
   if (header.shDegree > SH_MAX_DEGREE) {
@@ -785,14 +789,17 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
   header.fractionalBits = packed.fractionalBits;
   header.flags = packed.antialiased ? FlagAntialiased : 0;
 
-  // Each attribute is compressed as an independent ZSTD stream in parallel. A TOC is prepended so
-  // the reader can decompress all streams in parallel too without scanning for stream boundaries.
+  // Each attribute is compressed as an independent ZSTD stream in parallel. The plaintext header
+  // is written uncompressed at a fixed offset so metadata can be inspected without decompressing.
+  // A TOC follows the header so the reader can also decompress all streams in parallel.
+  //
+  // File layout: magic(4) + numStreams(2) + reserved(2) + PackedGaussiansHeader(16) +
+  //              [compressedSize(8) + uncompressedSize(8)] * N + compressed stream data
   struct Stream {
     const uint8_t *data;
     size_t size;
   };
   const Stream streams[] = {
-    {reinterpret_cast<const uint8_t *>(&header), sizeof(header)},
     {packed.positions.data(), packed.positions.size()},
     {packed.alphas.data(),    packed.alphas.size()},
     {packed.colors.data(),    packed.colors.size()},
@@ -819,9 +826,9 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
     if (chunks.back().empty()) return false;
   }
 
-  // Write TOC: magic(4) + numStreams(2) + reserved(2) + [compressedSize(8) + uncompressedSize(8)] * N
+  // Write: magic(4) + numStreams(2) + reserved(2) + header(16) + TOC entries + stream data
   const uint16_t numStreams = static_cast<uint16_t>(chunks.size());
-  const size_t tocSize = 8 + numStreams * 16;
+  const size_t tocSize = 24 + numStreams * 16;
   out->resize(tocSize);
   uint8_t *toc = out->data();
   std::copy(kSpzMultiStreamMagic, kSpzMultiStreamMagic + 4, toc);
@@ -829,10 +836,12 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
   toc[5] = (numStreams >> 8) & 0xff;
   toc[6] = 0;
   toc[7] = 0;
+  // Bytes 8–23: plaintext PackedGaussiansHeader (inspectable without decompression)
+  std::memcpy(toc + 8, &header, sizeof(header));
   for (uint16_t i = 0; i < numStreams; i++) {
     const uint64_t cs = chunks[i].size();
     const uint64_t us = uncompressedSizes[i];
-    size_t e = 8 + i * 16;
+    size_t e = 24 + i * 16;
     for (int b = 0; b < 8; b++) toc[e+b]   = (cs >> (8*b)) & 0xff;
     for (int b = 0; b < 8; b++) toc[e+8+b] = (us >> (8*b)) & 0xff;
   }
@@ -845,7 +854,15 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
 PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
   std::vector<uint8_t> decompressed;
   if (size >= 4 && std::equal(data, data + 4, kSpzMultiStreamMagic)) {
+    // SPZS format: plaintext PackedGaussiansHeader at bytes 8–23, then compressed attribute streams.
+    // Prepend the header to the decompressed output so deserializePackedGaussians can read it.
+    if (size < 24) {
+      SpzLog("[SPZ ERROR] loadSpzPacked: SPZS file too short");
+      return {};
+    }
     if (!decompressMultiStream(data, size, &decompressed)) return {};
+    // Insert plaintext header at the front so deserializePackedGaussians sees the full stream.
+    decompressed.insert(decompressed.begin(), data + 8, data + 24);
   } else if (size >= 2 && data[0] == 0x1f && data[1] == 0x8b) {
     // Legacy single-stream GZip format.
     if (!decompressGzipped(data, size, &decompressed)) return {};
@@ -1270,6 +1287,22 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
     SpzLog("[SPZ ERROR] Failed to write to: %s", filename.c_str());
     return false;
   }
+  return true;
+}
+
+bool peekSpzMetadata(const uint8_t *data, size_t size, SpzFileMetadata *metadata) {
+  if (!metadata) return false;
+  // SPZS format requires at least 24 bytes: 8-byte prefix + 16-byte PackedGaussiansHeader.
+  if (size < 24) return false;
+  if (!std::equal(data, data + 4, kSpzMultiStreamMagic)) return false;
+  PackedGaussiansHeader header;
+  std::memcpy(&header, data + 8, sizeof(header));
+  if (header.magic != PackedGaussiansHeader().magic) return false;
+  metadata->version = static_cast<int>(header.version);
+  metadata->numPoints = static_cast<int>(header.numPoints);
+  metadata->shDegree = static_cast<int>(header.shDegree);
+  metadata->antialiased = (header.flags & FlagAntialiased) != 0;
+  metadata->hasExtensions = (header.flags & FlagHasExtensions) != 0;
   return true;
 }
 
