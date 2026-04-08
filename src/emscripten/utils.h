@@ -26,6 +26,7 @@ SOFTWARE.
 #define SPZ_EMSCRIPTEN_UTILS_H_
 
 #include <emscripten/val.h>
+#include <type_traits>
 #include <vector>
 
 // Utility functions for converting between C++ vectors and JavaScript arrays
@@ -40,10 +41,14 @@ inline ::emscripten::val jsArrayFromVector(const std::vector<T>& vec) {
 
 template <typename T>
 inline void vectorFromJsArray(const ::emscripten::val& array, std::vector<T>& out) {
-  const size_t length = array["length"].as<size_t>();
-  out.resize(length);
-  for (size_t i = 0; i < length; ++i) {
-    out[i] = array[i].as<T>();
+  if constexpr (std::is_arithmetic_v<T>) {
+    out = ::emscripten::convertJSArrayToNumberVector<T>(array);
+  } else {
+    const size_t length = array["length"].as<size_t>();
+    out.resize(length);
+    for (size_t i = 0; i < length; ++i) {
+      out[i] = array[i].as<T>();
+    }
   }
 }
 
