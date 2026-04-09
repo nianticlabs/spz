@@ -63,18 +63,14 @@ struct EmGaussianCloud {
 inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer) {
   emscripten::val Uint8Array = emscripten::val::global("Uint8Array");
   emscripten::val array = Uint8Array.new_(buffer.size());
-  for (size_t i = 0; i < buffer.size(); ++i) {
-    array.set(i, buffer[i]);
-  }
+  array.call<void>("set", emscripten::typed_memory_view(buffer.size(), buffer.data()));
   return array;
 }
 
 inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer) {
   emscripten::val Float32Array = emscripten::val::global("Float32Array");
   emscripten::val array = Float32Array.new_(buffer.size());
-  for (size_t i = 0; i < buffer.size(); ++i) {
-    array.set(i, buffer[i]);
-  }
+  array.call<void>("set", emscripten::typed_memory_view(buffer.size(), buffer.data()));
   return array;
 }
 
