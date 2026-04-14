@@ -48,7 +48,8 @@ The package will be built and installed into the `dist` folder.
 
 ```
 bool saveSpz(
-   const GaussianCloud &gaussians, const PackOptions &options, std::vector<uint8_t> *output);
+   const GaussianCloud &gaussians, const PackOptions &options, std::vector<uint8_t> *output,
+   SpzCompression compression = SpzCompression::GZIP);
 ```
 
 Converts a cloud of Gaussians to `.spz` format and writes the result to a vector of bytes.
@@ -56,14 +57,15 @@ Converts a cloud of Gaussians to `.spz` format and writes the result to a vector
    - `gaussians`: The Gaussians to save
    - `options`: Flags that control the packing behavior, including SH quantization parameters.
    - `output`: A vector that will be populated with bytes encoded in .spz format
+   - `compression`: Output compression format — `SpzCompression::GZIP` (default) or `SpzCompression::UNCOMPRESSED`
    - Returns true on success and false on failure.
 
 ---
 
 ```
 bool saveSpz(
-   const GaussianCloud &gaussians, const PackOptions &options, const std::string
-&filename);
+   const GaussianCloud &gaussians, const PackOptions &options, const std::string &filename,
+   SpzCompression compression = SpzCompression::GZIP);
 ```
 
 Saves a cloud of Gaussians in `.spz` format to a file
@@ -71,6 +73,7 @@ Saves a cloud of Gaussians in `.spz` format to a file
    - `gaussians`: The Gaussians to save
    - `options`: Flags that control the packing behavior, including SH quantization parameters.
    - `filename`: The path to the file to save to.
+   - `compression`: Output compression format — `SpzCompression::GZIP` (default) or `SpzCompression::UNCOMPRESSED`
    - Returns true on success and false on failure.
 
 ---
@@ -80,9 +83,11 @@ GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &opt
 ons);
 ```
 
-Loads a cloud of Gaussians from bytes in `.spz` format.
+Loads a cloud of Gaussians from bytes in `.spz` format. The stream format is detected
+automatically: GZip-compressed data (magic `\x1f\x8b`) is decompressed first; raw uncompressed
+SPZ data (magic `NGSP`) is read directly. Any other content logs an error and returns empty.
 
-   - `data`: A vector containing the encoded spz data
+   - `data`: A vector containing the encoded spz data (GZip-compressed or uncompressed)
    - `options`: Flags that control the unpacking behavior.
    - Returns a `GaussianCloud` decoded from the vector. In case of an error, this will return
      a result with no gaussians
@@ -104,6 +109,17 @@ Loads a cloud of Gaussians from a file in `.spz` format.
 
 Check [src/emscripten/spz.d.ts.in](src/emscripten/spz.d.ts.in) (source) or `dist/spz.d.ts` (after building with CMake) for the TypeScript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
 
+### SpzCompression
+
+The `SpzCompression` enum controls the output format of `saveSpz`:
+
+| Value | Description |
+|---|---|
+| `GZIP` (default) | GZip-compress the output. Smaller files; required for most existing SPZ readers. |
+| `UNCOMPRESSED` | Write raw SPZ bytes without compression. Useful for in-memory pipelines or environments where compression is handled externally. |
+
+`loadSpz` automatically detects which format is present — no flag is needed on the load side.
+
 ### PackOptions
 
 The `PackOptions` struct supports the following fields:
@@ -115,8 +131,9 @@ The `PackOptions` struct supports the following fields:
 
 ## File Format
 
-The .spz format is a gzipped stream of data consisting of a 16-byte header followed by the
-gaussian data. This data is organized by attribute in the following order: positions,
+The .spz format is a stream of data consisting of a 16-byte header followed by the gaussian data.
+The stream may be GZip-compressed (default) or stored uncompressed. The format is identified by
+its leading magic bytes: `\x1f\x8b` for GZip, or `NGSP` for uncompressed. This data is organized by attribute in the following order: positions,
 alphas, colors, scales, rotations, spherical harmonics.
 
 ### Header
