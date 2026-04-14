@@ -99,7 +99,8 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   return emCloud;
 }
 
-emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackOptions& options) {
+emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackOptions& options,
+                                spz::SpzCompression compression = spz::SpzCompression::GZIP) {
   spz::GaussianCloud cloud;
   cloud.numPoints = emCloud.numPoints;
   cloud.shDegree = emCloud.shDegree;
@@ -116,7 +117,7 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   vectorFromJsArray(emCloud.sh, cloud.sh);
 
   std::vector<uint8_t> output;
-  if (!spz::saveSpz(cloud, options, &output)) {
+  if (!spz::saveSpz(cloud, options, &output, compression)) {
     return emscripten::val::null();
   }
 
@@ -126,6 +127,11 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
 }  // namespace
 
 EMSCRIPTEN_BINDINGS(spz_module) {
+  // Wrap SpzCompression enum
+  emscripten::enum_<spz::SpzCompression>("SpzCompression")
+      .value("GZIP", spz::SpzCompression::GZIP)
+      .value("UNCOMPRESSED", spz::SpzCompression::UNCOMPRESSED);
+
   // Wrap CoordinateSystem enum
   emscripten::enum_<spz::CoordinateSystem>("CoordinateSystem")
       .value("UNSPECIFIED", spz::CoordinateSystem::UNSPECIFIED)

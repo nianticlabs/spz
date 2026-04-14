@@ -190,6 +190,70 @@ def test_compression_precision_validation():
     assert sh_epsilon(5) == 2.0 / 64.0 + 0.5 / 128.0
 
 
+def test_save_load_uncompressed_spz():
+    """Test saving and loading uncompressed SPZ format preserves data within expected precision."""
+    src = make_test_gaussian_cloud(include_sh=True)
+    filename = os.path.join(tempfile.gettempdir(), "SplatIOTest_Uncompressed.spz")
+    assert spz.save_spz(src, spz.PackOptions(), filename, spz.SpzCompression.UNCOMPRESSED) is True
+
+    dst = spz.load_spz(filename, spz.UnpackOptions())
+    assert dst.num_points == src.num_points
+    assert dst.sh_degree == src.sh_degree
+    assert dst.antialiased == src.antialiased
+
+    np.testing.assert_allclose(dst.positions, src.positions, atol=1 / 2048.0)
+    np.testing.assert_allclose(dst.scales, src.scales, atol=1 / 32.0)
+    np.testing.assert_allclose(dst.alphas, src.alphas, atol=0.01)
+    np.testing.assert_allclose(dst.sh, src.sh, atol=sh_epsilon(4))
+    np.testing.assert_allclose(dst.sh[0:9], src.sh[0:9], atol=sh_epsilon(5))
+
+
+def test_uncompressed_spz_file_has_ngsp_magic():
+    """Uncompressed SPZ files should start with the NGSP magic bytes, not GZip magic bytes."""
+    src = make_test_gaussian_cloud(include_sh=False)
+    filename = os.path.join(tempfile.gettempdir(), "SplatIOTest_UncompressedMagic.spz")
+    assert spz.save_spz(src, spz.PackOptions(), filename, spz.SpzCompression.UNCOMPRESSED) is True
+
+    with open(filename, "rb") as f:
+        header = f.read(4)
+
+    # GZip magic is 0x1f 0x8b; NGSP magic is b"NGSP" in little-endian
+    assert header != b"\x1f\x8b" + header[2:], "file should not be GZip-compressed"
+    assert header == b"NGSP", f"expected NGSP magic, got {header!r}"
+
+
+def test_gzip_spz_file_has_gzip_magic():
+    """GZip-compressed SPZ files should start with the GZip magic bytes."""
+    src = make_test_gaussian_cloud(include_sh=False)
+    filename = os.path.join(tempfile.gettempdir(), "SplatIOTest_GzipMagic.spz")
+    assert spz.save_spz(src, spz.PackOptions(), filename, spz.SpzCompression.GZIP) is True
+
+    with open(filename, "rb") as f:
+        header = f.read(2)
+
+    assert header == b"\x1f\x8b", f"expected GZip magic, got {header!r}"
+
+
+def test_uncompressed_spz_larger_than_gzip():
+    """Uncompressed SPZ files should be larger than their GZip-compressed counterparts."""
+    num_points = 1000
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = 0
+    rng = np.random.default_rng(7)
+    cloud.positions = rng.uniform(-1.0, 1.0, size=num_points * 3).astype(np.float32)
+    cloud.scales = rng.uniform(-2.0, 0.0, size=num_points * 3).astype(np.float32)
+    cloud.rotations = rng.uniform(-1.0, 1.0, size=num_points * 4).astype(np.float32)
+    cloud.alphas = rng.uniform(0.0, 1.0, size=num_points).astype(np.float32)
+    cloud.colors = rng.uniform(0.0, 1.0, size=num_points * 3).astype(np.float32)
+
+    gz_file = os.path.join(tempfile.gettempdir(), "size_compare_gz.spz")
+    raw_file = os.path.join(tempfile.gettempdir(), "size_compare_raw.spz")
+    assert spz.save_spz(cloud, spz.PackOptions(), gz_file, spz.SpzCompression.GZIP) is True
+    assert spz.save_spz(cloud, spz.PackOptions(), raw_file, spz.SpzCompression.UNCOMPRESSED) is True
+
+    assert os.path.getsize(raw_file) > os.path.getsize(gz_file)
+
+
 def test_performance_large_cloud():
     """Test performance with a large cloud and verify timing."""
     import time

@@ -117,6 +117,13 @@ NB_MODULE(spz, m) {
 
     // -------------------------------------------------------------------------
     // Enums
+    // -------------------------------------------------------------------------
+    nb::enum_<spz::SpzCompression>(m, "SpzCompression",
+        "Output compression format for saveSpz.")
+        .value("GZIP", spz::SpzCompression::GZIP, "Compress the output with GZip (default)")
+        .value("UNCOMPRESSED", spz::SpzCompression::UNCOMPRESSED, "Write raw uncompressed SPZ bytes")
+        .export_values();
+
     // Coordinate system enum with comprehensive documentation
     nb::enum_<spz::CoordinateSystem>(m, "CoordinateSystem", R"doc(
         Coordinate system conventions for 3D Gaussian splats.
@@ -373,8 +380,11 @@ NB_MODULE(spz, m) {
           nb::arg("filename"), nb::arg("options") = spz::UnpackOptions(),
           "Load a *.spz* file and return a GaussianCloud.");
 
-    m.def("save_spz", (bool (*)(const spz::GaussianCloud &, const spz::PackOptions &, const std::string &)) &spz::saveSpz,
+    m.def("save_spz",
+          (bool (*)(const spz::GaussianCloud &, const spz::PackOptions &, const std::string &,
+                    spz::SpzCompression)) &spz::saveSpz,
           nb::arg("gaussians"), nb::arg("options"), nb::arg("filename"),
+          nb::arg("compression") = spz::SpzCompression::GZIP,
           "Save a GaussianCloud to a *.spz* file.");
 
     m.def("load_splat_from_ply", (spz::GaussianCloud (*)(const std::string &, const spz::UnpackOptions &)) &spz::loadSplatFromPly,

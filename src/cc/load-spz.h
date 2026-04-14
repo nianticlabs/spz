@@ -122,6 +122,11 @@ struct PackedGaussians {
   UnpackedGaussian unpack(int32_t i, const CoordinateConverter &c) const;
 };
 
+enum class SpzCompression {
+  GZIP,          // Compress the output with GZip (default)
+  UNCOMPRESSED,  // Write raw (uncompressed) SPZ bytes
+};
+
 struct PackOptions {
   uint32_t version = LATEST_SPZ_HEADER_VERSION;  // Version of the packed format
 
@@ -147,7 +152,8 @@ struct PlyExtraElement {
 
 // Saves Gaussian splat in packed format, returning a vector of bytes.
 bool saveSpz(
-  const GaussianCloud &gaussians, const PackOptions &options, std::vector<uint8_t> *output);
+  const GaussianCloud &gaussians, const PackOptions &options, std::vector<uint8_t> *output,
+  SpzCompression compression = SpzCompression::GZIP);
 
 // Loads Gaussian splat from a vector of bytes in packed format.
 GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &options);
@@ -159,7 +165,8 @@ PackedGaussians loadSpzPacked(const std::vector<uint8_t> &data);
 
 // Saves Gaussian splat in packed format to a file
 bool saveSpz(
-  const GaussianCloud &gaussians, const PackOptions &options, const std::string &filename);
+  const GaussianCloud &gaussians, const PackOptions &options, const std::string &filename,
+  SpzCompression compression = SpzCompression::GZIP);
 
 // Loads Gaussian splat from a file in packed format
 GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o);

@@ -700,7 +700,8 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   return result;
 }
 
-bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out) {
+bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out,
+             SpzCompression compression) {
   std::string data;
   {
     PackedGaussians packed = packGaussians(g, o);
@@ -708,14 +709,33 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
     serializePackedGaussians(packed, &ss);
     data = ss.str();
   }
-  return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
+  if (compression == SpzCompression::GZIP) {
+    return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
+  } else if (compression == SpzCompression::UNCOMPRESSED) {
+    out->assign(data.begin(), data.end());
+    return true;
+  } else {
+    SpzLog("[SPZ: ERROR] Unsupported compression type.\n");
+    return false;
+  }
 }
 
 PackedGaussians loadSpzPacked(const uint8_t *data, int32_t size) {
-  std::string decompressed;
-  if (!decompressGzipped(data, size, &decompressed))
+  constexpr uint8_t gzipMagic0 = 0x1f;
+  constexpr uint8_t gzipMagic1 = 0x8b;
+  constexpr uint32_t ngspMagic = PackedGaussiansHeader().magic;
+
+  std::string payload;
+  if (size >= 2 && data[0] == gzipMagic0 && data[1] == gzipMagic1) {
+    if (!decompressGzipped(data, size, &payload))
+      return {};
+  } else if (size >= 4 && *reinterpret_cast<const uint32_t *>(data) == ngspMagic) {
+    payload.assign(reinterpret_cast<const char *>(data), size);
+  } else {
+    SpzLog("[SPZ: ERROR] Unrecognized stream format: neither GZip nor uncompressed SPZ.\n");
     return {};
-  std::stringstream stream(std::move(decompressed));
+  }
+  std::stringstream stream(std::move(payload));
   return deserializePackedGaussians(stream);
 }
 
@@ -744,9 +764,10 @@ GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &o)
   return unpackGaussians(loadSpzPacked(data, size), o);
 }
 
-bool saveSpz(const GaussianCloud &g, const PackOptions &o, const std::string &filename) {
+bool saveSpz(const GaussianCloud &g, const PackOptions &o, const std::string &filename,
+             SpzCompression compression) {
   std::vector<uint8_t> data;
-  if (!saveSpz(g, o, &data)) {
+  if (!saveSpz(g, o, &data, compression)) {
     return false;
   }
   std::ofstream out(filename, std::ios::binary | std::ios::out);
