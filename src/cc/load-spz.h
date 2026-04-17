@@ -65,6 +65,15 @@ constexpr int DEFAULT_SH_REST_BITS = 4;
 // Latest version of the packed format, update this when changing the format.
 constexpr int LATEST_SPZ_HEADER_VERSION = 4;
 
+// Minimum version of the ZSTD-compressed SPZ format.
+constexpr int MIN_ZSTD_SPZ_HEADER_VERSION = 4;
+
+// Minimum version of that uses SmallestThree quaternions.
+constexpr int MIN_SMALLEST_THREE_QUATERNIONS_VERSION = 3;
+
+// NGSP Magic Number used for spz file identification.
+constexpr uint32_t NGSP_MAGIC = 0x5053474e;
+
 // Represents a single inflated gaussian. Each gaussian has 344 bytes (position, rotation, scale,
 // color, alpha, and 24 SH coeffs x 3 channels). Although the data is easier to interpret in this
 // format, it is not more precise than the packed format, since it was inflated.
@@ -178,17 +187,4 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out);
 
 // Returns true if the build has extension support enabled, false otherwise
 bool hasExtensionSupport();
-
-// Metadata readable from an SPZS file without decompressing the attribute streams.
-struct SpzFileMetadata {
-  int version = 0;
-  int numPoints = 0;
-  int shDegree = 0;
-  bool antialiased = false;
-  bool hasExtensions = false;
-};
-
-// Reads basic metadata (numPoints, shDegree, version, flags) from an SPZS file header without
-// decompressing any attribute data. Returns false if the data is not a valid SPZS file.
-bool peekSpzMetadata(const uint8_t *data, size_t size, SpzFileMetadata *metadata);
 }  // namespace spz
