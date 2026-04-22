@@ -50,11 +50,28 @@ if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
 endif()
 
 # zstd is required for ZSTD compression/decompression
-find_package(zstd REQUIRED)
-if(TARGET zstd::libzstd_static)
-  add_library(zstd::zstd ALIAS zstd::libzstd_static)
-elseif(NOT TARGET zstd::zstd)
-  add_library(zstd::zstd ALIAS zstd::libzstd_shared)
+find_package(zstd QUIET)
+if(NOT zstd_FOUND)
+  message(STATUS "zstd not found, using FetchContent to download it.")
+  include(FetchContent)
+  FetchContent_Declare(
+    zstd
+    URL https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz
+    URL_HASH SHA256=8c29e06cf42aacc1eafc4077ae2ec6c6fcb96a626157e0593d5e82a34fd403c1
+    SOURCE_SUBDIR build/cmake
+  )
+  set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(zstd)
+  add_library(zstd::zstd ALIAS libzstd_static)
+  set(SPZ_SHOULD_INSTALL FALSE)
+else()
+  if(TARGET zstd::libzstd_static)
+    add_library(zstd::zstd ALIAS zstd::libzstd_static)
+  elseif(NOT TARGET zstd::zstd)
+    add_library(zstd::zstd ALIAS zstd::libzstd_shared)
+  endif()
 endif()
 
 set(spz_sources
