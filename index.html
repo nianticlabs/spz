@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPZ Tools</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a1a;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #0f1117;
+      color: white;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p  { color: #888; font-size: 0.85rem; }
+
+    main {
+      max-width: 1000px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 0.3rem;
+    }
+    .card-desc {
+      font-size: 0.82rem;
+      color: #777;
+      margin-bottom: 1.1rem;
+      line-height: 1.4;
+    }
+
+    .drop-zone {
+      border: 2px dashed #d0d5dd;
+      border-radius: 8px;
+      padding: 1.75rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      user-select: none;
+    }
+    .drop-zone:hover  { border-color: #4a90e2; background: #f5f9ff; }
+    .drop-zone.over   { border-color: #4a90e2; background: #eaf2ff; }
+    .drop-zone .icon  { font-size: 1.8rem; display: block; margin-bottom: 0.5rem; }
+    .drop-zone .hint  { font-size: 0.82rem; color: #888; line-height: 1.5; }
+    .drop-zone .hint strong { color: #4a90e2; }
+    .drop-zone input[type=file] { display: none; }
+
+    .status {
+      margin-top: 0.9rem;
+      font-size: 0.82rem;
+      min-height: 1.1em;
+      line-height: 1.4;
+    }
+    .status.loading { color: #888; }
+    .status.error   { color: #d0021b; }
+    .status.ok      { color: #1a8a4a; }
+
+    table.info {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.9rem;
+      font-size: 0.82rem;
+    }
+    table.info td {
+      padding: 0.3rem 0.4rem;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    table.info td:first-child { color: #888; white-space: nowrap; padding-right: 1rem; }
+    table.info td:last-child  { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+    #wasm-badge {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      background: #0f1117;
+      color: #aaa;
+      padding: 0.35rem 0.85rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      pointer-events: none;
+      transition: opacity 0.4s;
+    }
+    #wasm-badge.ready { color: #4caf50; }
+    #wasm-badge.fail  { color: #f44336; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>SPZ Tools</h1>
+  <p>Gaussian Splat utilities — runs entirely in your browser</p>
+</header>
+
+<main>
+
+  <!-- ── Info ── -->
+  <div class="card">
+    <div class="card-title">SPZ Info</div>
+    <div class="card-desc">Inspect a .spz file: point count, SH degree, bounding box and more.</div>
+    <div class="drop-zone" id="dz-info">
+      <span class="icon">📄</span>
+      <span class="hint">Drop a <strong>.spz</strong> file here<br>or <strong>click to browse</strong></span>
+      <input type="file" id="fi-info" accept=".spz">
+    </div>
+    <div class="status" id="st-info"></div>
+    <div id="info-out"></div>
+  </div>
+
+  <!-- ── PLY → SPZ ── -->
+  <div class="card">
+    <div class="card-title">PLY → SPZ</div>
+    <div class="card-desc">Convert a Gaussian Splat .ply file to the compact .spz format.</div>
+    <div class="drop-zone" id="dz-p2s">
+      <span class="icon">🔄</span>
+      <span class="hint">Drop a <strong>.ply</strong> file here<br>or <strong>click to browse</strong></span>
+      <input type="file" id="fi-p2s" accept=".ply">
+    </div>
+    <div class="status" id="st-p2s"></div>
+  </div>
+
+  <!-- ── SPZ → PLY ── -->
+  <div class="card">
+    <div class="card-title">SPZ → PLY</div>
+    <div class="card-desc">Convert a .spz file back to the standard Gaussian Splat .ply format.</div>
+    <div class="drop-zone" id="dz-s2p">
+      <span class="icon">🔄</span>
+      <span class="hint">Drop a <strong>.spz</strong> file here<br>or <strong>click to browse</strong></span>
+      <input type="file" id="fi-s2p" accept=".spz">
+    </div>
+    <div class="status" id="st-s2p"></div>
+  </div>
+
+</main>
+
+<div id="wasm-badge">Loading WASM…</div>
+
+<script type="module">
+
+// ─────────────────────────────────────────────
+// WASM module
+// ─────────────────────────────────────────────
+
+let spz = null;
+
+const moduleReady = (async () => {
+  const badge = document.getElementById('wasm-badge');
+  try {
+    const { default: createSpzModule } = await import('./spz.js');
+    spz = await createSpzModule();
+    badge.textContent = '● SPZ ready';
+    badge.classList.add('ready');
+    setTimeout(() => { badge.style.opacity = '0'; }, 2500);
+  } catch (e) {
+    badge.textContent = '⚠ spz.js not found';
+    badge.classList.add('fail');
+    console.error('WASM load error:', e);
+  }
+})();
+
+async function getSpz() {
+  await moduleReady;
+  if (!spz) throw new Error('spz.js could not be loaded. Make sure it is in the same folder as index.html.');
+  return spz;
+}
+
+// ─────────────────────────────────────────────
+// UI helpers
+// ─────────────────────────────────────────────
+
+function setStatus(id, msg, type = '') {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status' + (type ? ' ' + type : '');
+}
+
+function download(filename, data) {
+  const blob = new Blob([data]);
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function readFile(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsArrayBuffer(file);
+  });
+}
+
+function setupDropZone(dropId, inputId, onFile) {
+  const zone  = document.getElementById(dropId);
+  const input = document.getElementById(inputId);
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) onFile(f);
+  });
+}
+
+// ─────────────────────────────────────────────
+// PLY parsing  (binary little-endian)
+//
+// GaussianCloud layout expected by saveSpzToBuffer:
+//   positions  Float32Array  [x,y,z] * N
+//   scales     Float32Array  [sx,sy,sz] * N        (log-scale, same value as PLY scale_*)
+//   rotations  Float32Array  [qx,qy,qz,qw] * N     (PLY rot_0=qw rot_1=qx rot_2=qy rot_3=qz)
+//   alphas     Float32Array  [opacity] * N          (same value as PLY opacity)
+//   colors     Float32Array  [f_dc_0,f_dc_1,f_dc_2] * N
+//   sh         Float32Array  coeff-major [R0,G0,B0, R1,G1,B1, …] * N
+//                            PLY is channel-major: all-R, all-G, all-B
+// ─────────────────────────────────────────────
+
+function degreeFromDim(dim) {
+  if (dim < 3)  return 0;
+  if (dim < 8)  return 1;
+  if (dim < 15) return 2;
+  if (dim < 24) return 3;
+  return 4;
+}
+
+function parsePly(buffer) {
+  const bytes = new Uint8Array(buffer);
+
+  // Locate "end_header\n"
+  const MARKER = new TextEncoder().encode('end_header\n');
+  let headerEnd = -1;
+  outer: for (let i = 0; i <= bytes.length - MARKER.length; i++) {
+    for (let j = 0; j < MARKER.length; j++) {
+      if (bytes[i + j] !== MARKER[j]) continue outer;
+    }
+    headerEnd = i + MARKER.length;
+    break;
+  }
+  if (headerEnd < 0) throw new Error('Invalid PLY file: end_header not found.');
+
+  const header = new TextDecoder().decode(bytes.subarray(0, headerEnd));
+  const lines  = header.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let format    = '';
+  let numPoints = 0;
+  const props   = [];
+  let inVertex  = false;
+
+  for (const line of lines) {
+    if (line.startsWith('format ')) {
+      format = line.split(/\s+/)[1];
+    } else if (line.startsWith('element vertex ')) {
+      numPoints = parseInt(line.split(/\s+/)[2], 10);
+      inVertex  = true;
+    } else if (line.startsWith('element ') && !line.startsWith('element vertex ')) {
+      inVertex = false;
+    } else if (inVertex && line.startsWith('property ') && !line.startsWith('property list')) {
+      const [, type, name] = line.split(/\s+/);
+      props.push({ name, type });
+    }
+  }
+
+  if (format !== 'binary_little_endian') {
+    throw new Error(`Unsupported PLY format "${format}". Only binary_little_endian is supported.`);
+  }
+
+  const SIZES = {
+    float: 4, double: 8,
+    int: 4, int32: 4, uint: 4, uint32: 4,
+    short: 2, int16: 2, ushort: 2, uint16: 2,
+    char: 1, int8: 1, uchar: 1, uint8: 1,
+  };
+
+  let stride = 0;
+  const propMap = {};
+  for (const p of props) {
+    const sz = SIZES[p.type];
+    if (!sz) throw new Error(`Unknown PLY property type: "${p.type}"`);
+    propMap[p.name] = { offset: stride, type: p.type };
+    stride += sz;
+  }
+
+  for (const req of ['x','y','z','scale_0','scale_1','scale_2',
+                     'rot_0','rot_1','rot_2','rot_3','opacity',
+                     'f_dc_0','f_dc_1','f_dc_2']) {
+    if (!propMap[req]) throw new Error(`Missing required PLY property: "${req}"`);
+  }
+
+  let fRestCount = 0;
+  while (propMap[`f_rest_${fRestCount}`]) fRestCount++;
+  const shDim = Math.floor(fRestCount / 3);
+
+  const positions = new Float32Array(numPoints * 3);
+  const scales    = new Float32Array(numPoints * 3);
+  const rotations = new Float32Array(numPoints * 4);
+  const alphas    = new Float32Array(numPoints);
+  const colors    = new Float32Array(numPoints * 3);
+  const sh        = new Float32Array(numPoints * shDim * 3);
+
+  const allFloat32 = props.every(p => p.type === 'float');
+
+  if (allFloat32) {
+    const numProps = props.length;
+    // slice() into a new buffer guarantees Float32Array alignment
+    const data = new Float32Array(
+      buffer.slice(headerEnd, headerEnd + numPoints * numProps * 4)
+    );
+
+    const idx  = name => props.findIndex(p => p.name === name);
+    const xi   = idx('x'),       yi  = idx('y'),       zi  = idx('z');
+    const s0   = idx('scale_0'), s1  = idx('scale_1'), s2  = idx('scale_2');
+    const r0   = idx('rot_0'),   r1  = idx('rot_1'),   r2  = idx('rot_2'), r3 = idx('rot_3');
+    const oi   = idx('opacity');
+    const dc0  = idx('f_dc_0'),  dc1 = idx('f_dc_1'),  dc2 = idx('f_dc_2');
+
+    const shColR = new Int32Array(shDim);
+    const shColG = new Int32Array(shDim);
+    const shColB = new Int32Array(shDim);
+    for (let j = 0; j < shDim; j++) {
+      shColR[j] = idx(`f_rest_${j}`);
+      shColG[j] = idx(`f_rest_${j + shDim}`);
+      shColB[j] = idx(`f_rest_${j + 2 * shDim}`);
+    }
+
+    for (let i = 0; i < numPoints; i++) {
+      const b  = i * numProps;
+      const i3 = i * 3, i4 = i * 4;
+
+      positions[i3]   = data[b + xi];
+      positions[i3+1] = data[b + yi];
+      positions[i3+2] = data[b + zi];
+
+      scales[i3]   = data[b + s0];
+      scales[i3+1] = data[b + s1];
+      scales[i3+2] = data[b + s2];
+
+      // PLY: rot_0=qw  rot_1=qx  rot_2=qy  rot_3=qz → GaussianCloud: [qx,qy,qz,qw]
+      rotations[i4]   = data[b + r1];
+      rotations[i4+1] = data[b + r2];
+      rotations[i4+2] = data[b + r3];
+      rotations[i4+3] = data[b + r0];
+
+      alphas[i] = data[b + oi];
+
+      colors[i3]   = data[b + dc0];
+      colors[i3+1] = data[b + dc1];
+      colors[i3+2] = data[b + dc2];
+
+      // PLY SH channel-major → GaussianCloud coeff-major
+      const shBase = i * shDim * 3;
+      for (let j = 0; j < shDim; j++) {
+        sh[shBase + j * 3]     = data[b + shColR[j]];
+        sh[shBase + j * 3 + 1] = data[b + shColG[j]];
+        sh[shBase + j * 3 + 2] = data[b + shColB[j]];
+      }
+    }
+
+  } else {
+    // Mixed-type fallback via DataView
+    const view    = new DataView(buffer, headerEnd);
+    const READERS = {
+      float:  (v, o) => v.getFloat32(o, true),
+      double: (v, o) => v.getFloat64(o, true),
+      int:    (v, o) => v.getInt32(o,   true),  int32:  (v, o) => v.getInt32(o,   true),
+      uint:   (v, o) => v.getUint32(o,  true),  uint32: (v, o) => v.getUint32(o,  true),
+      short:  (v, o) => v.getInt16(o,   true),  int16:  (v, o) => v.getInt16(o,   true),
+      ushort: (v, o) => v.getUint16(o,  true),  uint16: (v, o) => v.getUint16(o,  true),
+      char:   (v, o) => v.getInt8(o),            int8:   (v, o) => v.getInt8(o),
+      uchar:  (v, o) => v.getUint8(o),           uint8:  (v, o) => v.getUint8(o),
+    };
+    const read = (name, ptIdx) => {
+      const p = propMap[name];
+      return READERS[p.type](view, ptIdx * stride + p.offset);
+    };
+
+    for (let i = 0; i < numPoints; i++) {
+      const i3 = i * 3, i4 = i * 4;
+      positions[i3]   = read('x', i);
+      positions[i3+1] = read('y', i);
+      positions[i3+2] = read('z', i);
+      scales[i3]   = read('scale_0', i);
+      scales[i3+1] = read('scale_1', i);
+      scales[i3+2] = read('scale_2', i);
+      rotations[i4]   = read('rot_1', i);
+      rotations[i4+1] = read('rot_2', i);
+      rotations[i4+2] = read('rot_3', i);
+      rotations[i4+3] = read('rot_0', i);
+      alphas[i] = read('opacity', i);
+      colors[i3]   = read('f_dc_0', i);
+      colors[i3+1] = read('f_dc_1', i);
+      colors[i3+2] = read('f_dc_2', i);
+      const shBase = i * shDim * 3;
+      for (let j = 0; j < shDim; j++) {
+        sh[shBase + j * 3]     = read(`f_rest_${j}`,           i);
+        sh[shBase + j * 3 + 1] = read(`f_rest_${j + shDim}`,   i);
+        sh[shBase + j * 3 + 2] = read(`f_rest_${j + 2*shDim}`, i);
+      }
+    }
+  }
+
+  return {
+    numPoints,
+    shDegree: degreeFromDim(shDim),
+    antialiased: false,
+    extensions: [],
+    positions, scales, rotations, alphas, colors, sh,
+  };
+}
+
+// ─────────────────────────────────────────────
+// PLY writing  (binary little-endian)
+// Inverse of parsePly.
+// ─────────────────────────────────────────────
+
+function writePly(cloud) {
+  const N     = cloud.numPoints;
+  const shDim = (cloud.sh && cloud.sh.length > 0)
+                ? Math.round(cloud.sh.length / N / 3) : 0;
+  const D     = 17 + shDim * 3;
+
+  let hdr = 'ply\nformat binary_little_endian 1.0\n';
+  hdr += `element vertex ${N}\n`;
+  hdr += 'property float x\nproperty float y\nproperty float z\n';
+  hdr += 'property float nx\nproperty float ny\nproperty float nz\n';
+  hdr += 'property float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\n';
+  for (let i = 0; i < shDim * 3; i++) hdr += `property float f_rest_${i}\n`;
+  hdr += 'property float opacity\n';
+  hdr += 'property float scale_0\nproperty float scale_1\nproperty float scale_2\n';
+  hdr += 'property float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\n';
+  hdr += 'end_header\n';
+
+  const hdrBytes  = new TextEncoder().encode(hdr);
+  const dataFloat = new Float32Array(N * D);
+  const { positions, scales, rotations, alphas, colors, sh } = cloud;
+  let out = 0;
+
+  for (let i = 0; i < N; i++) {
+    const i3 = i * 3, i4 = i * 4;
+    dataFloat[out++] = positions[i3];
+    dataFloat[out++] = positions[i3+1];
+    dataFloat[out++] = positions[i3+2];
+    dataFloat[out++] = 0; dataFloat[out++] = 0; dataFloat[out++] = 0; // normals
+    dataFloat[out++] = colors[i3];
+    dataFloat[out++] = colors[i3+1];
+    dataFloat[out++] = colors[i3+2];
+    // SH coeff-major → channel-major
+    for (let j = 0; j < shDim; j++) dataFloat[out++] = sh[(i * shDim + j) * 3];
+    for (let j = 0; j < shDim; j++) dataFloat[out++] = sh[(i * shDim + j) * 3 + 1];
+    for (let j = 0; j < shDim; j++) dataFloat[out++] = sh[(i * shDim + j) * 3 + 2];
+    dataFloat[out++] = alphas[i];
+    dataFloat[out++] = scales[i3];
+    dataFloat[out++] = scales[i3+1];
+    dataFloat[out++] = scales[i3+2];
+    // GaussianCloud [qx,qy,qz,qw] → PLY rot_0=qw rot_1=qx rot_2=qy rot_3=qz
+    dataFloat[out++] = rotations[i4+3];
+    dataFloat[out++] = rotations[i4];
+    dataFloat[out++] = rotations[i4+1];
+    dataFloat[out++] = rotations[i4+2];
+  }
+
+  const result = new Uint8Array(hdrBytes.byteLength + dataFloat.byteLength);
+  result.set(hdrBytes);
+  result.set(new Uint8Array(dataFloat.buffer), hdrBytes.byteLength);
+  return result;
+}
+
+// ─────────────────────────────────────────────
+// Bounding box
+// ─────────────────────────────────────────────
+
+function bbox(positions) {
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity;
+  let x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+  for (let i = 0; i < positions.length; i += 3) {
+    if (positions[i]   < x0) x0 = positions[i];
+    if (positions[i]   > x1) x1 = positions[i];
+    if (positions[i+1] < y0) y0 = positions[i+1];
+    if (positions[i+1] > y1) y1 = positions[i+1];
+    if (positions[i+2] < z0) z0 = positions[i+2];
+    if (positions[i+2] > z1) z1 = positions[i+2];
+  }
+  return [[x0,x1],[y0,y1],[z0,z1]];
+}
+
+const f = v => v.toFixed(3);
+const n = v => v.toLocaleString();
+
+// ─────────────────────────────────────────────
+// Tool: SPZ Info
+// ─────────────────────────────────────────────
+
+async function runInfo(file) {
+  setStatus('st-info', 'Loading…', 'loading');
+  document.getElementById('info-out').innerHTML = '';
+  try {
+    const mod   = await getSpz();
+    const buf   = await readFile(file);
+    const cloud = mod.loadSpzFromBuffer(
+      new Uint8Array(buf),
+      { to: mod.CoordinateSystem.UNSPECIFIED }
+    );
+    const shDimFromCloud = (cloud.sh && cloud.sh.length > 0)
+      ? Math.round(cloud.sh.length / cloud.numPoints / 3) : 0;
+    const [[x0,x1],[y0,y1],[z0,z1]] = bbox(cloud.positions);
+
+    document.getElementById('info-out').innerHTML = `
+      <table class="info">
+        <tr><td>Points</td><td>${n(cloud.numPoints)}</td></tr>
+        <tr><td>SH degree</td><td>${cloud.shDegree}</td></tr>
+        <tr><td>SH coefficients</td><td>${shDimFromCloud} per channel</td></tr>
+        <tr><td>Antialiased</td><td>${cloud.antialiased ? 'Yes' : 'No'}</td></tr>
+        <tr><td>Bounding X</td><td>${f(x0)} → ${f(x1)}</td></tr>
+        <tr><td>Bounding Y</td><td>${f(y0)} → ${f(y1)}</td></tr>
+        <tr><td>Bounding Z</td><td>${f(z0)} → ${f(z1)}</td></tr>
+        <tr><td>File size</td><td>${(file.size / 1048576).toFixed(2)} MB</td></tr>
+      </table>`;
+    setStatus('st-info', '✓ Done', 'ok');
+  } catch (e) {
+    setStatus('st-info', `Error: ${e.message}`, 'error');
+  }
+}
+
+// ─────────────────────────────────────────────
+// Tool: PLY → SPZ
+// ─────────────────────────────────────────────
+
+async function runPlyToSpz(file) {
+  setStatus('st-p2s', 'Parsing PLY…', 'loading');
+  try {
+    const mod   = await getSpz();
+    const buf   = await readFile(file);
+    const cloud = parsePly(buf);
+    setStatus('st-p2s', 'Compressing to SPZ…', 'loading');
+    const result = mod.saveSpzToBuffer(cloud, {
+      version:    mod.LATEST_SPZ_HEADER_VERSION,
+      from:       mod.CoordinateSystem.UNSPECIFIED,
+      sh1Bits:    5,
+      shRestBits: 4,
+    });
+    if (!result) throw new Error('saveSpzToBuffer returned null.');
+    const outName = file.name.replace(/\.ply$/i, '.spz');
+    download(outName, result);
+    setStatus('st-p2s', `✓ Done — ${n(cloud.numPoints)} points → ${outName}`, 'ok');
+  } catch (e) {
+    setStatus('st-p2s', `Error: ${e.message}`, 'error');
+  }
+}
+
+// ─────────────────────────────────────────────
+// Tool: SPZ → PLY
+// ─────────────────────────────────────────────
+
+async function runSpzToPly(file) {
+  setStatus('st-s2p', 'Loading SPZ…', 'loading');
+  try {
+    const mod   = await getSpz();
+    const buf   = await readFile(file);
+    const cloud = mod.loadSpzFromBuffer(
+      new Uint8Array(buf),
+      { to: mod.CoordinateSystem.UNSPECIFIED }
+    );
+    setStatus('st-s2p', 'Writing PLY…', 'loading');
+    const ply     = writePly(cloud);
+    const outName = file.name.replace(/\.spz$/i, '.ply');
+    download(outName, ply);
+    setStatus('st-s2p', `✓ Done — ${n(cloud.numPoints)} points → ${outName}`, 'ok');
+  } catch (e) {
+    setStatus('st-s2p', `Error: ${e.message}`, 'error');
+  }
+}
+
+// ─────────────────────────────────────────────
+// Wire up
+// ─────────────────────────────────────────────
+
+setupDropZone('dz-info', 'fi-info', runInfo);
+setupDropZone('dz-p2s',  'fi-p2s',  runPlyToSpz);
+setupDropZone('dz-s2p',  'fi-s2p',  runSpzToPly);
+
+</script>
+</body>
+</html>
