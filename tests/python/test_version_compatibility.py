@@ -25,6 +25,36 @@ def test_pack_options_version_property():
     opts.version = 1
     assert opts.version == 1
 
+def test_ngsp_v4_round_trip():
+    """Test that saving and loading an NGSP v4 file round-trips correctly."""
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = 1
+
+    num_points = 10
+    rng = np.random.default_rng(0)
+    cloud.positions = rng.uniform(-5.0, 5.0, size=num_points * 3).astype(np.float32)
+    cloud.scales = rng.uniform(-2.0, 2.0, size=num_points * 3).astype(np.float32)
+    cloud.rotations = rng.uniform(-1.0, 1.0, size=num_points * 4).astype(np.float32)
+    cloud.alphas = rng.uniform(-2.0, 2.0, size=num_points).astype(np.float32)
+    cloud.colors = rng.uniform(0.0, 1.0, size=num_points * 3).astype(np.float32)
+    cloud.sh = rng.uniform(-0.5, 0.5, size=num_points * 9).astype(np.float32)
+
+    opts = spz.PackOptions()
+    filename = os.path.join(tempfile.gettempdir(), "ngsp_v4_round_trip.spz")
+    assert spz.save_spz(cloud, opts, filename) is True
+
+    # Verify NGSP magic bytes at the start of the file
+    with open(filename, "rb") as f:
+        header = f.read(4)
+    assert header == b"NGSP", f"Expected NGSP magic, got {header!r}"
+
+    loaded = spz.load_spz(filename, spz.UnpackOptions())
+    assert loaded.num_points == num_points
+    assert loaded.sh_degree == 1
+    np.testing.assert_allclose(loaded.positions, cloud.positions, atol=1/2048.0)
+    # Alpha is stored as 8-bit sigmoid; at large magnitudes the quantization error exceeds 0.01.
+    np.testing.assert_allclose(loaded.alphas, cloud.alphas, atol=0.02)
+
 
 def test_spz_version_3_quaternion_encoding():
     """Test SPZ version 3 with smallest-three quaternion encoding."""
