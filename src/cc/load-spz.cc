@@ -179,6 +179,7 @@ bool decompressGzippedImpl(
     return false;
   }
   out->clear();
+  out->reserve(size * 3);
   bool success = false;
   while (true) {
     stream.next_out = buffer.data();
@@ -202,6 +203,14 @@ bool decompressGzipped(const uint8_t *compressed, size_t size, std::vector<uint8
   // both automated gzip and zlib header detection.
   return decompressGzippedImpl(compressed, size, 16 | MAX_WBITS, out);
 }
+
+// A read-only streambuf over a contiguous byte range, avoiding any copy.
+struct membuf : std::streambuf {
+  membuf(const uint8_t *data, size_t size) {
+    auto *p = reinterpret_cast<char *>(const_cast<uint8_t *>(data));
+    setg(p, p, p + size);
+  }
+};
 
 }  // namespace
 
@@ -619,28 +628,12 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
 #endif
 }
 
-bool decompressZstd(const uint8_t *compressed, size_t compressedSize, uint64_t uncompressedSize,
-                    std::vector<uint8_t> *out) {
-  if (uncompressedSize > SIZE_MAX) {
-    SpzLog("[SPZ ERROR] decompressZstd: uncompressed size too large");
-    return false;
-  }
-  const size_t dstSize = static_cast<size_t>(uncompressedSize);
-  out->resize(dstSize);
-  size_t const ret = ZSTD_decompress(out->data(), out->size(), compressed, compressedSize);
-  if (ZSTD_isError(ret)) {
-    SpzLog("[SPZ ERROR] decompressZstd: ZSTD decompression failed");
-    return false;
-  }
-  if (ret != dstSize) {
-    SpzLog("[SPZ ERROR] decompressZstd: uncompressed size mismatch");
-    return false;
-  }
-  return true;
-}
-
+// Decompresses the NGSP attribute streams directly into the caller-provided destination buffers,
+// avoiding any intermediate combined-buffer allocation.  dests must have exactly header.numStreams
+// entries, each pre-sized to the expected uncompressed byte count for that stream.
 bool decompressNgspStreams(const uint8_t *data, size_t size,
-                           const NgspFileHeader &header, std::vector<uint8_t> *out) {
+                           const NgspFileHeader &header,
+                           const std::vector<std::pair<uint8_t *, size_t>> &dests) {
   if (header.tocByteOffset < sizeof(NgspFileHeader)) {
     SpzLog("[SPZ ERROR] decompressNgspStreams: TOC byte offset is less than the size of the header");
     return false;
@@ -651,54 +644,55 @@ bool decompressNgspStreams(const uint8_t *data, size_t size,
     SpzLog("[SPZ ERROR] decompressNgspStreams: TOC end is greater than the size of the data");
     return false;
   }
+  if (dests.size() != header.numStreams) {
+    SpzLog("[SPZ ERROR] decompressNgspStreams: stream count mismatch");
+    return false;
+  }
 
   struct StreamInfo {
     uint64_t compressedSize;
     uint64_t uncompressedSize;
     size_t compressedOffset;
-    size_t uncompressedOffset;
   };
   std::vector<StreamInfo> infos(header.numStreams);
   size_t compressedOffset = tocEnd;
-  size_t uncompressedOffset = 0;
   for (uint8_t i = 0; i < header.numStreams; i++) {
     const size_t e = header.tocByteOffset + i * 16;
     std::memcpy(&infos[i].compressedSize, data + e, sizeof(uint64_t));
     std::memcpy(&infos[i].uncompressedSize, data + e + sizeof(uint64_t), sizeof(uint64_t));
     infos[i].compressedOffset = compressedOffset;
-    infos[i].uncompressedOffset = uncompressedOffset;
     compressedOffset += infos[i].compressedSize;
-    uncompressedOffset += infos[i].uncompressedSize;
+    if (infos[i].uncompressedSize != dests[i].second) {
+      SpzLog("[SPZ ERROR] decompressNgspStreams: stream size mismatch");
+      return false;
+    }
   }
   if (compressedOffset != size) return false;
 
-  out->resize(uncompressedOffset);
-  uint8_t *outPtr = out->data();
-
 #if defined(__EMSCRIPTEN__)
   // TODO: Add support for parallel decompression on WASM.
-  // By default, the number of threads is 4. Though, the default number of streams is 6.
-  // POOL_SIZE can be set to a higher value to increase the number of threads.
-  for (const auto &info : infos) {
-    std::vector<uint8_t> chunk;
-    if (!decompressZstd(data + info.compressedOffset, info.compressedSize, info.uncompressedSize,
-                        &chunk)) {
+  for (size_t i = 0; i < infos.size(); i++) {
+    const size_t ret = ZSTD_decompress(
+      dests[i].first, dests[i].second,
+      data + infos[i].compressedOffset, infos[i].compressedSize);
+    if (ZSTD_isError(ret) || ret != dests[i].second) {
       SpzLog("[SPZ ERROR] decompressNgspStreams: ZSTD decompression failed");
       return false;
     }
-    std::copy(chunk.begin(), chunk.end(), outPtr + info.uncompressedOffset);
   }
 #else
   std::vector<std::future<bool>> futures;
-  for (const auto &info : infos) {
-    futures.push_back(std::async(std::launch::async, [data, outPtr, info]() -> bool {
-      std::vector<uint8_t> chunk;
-      if (!decompressZstd(data + info.compressedOffset, info.compressedSize, info.uncompressedSize,
-                          &chunk)) {
+  for (size_t i = 0; i < infos.size(); i++) {
+    const auto info = infos[i];
+    const auto dest = dests[i];
+    futures.push_back(std::async(std::launch::async, [data, info, dest]() -> bool {
+      const size_t ret = ZSTD_decompress(
+        dest.first, dest.second,
+        data + info.compressedOffset, info.compressedSize);
+      if (ZSTD_isError(ret) || ret != dest.second) {
         SpzLog("[SPZ ERROR] decompressNgspStreams: ZSTD decompression failed");
         return false;
       }
-      std::copy(chunk.begin(), chunk.end(), outPtr + info.uncompressedOffset);
       return true;
     }));
   }
@@ -711,12 +705,6 @@ bool decompressNgspStreams(const uint8_t *data, size_t size,
 
 PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
                                             const NgspFileHeader &header) {
-  std::vector<uint8_t> decompressed;
-  if (!decompressNgspStreams(data, size, header, &decompressed)) {
-    SpzLog("[SPZ ERROR] loadSpzPacked: NGSP stream decompression failed");
-    return {};
-  }
-
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesQuaternionSmallestThree = header.version >= MIN_SMALLEST_THREE_QUATERNIONS_VERSION;
@@ -729,21 +717,26 @@ PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
   result.antialiased = (header.flags & FlagAntialiased) != 0;
   result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
 
-  size_t offset = 0;
-  auto readChunk = [&](std::vector<uint8_t> &dest, size_t count) -> bool {
-    if (offset + count > decompressed.size()) return false;
-    dest.assign(decompressed.begin() + offset, decompressed.begin() + offset + count);
-    offset += count;
-    return true;
-  };
-  if (!readChunk(result.positions, static_cast<size_t>(numPoints) * 9)) return {};
-  if (!readChunk(result.alphas, static_cast<size_t>(numPoints))) return {};
-  if (!readChunk(result.colors, static_cast<size_t>(numPoints) * 3)) return {};
-  if (!readChunk(result.scales, static_cast<size_t>(numPoints) * 3)) return {};
-  if (!readChunk(result.rotations,
-                  static_cast<size_t>(numPoints) * (usesQuaternionSmallestThree ? 4u : 3u)))
+  // Pre-size attribute vectors so decompressNgspStreams can write directly into them,
+  // avoiding both the intermediate combined buffer and the readChunk copies.
+  result.positions.resize(static_cast<size_t>(numPoints) * 9);
+  result.alphas.resize(static_cast<size_t>(numPoints));
+  result.colors.resize(static_cast<size_t>(numPoints) * 3);
+  result.scales.resize(static_cast<size_t>(numPoints) * 3);
+  result.rotations.resize(static_cast<size_t>(numPoints) * (usesQuaternionSmallestThree ? 4u : 3u));
+  result.sh.resize(static_cast<size_t>(numPoints) * shDim * 3);
+
+  // Build destination list in the same order saveSpz writes streams, skipping zero-size buffers.
+  std::vector<std::pair<uint8_t *, size_t>> dests;
+  for (auto *v : {&result.positions, &result.alphas, &result.colors,
+                  &result.scales, &result.rotations, &result.sh}) {
+    if (!v->empty()) dests.push_back({v->data(), v->size()});
+  }
+
+  if (!decompressNgspStreams(data, size, header, dests)) {
+    SpzLog("[SPZ ERROR] loadSpzPacked: NGSP stream decompression failed");
     return {};
-  if (!readChunk(result.sh, static_cast<size_t>(numPoints) * shDim * 3)) return {};
+  }
 
   if ((header.flags & FlagHasExtensions) != 0) {
     const size_t extStart = sizeof(NgspFileHeader);
@@ -978,8 +971,8 @@ PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
     // Legacy single-stream GZip format (pre-v4).
     std::vector<uint8_t> decompressed;
     if (!decompressGzipped(data, size, &decompressed)) return {};
-    std::string str(reinterpret_cast<const char *>(decompressed.data()), decompressed.size());
-    std::stringstream stream(std::move(str));
+    membuf buf(decompressed.data(), decompressed.size());
+    std::istream stream(&buf);
     return deserializePackedGaussians(stream);
 
   } else {
