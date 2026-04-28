@@ -40,7 +40,6 @@ SOFTWARE.
 #include <cstring>
 #include <fstream>
 #include <future>
-#include <limits>
 #include <iostream>
 #include <sstream>
 #include <unordered_map>
@@ -161,7 +160,7 @@ static_assert(sizeof(NgspFileHeader) == 32, "NgspFileHeader must be 32 bytes");
 // Legacy 16-byte header used in gzip single-stream files (pre-v4). Read-only path.
 struct LegacyPackedGaussiansHeader {
   uint32_t magic = NGSP_MAGIC;
-  uint32_t version = LATEST_SPZ_HEADER_VERSION;
+  uint32_t version = 0;
   uint32_t numPoints = 0;
   uint8_t shDegree = 0;
   uint8_t fractionalBits = 0;
@@ -667,7 +666,10 @@ bool decompressNgspStreams(const uint8_t *data, size_t size,
       return false;
     }
   }
-  if (compressedOffset != size) return false;
+  if (compressedOffset != size) {
+    SpzLog("[SPZ ERROR] decompressNgspStreams: compressed data size mismatch");
+    return false;
+  }
 
 #if defined(__EMSCRIPTEN__)
   // TODO: Add support for parallel decompression on WASM.
@@ -908,11 +910,10 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
 }
 
 PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
-  if (size >= 4 &&
-      data[0] == 0x4e && // 'N'
-      data[1] == 0x47 && // 'G'
-      data[2] == 0x53 && // 'S'
-      data[3] == 0x50) { // 'P'
+  uint32_t magic = 0;
+  if (size >= sizeof(magic)) std::memcpy(&magic, data, sizeof(magic));
+
+  if (magic == NGSP_MAGIC) {
     if (size < sizeof(NgspFileHeader)) {
       SpzLog("[SPZ ERROR] loadSpzPacked: NGSP file too short");
       return {};
@@ -921,7 +922,7 @@ PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
     NgspFileHeader header;
     std::memcpy(&header, data, sizeof(header));
 
-    if (header.version < 2 || header.version > LATEST_SPZ_HEADER_VERSION) {
+    if (header.version < MIN_ZSTD_SPZ_HEADER_VERSION || header.version > LATEST_SPZ_HEADER_VERSION) {
       SpzLog("[SPZ ERROR] loadSpzPacked: unsupported version: %d", header.version);
       return {};
     }

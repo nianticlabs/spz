@@ -52,8 +52,13 @@ def test_ngsp_v4_round_trip():
     assert loaded.num_points == num_points
     assert loaded.sh_degree == 1
     np.testing.assert_allclose(loaded.positions, cloud.positions, atol=1/2048.0)
+    np.testing.assert_allclose(loaded.scales, cloud.scales, atol=1/32.0)
+    # Colors use a scaled encoding: round(x * colorScale * 255 + 0.5 * 255) where colorScale=0.15.
+    np.testing.assert_allclose(loaded.colors, cloud.colors, atol=1.0 / (2 * 0.15 * 255))
     # Alpha is stored as 8-bit sigmoid; at large magnitudes the quantization error exceeds 0.01.
     np.testing.assert_allclose(loaded.alphas, cloud.alphas, atol=0.02)
+    # SH degree 1 uses 5-bit quantization by default.
+    np.testing.assert_allclose(loaded.sh, cloud.sh, atol=1/32.0 + 1/255.0)
 
 
 def test_spz_version_3_quaternion_encoding():
