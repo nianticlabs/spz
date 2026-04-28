@@ -2,9 +2,9 @@
 
 Extensions allow vendor-specific or application-specific data to be stored in SPZ files alongside the core Gaussian splat data. Multiple extensions from different vendors can coexist in the same file; unknown extension types are skipped during parsing so readers only need to understand the extensions they care about.
 
-## Extension record format
+## Extension stream format
 
-Extensions use a **length-delimited per-record** format regardless of where they are stored:
+Extensions are stored at the end of the packed SPZ stream (after Gaussian data). The format is **length‑delimited per record**:
 
 ```
 [ u32 type ][ u32 byteLength ][ payload... ]
@@ -14,10 +14,7 @@ Extensions use a **length-delimited per-record** format regardless of where they
 - **byteLength** — 4-byte length in bytes of the following payload.
 - **payload** — exactly `byteLength` bytes of extension-specific data.
 
-Records repeat back-to-back. The termination rule depends on the file format version:
-
-- **NGSP v4 (current):** Extensions occupy the plaintext header zone between the fixed 32-byte `NgspFileHeader` and the Table of Contents. The block spans bytes `[32, tocByteOffset)`, where `tocByteOffset` is read directly from the header — no need to decompress anything to locate or parse extensions.
-- **Legacy gzip (versions 1–3, read-only):** Extensions were stored at the end of the compressed payload, after all Gaussian attribute data. The block ran from the end of attribute data to EOF of the decompressed stream.
+Records repeat back-to-back until end-of-stream. There is no separate record count or terminator; EOF after the last payload ends the extension block.
 
 ### Why length-delimited?
 
@@ -47,9 +44,8 @@ Example: Adobe vendor ID `0xADBE`, extension index 2 → `0xADBE0002u` (`SPZ_ADO
 If an SPZ file that contains extensions is loaded by a library build that was **not** built with extension support (`SPZ_BUILD_EXTENSIONS` is OFF, the default):
 
 - **The load still succeeds.** Core Gaussian splat data (positions, colors, SH, etc.) is read and returned as usual.
-- **Extension data is ignored.** The header’s extension flag is read, but the extension block is not parsed. A warning is logged. The exact message depends on the file format:
-  - NGSP v4: `[SPZ WARNING] loadSpzPacked: file has header extensions but extension support is disabled`
-  - Legacy gzip: `[SPZ WARNING] deserializePackedGaussians: the stream has extensions but extensions are unsupported in the current build of SPZ`
+- **Extension data is ignored.** The header’s extension flag is read, but the extension block is not parsed or skipped. A warning is logged:  
+  `[SPZ WARNING] deserializePackedGaussians: the stream has extensions but extensions are unsupported in the current build of SPZ`
 - **Returned clouds have no extensions.** `PackedGaussians` and `GaussianCloud` in a no-extension build do not have an `extensions` member; the loaded result simply omits any extension data.
 
 So builds without extensions can safely load files that contain extensions; they get the core data and drop the rest. To preserve or use extension data, build with `-DSPZ_BUILD_EXTENSIONS=ON` and use a build that includes the extension sources.
@@ -62,7 +58,7 @@ So builds without extensions can safely load files that contain extensions; they
    CMake: `-DSPZ_BUILD_EXTENSIONS=ON`.
 
 2. **Load/Save**  
-   Extensions are part of `PackedGaussians` and `GaussianCloud`. When you call `loadSpz` / `loadSpzPacked` or `saveSpz`, the extension list is read/written automatically. For NGSP v4 files, `saveSpz` writes extensions into the plaintext header zone; `serializePackedGaussians` handles extensions only for the legacy gzip write path.
+   Extensions are part of `PackedGaussians` and `GaussianCloud`. When you load (e.g. `loadSpz`, `loadSpzPacked`) or save (`saveSpz`, `serializePackedGaussians`), the extension list is read/written automatically.
 
 3. **Access a known extension**  
    Use `findExtensionByType<T>()`. Include the header for the concrete extension type you use:

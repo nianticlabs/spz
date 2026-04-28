@@ -738,20 +738,6 @@ PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
     return {};
   }
 
-  if ((header.flags & FlagHasExtensions) != 0) {
-    const size_t extStart = sizeof(NgspFileHeader);
-    const size_t extEnd = header.tocByteOffset;
-    if (extStart < extEnd && extEnd <= size) {
-#ifdef SPZ_BUILD_EXTENSIONS
-      std::string extStr(reinterpret_cast<const char *>(data + extStart), extEnd - extStart);
-      std::istringstream extStream(std::move(extStr));
-      readAllExtensions(extStream, result.extensions);
-#else
-      SpzLog(
-        "[SPZ WARNING] loadSpzPacked: file has header extensions but extension support is disabled");
-#endif
-    }
-  }
   return result;
 }
 
@@ -837,15 +823,6 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
     return false;
   }
 
-  std::vector<uint8_t> extensionData;
-#ifdef SPZ_BUILD_EXTENSIONS
-  if (!packed.extensions.empty()) {
-    std::ostringstream extStream;
-    writeAllExtensions(packed.extensions, extStream);
-    const std::string &s = extStream.str();
-    extensionData.assign(s.begin(), s.end());
-  }
-#endif
   struct Stream {
     const uint8_t *data;
     size_t size;
@@ -903,29 +880,20 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
 #endif
 
   const uint8_t numStreams = static_cast<uint8_t>(chunks.size());
-  // Extensions occupy [32, tocByteOffset); TOC occupies [tocByteOffset, tocByteOffset+N*16).
-  const uint32_t tocByteOffset = static_cast<uint32_t>(sizeof(NgspFileHeader)) +
-                                  static_cast<uint32_t>(extensionData.size());
+  const uint32_t tocByteOffset = static_cast<uint32_t>(sizeof(NgspFileHeader));
   NgspFileHeader header;
   header.version        = LATEST_SPZ_HEADER_VERSION;
   header.numPoints      = packed.numPoints;
   header.shDegree       = packed.shDegree;
   header.fractionalBits = packed.fractionalBits;
-  header.flags          = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0)
-#ifdef SPZ_BUILD_EXTENSIONS
-    | static_cast<uint8_t>(extensionData.empty() ? 0 : FlagHasExtensions)
-#endif
-    ;
+  header.flags          = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0);
   header.numStreams     = numStreams;
   header.tocByteOffset  = tocByteOffset;
 
-  // Write plaintext zone: [header][extensions][TOC]
+  // Write plaintext zone: [header][TOC]
   out->resize(tocByteOffset + numStreams * 2 * sizeof(uint64_t));
   uint8_t *buf = out->data();
   std::memcpy(buf, &header, sizeof(header));
-  if (!extensionData.empty()) {
-    std::copy(extensionData.begin(), extensionData.end(), buf + sizeof(NgspFileHeader));
-  }
   for (uint8_t i = 0; i < numStreams; i++) {
     const uint64_t cs = static_cast<uint64_t>(chunks[i].size());
     const uint64_t us = uncompressedSizes[i];
