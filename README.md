@@ -115,7 +115,7 @@ The `PackOptions` struct supports the following fields:
 
 ## File Format
 
-Version 4 uses ZSTD compression with a 32-byte plaintext header. Each attribute stream is compressed independently and in parallel, improving both compression and decompression throughput. Files from versions 1–3 (gzip-compressed single-stream format) can still be read.
+Version 4 uses ZSTD compression with a 32-byte plaintext header. Each attribute stream is compressed independently and in parallel, improving both compression and decompression throughput. Files from versions 1–3 (gzip-compressed single-stream format) can still be read. There is no maximum point count enforced during loading.
 
 ### File layout (version 4)
 
@@ -251,3 +251,7 @@ pip install .
 ```
 
 Please see src/python/README.md for more details and usage examples
+
+## Web Utility
+
+A browser-based utility is available at [nianticlabs.github.io/spz](https://nianticlabs.github.io/spz). It uses the latest WASM build and allows you to inspect file metadata for `.spz` and `.ply` files and convert between the two formats without installing anything. As it runs entirely in the browser, it is subject to browser memory limits and is intended for files up to around 2 GB. For larger files, clone the repository and use the command-line tools directly.
