@@ -1,610 +1,915 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SPZ Tools</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SPZ Tools · Scaniverse</title>
+<link rel="stylesheet" href="ds/colors_and_type.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100vh; background: var(--bg); }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f0f2f5;
-      color: #1a1a1a;
-      min-height: 100vh;
-    }
+  /* ─────────────────── Top bar ─────────────────── */
+  .topbar {
+    display: flex; align-items: center; gap: 20px;
+    padding: 16px 32px;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand .divider { width: 1px; height: 20px; background: var(--border); }
+  .brand .product {
+    font: 500 11px/16px var(--font-mono);
+    color: var(--meta);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .topbar .status-pill {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 28px; padding: 0 12px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font: 500 11px/16px var(--font-mono);
+    color: var(--fg-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .status-pill .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ns-ink-300);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .status-pill.ready .dot { background: var(--ns-success-fg); animation: none; }
+  .status-pill.fail .dot  { background: var(--ns-error-fg); animation: none; }
+  .status-pill.ready { color: var(--ns-success-fg); border-color: var(--ns-success-border); background: var(--ns-success-bg); }
+  .status-pill.fail  { color: var(--ns-error-fg);  border-color: var(--ns-error-border);  background: var(--ns-error-bg); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-    header {
-      background: #0f1117;
-      color: white;
-      padding: 1.25rem 2rem;
-      display: flex;
-      align-items: baseline;
-      gap: 1rem;
-    }
-    header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; }
-    header p  { color: #888; font-size: 0.85rem; }
+  /* ─────────────────── Page header ─────────────────── */
+  main { max-width: 1120px; margin: 0 auto; padding: 40px 32px 64px; }
+  .page-head { margin-bottom: 32px; }
+  .page-head .meta { margin-bottom: 10px; }
+  .page-head h1 { font: 700 32px/40px var(--font-sans); letter-spacing: -0.01em; margin-bottom: 8px; }
+  .page-head .sub { font: 400 16px/24px var(--font-sans); color: var(--fg-muted); max-width: 640px; }
 
-    main {
-      max-width: 1000px;
-      margin: 2rem auto;
-      padding: 0 1rem;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
-      gap: 1.25rem;
-    }
+  /* ─────────────────── Layout ─────────────────── */
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(420px, 1fr) minmax(420px, 1.15fr);
+    gap: 24px;
+    align-items: start;
+  }
 
-    .card {
-      background: white;
-      border-radius: 12px;
-      padding: 1.5rem;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
-    }
+  /* ─────────────────── Drop panel ─────────────────── */
+  .drop-panel {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    position: sticky; top: 24px;
+  }
+  .drop-panel h3 {
+    font: 600 12px/16px var(--font-mono);
+    color: var(--fg-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
 
-    .card-title {
-      font-size: 1rem;
-      font-weight: 700;
-      margin-bottom: 0.3rem;
-    }
-    .card-desc {
-      font-size: 0.82rem;
-      color: #777;
-      margin-bottom: 1.1rem;
-      line-height: 1.4;
-    }
+  .drop-zone {
+    position: relative;
+    border: 1.5px dashed var(--ns-ink-100);
+    border-radius: var(--radius-md);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color var(--dur-fast) var(--ease-standard),
+                background var(--dur-fast) var(--ease-standard);
+  }
+  .drop-zone:hover, .drop-zone.over {
+    border-color: var(--accent);
+    background: var(--ns-blue-50);
+  }
+  .drop-zone.over { border-style: solid; }
+  .drop-zone input[type=file] { display: none; }
+  .drop-zone .illus {
+    width: 72px; height: 72px; margin: 0 auto 16px;
+    background: var(--ns-blue-50);
+    border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ns-blue-600);
+  }
+  .drop-zone .illus svg { width: 32px; height: 32px; }
+  .drop-zone .title {
+    font: 500 16px/24px var(--font-sans);
+    color: var(--fg);
+    margin-bottom: 4px;
+  }
+  .drop-zone .title strong { color: var(--accent); font-weight: 600; }
+  .drop-zone .hint {
+    font: 400 13px/20px var(--font-sans);
+    color: var(--fg-muted);
+  }
+  .drop-zone .formats {
+    display: inline-flex; gap: 6px; margin-top: 14px;
+  }
+  .drop-zone .format-chip {
+    display: inline-flex; align-items: center;
+    height: 22px; padding: 0 10px; border-radius: 999px;
+    font: 600 10px/14px var(--font-mono);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    background: var(--bg-sunken);
+    color: var(--fg-muted);
+    border: 1px solid var(--border);
+  }
 
-    .drop-zone {
-      border: 2px dashed #d0d5dd;
-      border-radius: 8px;
-      padding: 1.75rem 1rem;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-      user-select: none;
-    }
-    .drop-zone:hover  { border-color: #4a90e2; background: #f5f9ff; }
-    .drop-zone.over   { border-color: #4a90e2; background: #eaf2ff; }
-    .drop-zone .icon  { font-size: 1.8rem; display: block; margin-bottom: 0.5rem; }
-    .drop-zone .hint  { font-size: 0.82rem; color: #888; line-height: 1.5; }
-    .drop-zone .hint strong { color: #4a90e2; }
-    .drop-zone input[type=file] { display: none; }
+  /* privacy callout */
+  .privacy {
+    margin-top: 16px;
+    padding: 12px 14px;
+    background: var(--ns-blue-50);
+    border: 1px solid var(--ns-blue-100);
+    border-radius: var(--radius-md);
+    display: flex; align-items: flex-start; gap: 10px;
+    font: 400 12px/18px var(--font-sans);
+    color: var(--ns-blue-700);
+  }
+  .privacy svg { flex: none; margin-top: 1px; }
 
-    .status {
-      margin-top: 0.9rem;
-      font-size: 0.82rem;
-      min-height: 1.1em;
-      line-height: 1.4;
-    }
-    .status.loading { color: #888; }
-    .status.error   { color: #d0021b; }
-    .status.ok      { color: #1a8a4a; }
+  /* ─────────────────── Result panel ─────────────────── */
+  .result-panel {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    min-height: 520px;
+    display: flex; flex-direction: column;
+  }
 
-    table.info {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 0.9rem;
-      font-size: 0.82rem;
-    }
-    table.info td {
-      padding: 0.3rem 0.4rem;
-      border-bottom: 1px solid #f0f0f0;
-    }
-    table.info td:first-child { color: #888; white-space: nowrap; padding-right: 1rem; }
-    table.info td:last-child  { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .result-head {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--divider);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .result-head .file-icon {
+    width: 40px; height: 40px; flex: none;
+    border-radius: var(--radius-sm);
+    background: var(--ns-ink-900);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ns-cyan-500);
+    font: 600 10px/12px var(--font-mono);
+    letter-spacing: 0.06em;
+  }
+  .result-head .file-icon.ply { color: var(--ns-orange-500); }
+  .result-head .file-meta { flex: 1; min-width: 0; }
+  .result-head .file-name {
+    font: 500 14px/20px var(--font-sans);
+    color: var(--fg);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .result-head .file-sub {
+    font: 400 11px/14px var(--font-mono);
+    color: var(--fg-muted);
+    letter-spacing: 0.04em; margin-top: 2px;
+  }
+  .result-head .reset-btn {
+    height: 32px; padding: 0 12px;
+    background: transparent; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); cursor: pointer;
+    font: 500 12px/18px var(--font-sans); color: var(--fg-muted);
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background var(--dur-fast);
+  }
+  .result-head .reset-btn:hover { background: var(--bg-sunken); color: var(--fg); }
 
-    #wasm-badge {
-      position: fixed;
-      bottom: 1rem;
-      right: 1rem;
-      background: #0f1117;
-      color: #aaa;
-      padding: 0.35rem 0.85rem;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      pointer-events: none;
-      transition: opacity 0.4s;
-    }
-    #wasm-badge.ready { color: #4caf50; }
-    #wasm-badge.fail  { color: #f44336; }
-  </style>
+  /* ─────────────────── Empty state ─────────────────── */
+  .empty-state {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 48px 32px;
+    color: var(--fg-muted);
+  }
+  .empty-state .illus-img {
+    width: 120px; height: 120px; margin-bottom: 24px;
+    opacity: 0.9;
+    filter: drop-shadow(0 4px 12px rgba(45,82,144,0.12));
+  }
+  .empty-state .illus-fallback {
+    width: 120px; height: 120px; margin-bottom: 24px;
+    background: var(--ns-blue-50);
+    border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ns-blue-400);
+  }
+  .empty-state .illus-fallback svg { width: 48px; height: 48px; }
+  .empty-state h4 {
+    font: 500 18px/24px var(--font-sans);
+    color: var(--fg);
+    margin-bottom: 6px;
+  }
+  .empty-state p {
+    font: 400 13px/20px var(--font-sans);
+    color: var(--fg-muted);
+    max-width: 320px;
+  }
+  .empty-state .steps {
+    display: flex; gap: 8px; margin-top: 24px;
+    font: 500 11px/16px var(--font-mono);
+    color: var(--fg-subtle);
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .empty-state .steps .step { padding: 4px 10px; background: var(--bg-sunken); border-radius: 999px; }
+  .empty-state .steps .sep { color: var(--ns-ink-200); }
+
+  /* ─────────────────── Loading ─────────────────── */
+  .loading-state {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 48px 32px;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--ns-blue-100);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-state .label { font: 500 13px/18px var(--font-sans); color: var(--fg); }
+  .loading-state .sub   { font: 400 12px/16px var(--font-mono); color: var(--fg-muted); letter-spacing: 0.04em; }
+
+  /* ─────────────────── Error ─────────────────── */
+  .error-state {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 48px 32px; text-align: center;
+  }
+  .error-state .icon {
+    width: 48px; height: 48px; border-radius: 999px;
+    background: var(--ns-error-bg);
+    color: var(--ns-error-fg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .error-state h4 { font: 600 15px/20px var(--font-sans); color: var(--ns-error-fg); }
+  .error-state p  { font: 400 13px/20px var(--font-sans); color: var(--fg-muted); max-width: 360px; }
+
+  /* ─────────────────── Info display ─────────────────── */
+  .info-body { flex: 1; overflow: auto; padding: 24px; }
+  .info-section + .info-section { margin-top: 24px; }
+  .info-section h5 {
+    font: 600 11px/14px var(--font-mono);
+    color: var(--fg-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-tile { background: var(--bg-sunken); border-radius: var(--radius-md); padding: 14px 16px; }
+  .stat-tile .k {
+    font: 500 10px/14px var(--font-mono);
+    color: var(--fg-muted);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .stat-tile .v {
+    font: 600 20px/24px var(--font-sans);
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .stat-tile .v.mono { font: 500 16px/20px var(--font-mono); letter-spacing: 0.02em; }
+  .stat-tile .unit { font-size: 12px; font-weight: 500; color: var(--fg-muted); margin-left: 2px; font-family: var(--font-mono); }
+
+  .bbox-table { background: var(--bg-sunken); border-radius: var(--radius-md); padding: 4px 16px; }
+  .bbox-row {
+    display: grid;
+    grid-template-columns: 20px 1fr auto 1fr;
+    gap: 12px; align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--ns-ink-50);
+  }
+  .bbox-row:last-child { border-bottom: 0; }
+  .bbox-row .axis   { font: 600 12px/16px var(--font-mono); color: var(--meta); letter-spacing: 0.1em; }
+  .bbox-row .num    { font: 500 13px/18px var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+  .bbox-row .arrow  { color: var(--fg-subtle); }
+  .bbox-row .extent { font: 400 11px/14px var(--font-mono); color: var(--fg-muted); margin-left: 8px; }
+
+  .size-compare { background: var(--bg-sunken); border-radius: var(--radius-md); padding: 14px 16px; }
+  .size-compare .row {
+    display: grid; grid-template-columns: 60px 1fr 80px; gap: 12px;
+    align-items: center; padding: 6px 0;
+  }
+  .size-compare .row .lbl { font: 600 10px/14px var(--font-mono); color: var(--fg-muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  .size-compare .bar-wrap { background: var(--ns-ink-50); border-radius: 999px; height: 8px; overflow: hidden; }
+  .size-compare .bar { height: 100%; border-radius: 999px; background: var(--accent); transition: width 400ms var(--ease-standard); }
+  .size-compare .bar.alt { background: var(--ns-orange-500); }
+  .size-compare .row .val { font: 500 12px/16px var(--font-mono); color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ─────────────────── Actions footer ─────────────────── */
+  .actions {
+    padding: 16px 24px;
+    border-top: 1px solid var(--divider);
+    background: var(--bg-sunken);
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .btn {
+    font: 500 13px/18px var(--font-sans);
+    height: 38px; padding: 0 16px;
+    border-radius: var(--radius-md);
+    display: inline-flex; align-items: center; gap: 8px;
+    cursor: pointer; border: 1px solid transparent;
+    transition: background var(--dur-fast) var(--ease-standard), border-color var(--dur-fast);
+    white-space: nowrap;
+  }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn-primary   { background: var(--accent); color: #fff; }
+  .btn-primary:hover   { background: var(--accent-hover); }
+  .btn-primary:active  { background: var(--accent-pressed); }
+  .btn-secondary { background: var(--accent-subtle); color: var(--ns-blue-700); }
+  .btn-secondary:hover { background: var(--ns-blue-200); }
+  .btn-ghost     { background: transparent; color: var(--fg); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--bg); }
+  .btn:disabled  { background: var(--bg); color: var(--fg-disabled); cursor: not-allowed; border-color: var(--border); }
+  .btn svg { width: 16px; height: 16px; }
+
+  /* ─────────────────── Toast ─────────────────── */
+  .toast-region {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 100;
+  }
+  .toast {
+    min-width: 280px; max-width: 420px;
+    padding: 12px 16px;
+    background: var(--ns-ink-900); color: #fff;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    display: flex; align-items: center; gap: 10px;
+    font: 500 13px/18px var(--font-sans);
+    animation: toast-in 200ms var(--ease-standard);
+  }
+  .toast.ok  .icon { color: #a8d597; }
+  .toast.err .icon { color: #e6a6a1; }
+  .toast .close { margin-left: auto; cursor: pointer; color: rgba(255,255,255,0.5); }
+  .toast .close:hover { color: #fff; }
+  @keyframes toast-in { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* ─────────────────── Responsive ─────────────────── */
+  @media (max-width: 880px) {
+    .workspace { grid-template-columns: 1fr; }
+    .drop-panel { position: static; }
+    main { padding: 24px 16px 48px; }
+    .topbar { padding: 12px 16px; }
+  }
+</style>
 </head>
 <body>
 
-<header>
-  <h1>SPZ Tools</h1>
-  <p>Gaussian Splat utilities — runs entirely in your browser</p>
-</header>
+<div class="topbar">
+  <div class="brand">
+    <!-- Niantic Spatial / Scaniverse wordmark (inlined SVG) -->
+    <svg style="height:20px;width:auto;display:block;color:var(--ns-ink-900)" xmlns="http://www.w3.org/2000/svg" width="78.769" height="30" viewBox="0 0 78.769 30" fill="none">
+      <path d="M 37.69 11.993 L 35.589 9.472 C 35.244 9.06 34.87 8.572 34.564 8.177 L 34.549 8.186 C 34.564 8.623 34.564 9.051 34.564 9.421 L 34.564 11.909 L 33.624 11.909 L 33.624 6.546 L 34.366 6.546 L 36.246 8.808 C 36.506 9.118 36.904 9.606 37.164 9.967 L 37.179 9.959 C 37.164 9.589 37.164 9.185 37.164 8.824 L 37.164 6.546 L 38.104 6.546 L 38.104 11.993 L 37.69 11.993 Z" fill="currentColor"/>
+      <path d="M 39.447 11.909 L 39.447 6.546 L 40.41 6.546 L 40.41 11.909 L 39.447 11.909 Z" fill="currentColor"/>
+      <path d="M 45.011 11.909 L 44.545 10.615 L 42.825 10.615 L 42.359 11.909 L 41.434 11.909 L 43.437 6.488 L 43.979 6.488 L 45.975 11.909 L 45.011 11.909 Z M 43.864 8.631 C 43.811 8.471 43.742 8.253 43.688 8.051 L 43.674 8.051 C 43.628 8.253 43.551 8.471 43.497 8.631 L 43.092 9.783 L 44.27 9.783 L 43.864 8.631 Z" fill="currentColor"/>
+      <path d="M 50.98 11.993 L 48.878 9.472 C 48.534 9.06 48.159 8.572 47.853 8.177 L 47.838 8.186 C 47.853 8.623 47.853 9.051 47.853 9.421 L 47.853 11.909 L 46.913 11.909 L 46.913 6.546 L 47.655 6.546 L 49.536 8.808 C 49.796 9.118 50.193 9.606 50.453 9.967 L 50.468 9.959 C 50.453 9.589 50.453 9.185 50.453 8.824 L 50.453 6.546 L 51.393 6.546 L 51.393 11.993 L 50.98 11.993 Z" fill="currentColor"/>
+      <path d="M 54.708 7.429 L 54.708 11.909 L 53.745 11.909 L 53.745 7.429 L 52.262 7.429 L 52.262 6.546 L 56.191 6.546 L 56.191 7.429 L 54.708 7.429 Z" fill="currentColor"/>
+      <path d="M 57.138 11.909 L 57.138 6.546 L 58.101 6.546 L 58.101 11.909 L 57.138 11.909 Z" fill="currentColor"/>
+      <path d="M 63.107 7.732 C 62.87 7.572 62.442 7.412 61.991 7.412 C 61.089 7.412 60.256 8.068 60.256 9.244 C 60.256 10.421 61.081 11.077 62.022 11.077 C 62.511 11.077 62.878 10.976 63.153 10.808 L 63.069 11.741 C 62.786 11.892 62.442 11.968 61.884 11.968 C 60.646 11.968 59.285 11.035 59.285 9.228 C 59.285 7.421 60.661 6.48 61.884 6.48 C 62.519 6.48 62.985 6.631 63.283 6.816 L 63.107 7.732 Z" fill="currentColor"/>
+      <path d="M 33.962 23.532 C 33.04 23.532 32.184 23.243 31.723 22.91 L 31.552 21.128 C 32.197 21.649 33.053 21.997 33.923 21.997 C 34.739 21.997 35.28 21.548 35.28 20.853 C 35.28 20.157 34.911 19.78 34.028 19.491 C 32.461 18.984 31.697 18.056 31.697 16.695 C 31.697 15.333 32.645 14.072 34.437 14.072 C 35.319 14.072 36.07 14.362 36.399 14.594 L 36.084 16.086 C 35.768 15.869 35.109 15.579 34.49 15.579 C 33.713 15.579 33.291 16.043 33.291 16.593 C 33.291 17.144 33.686 17.477 34.451 17.738 C 35.965 18.259 36.94 19.071 36.94 20.707 C 36.94 22.344 35.912 23.533 33.963 23.533 L 33.962 23.532 Z" fill="currentColor"/>
+      <path d="M 41.772 19.577 L 40.455 19.577 L 40.455 23.431 L 38.835 23.431 L 38.835 14.188 L 41.772 14.188 C 43.089 14.188 44.394 15.129 44.394 16.883 C 44.394 18.636 43.09 19.577 41.772 19.577 Z M 41.509 15.709 L 40.455 15.709 L 40.455 18.143 L 41.509 18.143 C 42.141 18.143 42.76 17.766 42.76 16.926 C 42.76 16.085 42.154 15.709 41.509 15.709 Z" fill="currentColor"/>
+      <path d="M 50.821 23.431 L 50.017 21.2 L 47.054 21.2 L 46.251 23.431 L 44.657 23.431 L 48.107 14.086 L 49.043 14.086 L 52.48 23.431 L 50.821 23.431 Z M 48.845 17.781 C 48.753 17.506 48.634 17.129 48.542 16.781 L 48.516 16.781 C 48.437 17.128 48.305 17.505 48.213 17.781 L 47.515 19.765 L 49.543 19.765 L 48.845 17.781 Z" fill="currentColor"/>
+      <path d="M 56.616 15.709 L 56.616 23.431 L 54.957 23.431 L 54.957 15.709 L 52.401 15.709 L 52.401 14.188 L 59.171 14.188 L 59.171 15.709 L 56.616 15.709 Z" fill="currentColor"/>
+      <path d="M 60.804 23.431 L 60.804 14.188 L 62.464 14.188 L 62.464 23.431 L 60.804 23.431 Z" fill="currentColor"/>
+      <path d="M 70.392 23.431 L 69.589 21.2 L 66.626 21.2 L 65.822 23.431 L 64.228 23.431 L 67.679 14.086 L 68.614 14.086 L 72.052 23.431 L 70.392 23.431 Z M 68.417 17.781 C 68.324 17.506 68.205 17.129 68.113 16.781 L 68.087 16.781 C 68.008 17.128 67.876 17.505 67.784 17.781 L 67.086 19.765 L 69.115 19.765 L 68.417 17.781 Z" fill="currentColor"/>
+      <path d="M 73.672 23.431 L 73.672 14.188 L 75.331 14.188 L 75.331 21.91 L 78.769 21.91 L 78.769 23.431 L 73.672 23.431 Z" fill="currentColor"/>
+      <path d="M 7.165 14.422 C 7.672 14.063 8.21 13.71 8.774 13.366 C 9.131 14.56 9.57 15.794 10.095 17.042 C 10.611 18.269 11.174 19.427 11.766 20.502 C 11.126 20.664 10.498 20.801 9.887 20.912 C 9.354 19.908 8.852 18.852 8.392 17.757 C 7.923 16.642 7.513 15.524 7.165 14.422 M 26.72 6.328 C 25.608 5.952 24.228 5.794 22.621 5.858 C 21.643 5.898 20.598 6.019 19.508 6.216 C 19.856 6.762 20.196 7.33 20.525 7.92 C 24.347 7.34 27.24 7.863 27.944 9.539 C 28.649 11.215 26.999 13.648 23.91 15.973 C 24.101 16.621 24.269 17.261 24.416 17.892 C 25.319 17.251 26.137 16.589 26.85 15.918 C 28.021 14.815 28.873 13.719 29.383 12.661 C 30.212 10.941 29.985 9.625 29.648 8.824 C 29.311 8.023 28.53 6.939 26.721 6.328 M 18.45 6.428 C 18.8 6.963 19.142 7.522 19.474 8.103 C 20.211 9.392 20.899 10.783 21.512 12.243 C 22.126 13.703 22.639 15.167 23.044 16.595 C 23.226 17.239 23.387 17.874 23.524 18.499 C 23.847 19.97 24.042 21.378 24.094 22.669 C 24.158 24.276 24 25.656 23.624 26.768 C 23.013 28.578 21.93 29.359 21.129 29.695 C 20.328 30.032 19.011 30.259 17.291 29.43 C 16.233 28.92 15.137 28.068 14.034 26.897 C 13.148 25.957 12.279 24.832 11.453 23.572 C 11.448 23.564 11.444 23.556 11.439 23.549 C 11.104 23.622 10.771 23.689 10.444 23.748 C 9.355 23.945 8.309 24.067 7.331 24.106 C 5.724 24.171 4.344 24.013 3.232 23.637 C 1.422 23.025 0.641 21.942 0.305 21.141 C -0.032 20.34 -0.259 19.024 0.57 17.303 C 1.08 16.245 1.932 15.15 3.103 14.046 C 3.815 13.375 4.634 12.713 5.536 12.073 C 5.809 11.879 6.091 11.688 6.379 11.498 C 6.056 10.028 5.861 8.621 5.809 7.331 C 5.745 5.724 5.903 4.344 6.279 3.232 C 6.89 1.422 7.973 0.641 8.774 0.305 C 9.575 -0.032 10.892 -0.259 12.612 0.57 C 13.67 1.08 14.766 1.932 15.869 3.103 C 16.755 4.043 17.625 5.168 18.45 6.428 M 21.414 17.638 C 21.017 16.138 20.481 14.56 19.809 12.959 C 19.136 11.358 18.383 9.87 17.589 8.538 C 17.248 7.965 16.9 7.421 16.547 6.908 C 14.042 3.27 11.317 1.24 9.491 2.008 C 7.665 2.775 7.209 6.139 8.053 10.471 C 8.07 10.462 8.086 10.452 8.103 10.442 C 8.104 10.445 8.104 10.448 8.105 10.45 C 8.396 10.284 8.691 10.12 8.993 9.959 C 8.993 9.961 8.994 9.964 8.994 9.966 C 10.011 9.425 11.081 8.916 12.191 8.449 C 13.303 7.982 14.418 7.573 15.517 7.225 C 15.876 7.732 16.226 8.262 16.57 8.826 C 15.382 9.181 14.308 9.507 13.067 10.028 L 12.875 10.107 C 11.651 10.622 10.48 11.189 9.385 11.793 C 9.384 11.791 9.383 11.788 9.383 11.786 C 9.074 11.957 8.771 12.129 8.475 12.305 C 7.905 12.644 7.361 12.991 6.844 13.346 C 6.844 13.346 6.844 13.345 6.844 13.344 C 6.562 13.538 6.288 13.734 6.025 13.932 C 5.407 14.397 4.84 14.871 4.332 15.349 C 2.256 17.305 1.415 19.102 1.965 20.409 C 2.424 21.501 3.808 22.137 5.912 22.25 C 6.022 22.257 6.134 22.262 6.248 22.265 C 6.403 22.27 6.563 22.27 6.725 22.27 C 6.73 22.27 6.735 22.27 6.74 22.27 C 7.564 22.265 8.466 22.19 9.428 22.044 C 9.771 21.992 10.122 21.93 10.479 21.86 C 11.089 21.741 11.719 21.596 12.363 21.426 C 12.697 21.338 13.035 21.241 13.376 21.139 C 14.567 20.782 15.797 20.343 17.042 19.82 C 18.287 19.297 19.462 18.725 20.55 18.123 C 20.712 18.763 20.848 19.392 20.959 20.004 C 19.942 20.546 18.87 21.056 17.758 21.524 C 16.646 21.991 15.531 22.4 14.432 22.748 C 14.088 22.857 13.746 22.959 13.406 23.055 C 13.385 23.061 13.365 23.066 13.344 23.072 C 13.348 23.078 13.353 23.085 13.357 23.092 C 15.863 26.73 18.587 28.76 20.413 27.992 C 22.24 27.224 22.696 23.857 21.85 19.522 C 21.73 18.911 21.585 18.282 21.415 17.637 M 14.976 12.938 C 13.837 12.938 12.913 13.861 12.913 15 C 12.913 16.14 13.837 17.063 14.976 17.063 C 16.115 17.063 17.038 16.14 17.038 15 C 17.038 13.861 16.115 12.938 14.976 12.938 Z" fill="currentColor"/>
+    </svg>
+    <div class="divider"></div>
+    <span class="product">SPZ Tools</span>
+  </div>
+  <div class="status-pill" id="wasm-status" style="display:none">
+    <span class="dot"></span>
+    <span id="wasm-status-text">Initializing</span>
+  </div>
+</div>
 
 <main>
-
-  <!-- ── Info ── -->
-  <div class="card">
-    <div class="card-title">SPZ Info</div>
-    <div class="card-desc">Inspect a .spz file: point count, SH degree, bounding box and more.</div>
-    <div class="drop-zone" id="dz-info">
-      <span class="icon">📄</span>
-      <span class="hint">Drop a <strong>.spz</strong> file here<br>or <strong>click to browse</strong></span>
-      <input type="file" id="fi-info" accept=".spz">
-    </div>
-    <div class="status" id="st-info"></div>
-    <div id="info-out"></div>
+  <div class="page-head">
+    <div class="meta t-meta">Gaussian Splat Utilities</div>
+    <h1>Inspect &amp; convert splat files</h1>
+    <p class="sub">Drop a <strong>.spz</strong> or <strong>.ply</strong> Gaussian splat file to inspect its contents and convert between formats. All processing runs locally in your browser — nothing is uploaded.</p>
   </div>
 
-  <!-- ── PLY → SPZ ── -->
-  <div class="card">
-    <div class="card-title">PLY → SPZ</div>
-    <div class="card-desc">Convert a Gaussian Splat .ply file to the compact .spz format.</div>
-    <div class="drop-zone" id="dz-p2s">
-      <span class="icon">🔄</span>
-      <span class="hint">Drop a <strong>.ply</strong> file here<br>or <strong>click to browse</strong></span>
-      <input type="file" id="fi-p2s" accept=".ply">
-    </div>
-    <div class="status" id="st-p2s"></div>
-  </div>
+  <div class="workspace">
 
-  <!-- ── SPZ → PLY ── -->
-  <div class="card">
-    <div class="card-title">SPZ → PLY</div>
-    <div class="card-desc">Convert a .spz file back to the standard Gaussian Splat .ply format.</div>
-    <div class="drop-zone" id="dz-s2p">
-      <span class="icon">🔄</span>
-      <span class="hint">Drop a <strong>.spz</strong> file here<br>or <strong>click to browse</strong></span>
-      <input type="file" id="fi-s2p" accept=".spz">
+    <!-- ───── Left: Drop panel ───── -->
+    <div class="drop-panel">
+      <h3>Source file</h3>
+      <div class="drop-zone" id="dropzone" tabindex="0" role="button" aria-label="Drop a file here or click to browse">
+        <input type="file" id="fileInput" accept=".spz,.ply" />
+        <div class="illus">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div class="title">Drop a file here or <strong>click to browse</strong></div>
+        <div class="hint">We'll detect the format and show the right actions.</div>
+        <div class="formats">
+          <span class="format-chip">.spz</span>
+          <span class="format-chip">.ply</span>
+        </div>
+      </div>
+      <div class="privacy">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <div><strong>Private by design.</strong> Parsing, conversion, and compression run entirely in WebAssembly on this device. No data is sent to any server.</div>
+      </div>
     </div>
-    <div class="status" id="st-s2p"></div>
-  </div>
 
+    <!-- ───── Right: Result panel ───── -->
+    <div class="result-panel" id="resultPanel">
+
+      <!-- Empty state -->
+      <div class="empty-state" id="emptyState">
+        <img class="illus-img" src="ds/splat.png" alt=""
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+        <div class="illus-fallback" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" opacity="0.4"/><circle cx="12" cy="12" r="11" opacity="0.2"/>
+          </svg>
+        </div>
+        <h4>No file loaded</h4>
+        <p>Drop a splat file on the left to inspect its properties and convert it.</p>
+        <div class="steps">
+          <span class="step">Drop</span><span class="sep">→</span>
+          <span class="step">Inspect</span><span class="sep">→</span>
+          <span class="step">Convert</span>
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div class="loading-state" id="loadingState" style="display:none">
+        <div class="spinner"></div>
+        <div class="label" id="loadingLabel">Loading…</div>
+        <div class="sub" id="loadingSub"></div>
+      </div>
+
+      <!-- Error state -->
+      <div class="error-state" id="errorState" style="display:none">
+        <div class="icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h4 id="errorTitle">Something went wrong</h4>
+        <p id="errorMsg"></p>
+      </div>
+
+      <!-- Info state -->
+      <div id="infoState" style="display:none; flex:1; flex-direction:column;">
+        <div class="result-head">
+          <div class="file-icon" id="fileIcon">SPZ</div>
+          <div class="file-meta">
+            <div class="file-name" id="fileName">—</div>
+            <div class="file-sub" id="fileSub">—</div>
+          </div>
+          <button class="reset-btn" id="resetBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Close
+          </button>
+        </div>
+        <div class="info-body">
+          <div class="info-section">
+            <h5>Point cloud</h5>
+            <div class="stat-grid">
+              <div class="stat-tile"><div class="k">Points</div><div class="v" id="statPoints">—</div></div>
+              <div class="stat-tile"><div class="k">SH degree</div><div class="v"><span id="statShDeg">—</span><span class="unit" id="statShDim"></span></div></div>
+              <div class="stat-tile"><div class="k">Antialiased</div><div class="v" id="statAA">—</div></div>
+              <div class="stat-tile"><div class="k">File size</div><div class="v mono" id="statSize">—</div></div>
+            </div>
+          </div>
+          <div class="info-section" id="spzHeaderSection" style="display:none">
+            <h5>SPZ Header</h5>
+            <div class="stat-grid">
+              <div class="stat-tile"><div class="k">SPZ Version</div><div class="v" id="statSpzVersion">—</div></div>
+              <div class="stat-tile"><div class="k">Streams</div><div class="v" id="statSpzStreams">—</div></div>
+            </div>
+          </div>
+          <div class="info-section">
+            <h5>Bounding box</h5>
+            <div class="bbox-table" id="bboxTable"></div>
+          </div>
+          <div class="info-section" id="sizeCompareSection" style="display:none">
+            <h5>Compression estimate</h5>
+            <div class="size-compare">
+              <div class="row"><span class="lbl">.ply</span><div class="bar-wrap"><div class="bar alt" id="plyBar" style="width:0%"></div></div><span class="val" id="plySize">—</span></div>
+              <div class="row"><span class="lbl">.spz</span><div class="bar-wrap"><div class="bar" id="spzBar" style="width:0%"></div></div><span class="val" id="spzSize">—</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="actions" id="actions"></div>
+      </div>
+
+    </div>
+  </div>
 </main>
 
-<div id="wasm-badge">Loading WASM…</div>
+<div class="toast-region" id="toasts"></div>
 
 <script type="module">
 
-// ─────────────────────────────────────────────
-// WASM module
-// ─────────────────────────────────────────────
+// ─── WASM ───────────────────────────────────────────────────────────────────
 
 let spz = null;
+const wasmStatusEl   = document.getElementById('wasm-status');
+const wasmStatusText = document.getElementById('wasm-status-text');
 
 const moduleReady = (async () => {
-  const badge = document.getElementById('wasm-badge');
   try {
     const { default: createSpzModule } = await import('./spz.js');
     spz = await createSpzModule();
-    badge.textContent = '● SPZ ready';
-    badge.classList.add('ready');
-    setTimeout(() => { badge.style.opacity = '0'; }, 2500);
+    wasmStatusEl.style.display = '';
+    wasmStatusEl.classList.add('ready');
+    wasmStatusText.textContent = 'SPZ Runtime Ready';
+    setTimeout(() => { wasmStatusEl.style.transition = 'opacity 400ms'; wasmStatusEl.style.opacity = '0'; }, 2500);
   } catch (e) {
-    badge.textContent = '⚠ spz.js not found';
-    badge.classList.add('fail');
-    console.error('WASM load error:', e);
+    console.warn('spz.js not loaded — deploy spz.js alongside this page.');
   }
 })();
 
 async function getSpz() {
   await moduleReady;
-  if (!spz) throw new Error('spz.js could not be loaded. Make sure it is in the same folder as index.html.');
+  if (!spz) throw new Error('spz.js could not be loaded. Place it in the same folder as index.html.');
   return spz;
 }
 
-// ─────────────────────────────────────────────
-// UI helpers
-// ─────────────────────────────────────────────
+// ─── State panels ────────────────────────────────────────────────────────────
 
-function setStatus(id, msg, type = '') {
-  const el = document.getElementById(id);
-  el.textContent = msg;
-  el.className = 'status' + (type ? ' ' + type : '');
+const emptyEl   = document.getElementById('emptyState');
+const loadingEl = document.getElementById('loadingState');
+const errorEl   = document.getElementById('errorState');
+const infoEl    = document.getElementById('infoState');
+
+function showPanel(which) {
+  emptyEl.style.display   = which === 'empty'   ? 'flex' : 'none';
+  loadingEl.style.display = which === 'loading' ? 'flex' : 'none';
+  errorEl.style.display   = which === 'error'   ? 'flex' : 'none';
+  infoEl.style.display    = which === 'info'    ? 'flex' : 'none';
+}
+function setLoading(label, sub = '') {
+  showPanel('loading');
+  document.getElementById('loadingLabel').textContent = label;
+  document.getElementById('loadingSub').textContent   = sub;
+}
+function setError(title, msg) {
+  showPanel('error');
+  document.getElementById('errorTitle').textContent = title;
+  document.getElementById('errorMsg').textContent   = msg;
 }
 
-function download(filename, data) {
-  const blob = new Blob([data]);
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+// ─── Toasts ──────────────────────────────────────────────────────────────────
+
+function toast(msg, kind = 'ok') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  const iconOk  = `<svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  const iconErr = `<svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+  el.innerHTML = `${kind === 'ok' ? iconOk : iconErr}<span>${msg}</span><span class="close">&times;</span>`;
+  el.querySelector('.close').onclick = () => el.remove();
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4500);
 }
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
 
 function readFile(file) {
   return new Promise((res, rej) => {
     const r = new FileReader();
     r.onload  = e => res(e.target.result);
-    r.onerror = rej;
+    r.onerror = e => rej(e.target.error || new Error('File read failed'));
     r.readAsArrayBuffer(file);
   });
 }
-
-function setupDropZone(dropId, inputId, onFile) {
-  const zone  = document.getElementById(dropId);
-  const input = document.getElementById(inputId);
-  zone.addEventListener('click', () => input.click());
-  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); });
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('over');
-    const f = e.dataTransfer.files[0];
-    if (f) onFile(f);
-  });
+function download(filename, data) {
+  const blob = new Blob([data]);
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
+const f        = v => v.toFixed(3);
+const n        = v => v.toLocaleString();
+const fmtBytes = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : b < 1073741824 ? (b/1048576).toFixed(2) + ' MB' : (b/1073741824).toFixed(2) + ' GB';
 
-// ─────────────────────────────────────────────
-// PLY parsing  (binary little-endian)
-//
-// GaussianCloud layout expected by saveSpzToBuffer:
-//   positions  Float32Array  [x,y,z] * N
-//   scales     Float32Array  [sx,sy,sz] * N        (log-scale, same value as PLY scale_*)
-//   rotations  Float32Array  [qx,qy,qz,qw] * N     (PLY rot_0=qw rot_1=qx rot_2=qy rot_3=qz)
-//   alphas     Float32Array  [opacity] * N          (same value as PLY opacity)
-//   colors     Float32Array  [f_dc_0,f_dc_1,f_dc_2] * N
-//   sh         Float32Array  coeff-major [R0,G0,B0, R1,G1,B1, …] * N
-//                            PLY is channel-major: all-R, all-G, all-B
-// ─────────────────────────────────────────────
+// ─── PLY parser ──────────────────────────────────────────────────────────────
 
 function degreeFromDim(dim) {
-  if (dim < 3)  return 0;
-  if (dim < 8)  return 1;
-  if (dim < 15) return 2;
-  if (dim < 24) return 3;
-  return 4;
+  if (dim < 3) return 0; if (dim < 8) return 1; if (dim < 15) return 2; if (dim < 24) return 3; return 4;
 }
 
 function parsePly(buffer) {
   const bytes = new Uint8Array(buffer);
-
-  // Locate "end_header\n"
   const MARKER = new TextEncoder().encode('end_header\n');
   let headerEnd = -1;
   outer: for (let i = 0; i <= bytes.length - MARKER.length; i++) {
-    for (let j = 0; j < MARKER.length; j++) {
-      if (bytes[i + j] !== MARKER[j]) continue outer;
-    }
-    headerEnd = i + MARKER.length;
-    break;
+    for (let j = 0; j < MARKER.length; j++) if (bytes[i+j] !== MARKER[j]) continue outer;
+    headerEnd = i + MARKER.length; break;
   }
   if (headerEnd < 0) throw new Error('Invalid PLY file: end_header not found.');
-
   const header = new TextDecoder().decode(bytes.subarray(0, headerEnd));
   const lines  = header.split('\n').map(l => l.trim()).filter(Boolean);
-
-  let format    = '';
-  let numPoints = 0;
-  const props   = [];
-  let inVertex  = false;
-
+  let format = '', numPoints = 0, inVertex = false;
+  const props = [];
   for (const line of lines) {
-    if (line.startsWith('format ')) {
-      format = line.split(/\s+/)[1];
-    } else if (line.startsWith('element vertex ')) {
-      numPoints = parseInt(line.split(/\s+/)[2], 10);
-      inVertex  = true;
-    } else if (line.startsWith('element ') && !line.startsWith('element vertex ')) {
-      inVertex = false;
-    } else if (inVertex && line.startsWith('property ') && !line.startsWith('property list')) {
-      const [, type, name] = line.split(/\s+/);
-      props.push({ name, type });
+    if (line.startsWith('format ')) format = line.split(/\s+/)[1];
+    else if (line.startsWith('element vertex ')) { numPoints = parseInt(line.split(/\s+/)[2], 10); inVertex = true; }
+    else if (line.startsWith('element ') && !line.startsWith('element vertex ')) inVertex = false;
+    else if (inVertex && line.startsWith('property ') && !line.startsWith('property list')) {
+      const [, type, name] = line.split(/\s+/); props.push({ name, type });
     }
   }
-
-  if (format !== 'binary_little_endian') {
-    throw new Error(`Unsupported PLY format "${format}". Only binary_little_endian is supported.`);
-  }
-
-  const SIZES = {
-    float: 4, double: 8,
-    int: 4, int32: 4, uint: 4, uint32: 4,
-    short: 2, int16: 2, ushort: 2, uint16: 2,
-    char: 1, int8: 1, uchar: 1, uint8: 1,
-  };
-
-  let stride = 0;
-  const propMap = {};
-  for (const p of props) {
-    const sz = SIZES[p.type];
-    if (!sz) throw new Error(`Unknown PLY property type: "${p.type}"`);
-    propMap[p.name] = { offset: stride, type: p.type };
-    stride += sz;
-  }
-
-  for (const req of ['x','y','z','scale_0','scale_1','scale_2',
-                     'rot_0','rot_1','rot_2','rot_3','opacity',
-                     'f_dc_0','f_dc_1','f_dc_2']) {
-    if (!propMap[req]) throw new Error(`Missing required PLY property: "${req}"`);
-  }
-
-  let fRestCount = 0;
-  while (propMap[`f_rest_${fRestCount}`]) fRestCount++;
+  if (format !== 'binary_little_endian') throw new Error(`Unsupported PLY format "${format}". Only binary_little_endian is supported.`);
+  const SIZES = { float:4,double:8,int:4,int32:4,uint:4,uint32:4,short:2,int16:2,ushort:2,uint16:2,char:1,int8:1,uchar:1,uint8:1 };
+  let stride = 0; const propMap = {};
+  for (const p of props) { const sz = SIZES[p.type]; if (!sz) throw new Error(`Unknown PLY type: "${p.type}"`); propMap[p.name] = { offset: stride, type: p.type }; stride += sz; }
+  for (const req of ['x','y','z','scale_0','scale_1','scale_2','rot_0','rot_1','rot_2','rot_3','opacity','f_dc_0','f_dc_1','f_dc_2'])
+    if (!propMap[req]) throw new Error(`Missing PLY property: "${req}"`);
+  let fRestCount = 0; while (propMap[`f_rest_${fRestCount}`]) fRestCount++;
   const shDim = Math.floor(fRestCount / 3);
-
-  const positions = new Float32Array(numPoints * 3);
-  const scales    = new Float32Array(numPoints * 3);
-  const rotations = new Float32Array(numPoints * 4);
-  const alphas    = new Float32Array(numPoints);
-  const colors    = new Float32Array(numPoints * 3);
-  const sh        = new Float32Array(numPoints * shDim * 3);
-
-  const allFloat32 = props.every(p => p.type === 'float');
-
-  if (allFloat32) {
-    const numProps = props.length;
-    // slice() into a new buffer guarantees Float32Array alignment
-    const data = new Float32Array(
-      buffer.slice(headerEnd, headerEnd + numPoints * numProps * 4)
-    );
-
+  const positions = new Float32Array(numPoints*3), scales = new Float32Array(numPoints*3),
+        rotations = new Float32Array(numPoints*4), alphas  = new Float32Array(numPoints),
+        colors    = new Float32Array(numPoints*3), sh      = new Float32Array(numPoints*shDim*3);
+  if (props.every(p => p.type === 'float')) {
+    const np   = props.length;
+    const data = new Float32Array(buffer.slice(headerEnd, headerEnd + numPoints * np * 4));
     const idx  = name => props.findIndex(p => p.name === name);
-    const xi   = idx('x'),       yi  = idx('y'),       zi  = idx('z');
-    const s0   = idx('scale_0'), s1  = idx('scale_1'), s2  = idx('scale_2');
-    const r0   = idx('rot_0'),   r1  = idx('rot_1'),   r2  = idx('rot_2'), r3 = idx('rot_3');
-    const oi   = idx('opacity');
-    const dc0  = idx('f_dc_0'),  dc1 = idx('f_dc_1'),  dc2 = idx('f_dc_2');
-
-    const shColR = new Int32Array(shDim);
-    const shColG = new Int32Array(shDim);
-    const shColB = new Int32Array(shDim);
-    for (let j = 0; j < shDim; j++) {
-      shColR[j] = idx(`f_rest_${j}`);
-      shColG[j] = idx(`f_rest_${j + shDim}`);
-      shColB[j] = idx(`f_rest_${j + 2 * shDim}`);
+    const xi=idx('x'),yi=idx('y'),zi=idx('z'),s0=idx('scale_0'),s1=idx('scale_1'),s2=idx('scale_2'),
+          r0=idx('rot_0'),r1=idx('rot_1'),r2=idx('rot_2'),r3=idx('rot_3'),
+          oi=idx('opacity'),dc0=idx('f_dc_0'),dc1=idx('f_dc_1'),dc2=idx('f_dc_2');
+    const shColR=new Int32Array(shDim),shColG=new Int32Array(shDim),shColB=new Int32Array(shDim);
+    for (let j=0;j<shDim;j++){shColR[j]=idx(`f_rest_${j}`);shColG[j]=idx(`f_rest_${j+shDim}`);shColB[j]=idx(`f_rest_${j+2*shDim}`);}
+    for (let i=0;i<numPoints;i++) {
+      const b=i*np,i3=i*3,i4=i*4;
+      positions[i3]=data[b+xi];positions[i3+1]=data[b+yi];positions[i3+2]=data[b+zi];
+      scales[i3]=data[b+s0];scales[i3+1]=data[b+s1];scales[i3+2]=data[b+s2];
+      rotations[i4]=data[b+r1];rotations[i4+1]=data[b+r2];rotations[i4+2]=data[b+r3];rotations[i4+3]=data[b+r0];
+      alphas[i]=data[b+oi];
+      colors[i3]=data[b+dc0];colors[i3+1]=data[b+dc1];colors[i3+2]=data[b+dc2];
+      const shBase=i*shDim*3;
+      for (let j=0;j<shDim;j++){sh[shBase+j*3]=data[b+shColR[j]];sh[shBase+j*3+1]=data[b+shColG[j]];sh[shBase+j*3+2]=data[b+shColB[j]];}
     }
-
-    for (let i = 0; i < numPoints; i++) {
-      const b  = i * numProps;
-      const i3 = i * 3, i4 = i * 4;
-
-      positions[i3]   = data[b + xi];
-      positions[i3+1] = data[b + yi];
-      positions[i3+2] = data[b + zi];
-
-      scales[i3]   = data[b + s0];
-      scales[i3+1] = data[b + s1];
-      scales[i3+2] = data[b + s2];
-
-      // PLY: rot_0=qw  rot_1=qx  rot_2=qy  rot_3=qz → GaussianCloud: [qx,qy,qz,qw]
-      rotations[i4]   = data[b + r1];
-      rotations[i4+1] = data[b + r2];
-      rotations[i4+2] = data[b + r3];
-      rotations[i4+3] = data[b + r0];
-
-      alphas[i] = data[b + oi];
-
-      colors[i3]   = data[b + dc0];
-      colors[i3+1] = data[b + dc1];
-      colors[i3+2] = data[b + dc2];
-
-      // PLY SH channel-major → GaussianCloud coeff-major
-      const shBase = i * shDim * 3;
-      for (let j = 0; j < shDim; j++) {
-        sh[shBase + j * 3]     = data[b + shColR[j]];
-        sh[shBase + j * 3 + 1] = data[b + shColG[j]];
-        sh[shBase + j * 3 + 2] = data[b + shColB[j]];
-      }
-    }
-
   } else {
-    // Mixed-type fallback via DataView
-    const view    = new DataView(buffer, headerEnd);
-    const READERS = {
-      float:  (v, o) => v.getFloat32(o, true),
-      double: (v, o) => v.getFloat64(o, true),
-      int:    (v, o) => v.getInt32(o,   true),  int32:  (v, o) => v.getInt32(o,   true),
-      uint:   (v, o) => v.getUint32(o,  true),  uint32: (v, o) => v.getUint32(o,  true),
-      short:  (v, o) => v.getInt16(o,   true),  int16:  (v, o) => v.getInt16(o,   true),
-      ushort: (v, o) => v.getUint16(o,  true),  uint16: (v, o) => v.getUint16(o,  true),
-      char:   (v, o) => v.getInt8(o),            int8:   (v, o) => v.getInt8(o),
-      uchar:  (v, o) => v.getUint8(o),           uint8:  (v, o) => v.getUint8(o),
-    };
-    const read = (name, ptIdx) => {
-      const p = propMap[name];
-      return READERS[p.type](view, ptIdx * stride + p.offset);
-    };
-
-    for (let i = 0; i < numPoints; i++) {
-      const i3 = i * 3, i4 = i * 4;
-      positions[i3]   = read('x', i);
-      positions[i3+1] = read('y', i);
-      positions[i3+2] = read('z', i);
-      scales[i3]   = read('scale_0', i);
-      scales[i3+1] = read('scale_1', i);
-      scales[i3+2] = read('scale_2', i);
-      rotations[i4]   = read('rot_1', i);
-      rotations[i4+1] = read('rot_2', i);
-      rotations[i4+2] = read('rot_3', i);
-      rotations[i4+3] = read('rot_0', i);
-      alphas[i] = read('opacity', i);
-      colors[i3]   = read('f_dc_0', i);
-      colors[i3+1] = read('f_dc_1', i);
-      colors[i3+2] = read('f_dc_2', i);
-      const shBase = i * shDim * 3;
-      for (let j = 0; j < shDim; j++) {
-        sh[shBase + j * 3]     = read(`f_rest_${j}`,           i);
-        sh[shBase + j * 3 + 1] = read(`f_rest_${j + shDim}`,   i);
-        sh[shBase + j * 3 + 2] = read(`f_rest_${j + 2*shDim}`, i);
-      }
+    const view=new DataView(buffer,headerEnd);
+    const R={float:(v,o)=>v.getFloat32(o,true),double:(v,o)=>v.getFloat64(o,true),int:(v,o)=>v.getInt32(o,true),int32:(v,o)=>v.getInt32(o,true),uint:(v,o)=>v.getUint32(o,true),uint32:(v,o)=>v.getUint32(o,true),short:(v,o)=>v.getInt16(o,true),int16:(v,o)=>v.getInt16(o,true),ushort:(v,o)=>v.getUint16(o,true),uint16:(v,o)=>v.getUint16(o,true),char:(v,o)=>v.getInt8(o),int8:(v,o)=>v.getInt8(o),uchar:(v,o)=>v.getUint8(o),uint8:(v,o)=>v.getUint8(o)};
+    const read=(nm,pi)=>{const p=propMap[nm];return R[p.type](view,pi*stride+p.offset);};
+    for (let i=0;i<numPoints;i++){
+      const i3=i*3,i4=i*4;
+      positions[i3]=read('x',i);positions[i3+1]=read('y',i);positions[i3+2]=read('z',i);
+      scales[i3]=read('scale_0',i);scales[i3+1]=read('scale_1',i);scales[i3+2]=read('scale_2',i);
+      rotations[i4]=read('rot_1',i);rotations[i4+1]=read('rot_2',i);rotations[i4+2]=read('rot_3',i);rotations[i4+3]=read('rot_0',i);
+      alphas[i]=read('opacity',i);
+      colors[i3]=read('f_dc_0',i);colors[i3+1]=read('f_dc_1',i);colors[i3+2]=read('f_dc_2',i);
+      const shBase=i*shDim*3;
+      for (let j=0;j<shDim;j++){sh[shBase+j*3]=read(`f_rest_${j}`,i);sh[shBase+j*3+1]=read(`f_rest_${j+shDim}`,i);sh[shBase+j*3+2]=read(`f_rest_${j+2*shDim}`,i);}
     }
   }
-
-  return {
-    numPoints,
-    shDegree: degreeFromDim(shDim),
-    antialiased: false,
-    extensions: [],
-    positions, scales, rotations, alphas, colors, sh,
-  };
+  return { numPoints, shDegree: degreeFromDim(shDim), antialiased: false, extensions: [], positions, scales, rotations, alphas, colors, sh };
 }
 
-// ─────────────────────────────────────────────
-// PLY writing  (binary little-endian)
-// Inverse of parsePly.
-// ─────────────────────────────────────────────
+// ─── PLY writer ──────────────────────────────────────────────────────────────
 
 function writePly(cloud) {
-  const N     = cloud.numPoints;
-  const shDim = (cloud.sh && cloud.sh.length > 0)
-                ? Math.round(cloud.sh.length / N / 3) : 0;
-  const D     = 17 + shDim * 3;
-
-  let hdr = 'ply\nformat binary_little_endian 1.0\n';
-  hdr += `element vertex ${N}\n`;
-  hdr += 'property float x\nproperty float y\nproperty float z\n';
-  hdr += 'property float nx\nproperty float ny\nproperty float nz\n';
-  hdr += 'property float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\n';
-  for (let i = 0; i < shDim * 3; i++) hdr += `property float f_rest_${i}\n`;
-  hdr += 'property float opacity\n';
-  hdr += 'property float scale_0\nproperty float scale_1\nproperty float scale_2\n';
-  hdr += 'property float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\n';
-  hdr += 'end_header\n';
-
-  const hdrBytes  = new TextEncoder().encode(hdr);
-  const dataFloat = new Float32Array(N * D);
-  const { positions, scales, rotations, alphas, colors, sh } = cloud;
-  let out = 0;
-
-  for (let i = 0; i < N; i++) {
-    const i3 = i * 3, i4 = i * 4;
-    dataFloat[out++] = positions[i3];
-    dataFloat[out++] = positions[i3+1];
-    dataFloat[out++] = positions[i3+2];
-    dataFloat[out++] = 0; dataFloat[out++] = 0; dataFloat[out++] = 0; // normals
-    dataFloat[out++] = colors[i3];
-    dataFloat[out++] = colors[i3+1];
-    dataFloat[out++] = colors[i3+2];
-    // SH coeff-major → channel-major
-    for (let j = 0; j < shDim; j++) dataFloat[out++] = sh[(i * shDim + j) * 3];
-    for (let j = 0; j < shDim; j++) dataFloat[out++] = sh[(i * shDim + j) * 3 + 1];
-    for (let j = 0; j < shDim; j++) dataFloat[out++] = sh[(i * shDim + j) * 3 + 2];
-    dataFloat[out++] = alphas[i];
-    dataFloat[out++] = scales[i3];
-    dataFloat[out++] = scales[i3+1];
-    dataFloat[out++] = scales[i3+2];
-    // GaussianCloud [qx,qy,qz,qw] → PLY rot_0=qw rot_1=qx rot_2=qy rot_3=qz
-    dataFloat[out++] = rotations[i4+3];
-    dataFloat[out++] = rotations[i4];
-    dataFloat[out++] = rotations[i4+1];
-    dataFloat[out++] = rotations[i4+2];
+  const N=cloud.numPoints, shDim=(cloud.sh&&cloud.sh.length>0)?Math.round(cloud.sh.length/N/3):0, D=17+shDim*3;
+  let hdr='ply\nformat binary_little_endian 1.0\n'+`element vertex ${N}\n`+
+    'property float x\nproperty float y\nproperty float z\nproperty float nx\nproperty float ny\nproperty float nz\nproperty float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\n';
+  for (let i=0;i<shDim*3;i++) hdr+=`property float f_rest_${i}\n`;
+  hdr+='property float opacity\nproperty float scale_0\nproperty float scale_1\nproperty float scale_2\nproperty float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\nend_header\n';
+  const hdrBytes=new TextEncoder().encode(hdr), dataFloat=new Float32Array(N*D);
+  const {positions,scales,rotations,alphas,colors,sh}=cloud;
+  let out=0;
+  for (let i=0;i<N;i++){
+    const i3=i*3,i4=i*4;
+    dataFloat[out++]=positions[i3];dataFloat[out++]=positions[i3+1];dataFloat[out++]=positions[i3+2];
+    dataFloat[out++]=0;dataFloat[out++]=0;dataFloat[out++]=0;
+    dataFloat[out++]=colors[i3];dataFloat[out++]=colors[i3+1];dataFloat[out++]=colors[i3+2];
+    for(let j=0;j<shDim;j++)dataFloat[out++]=sh[(i*shDim+j)*3];
+    for(let j=0;j<shDim;j++)dataFloat[out++]=sh[(i*shDim+j)*3+1];
+    for(let j=0;j<shDim;j++)dataFloat[out++]=sh[(i*shDim+j)*3+2];
+    dataFloat[out++]=alphas[i];
+    dataFloat[out++]=scales[i3];dataFloat[out++]=scales[i3+1];dataFloat[out++]=scales[i3+2];
+    dataFloat[out++]=rotations[i4+3];dataFloat[out++]=rotations[i4];dataFloat[out++]=rotations[i4+1];dataFloat[out++]=rotations[i4+2];
   }
-
-  const result = new Uint8Array(hdrBytes.byteLength + dataFloat.byteLength);
-  result.set(hdrBytes);
-  result.set(new Uint8Array(dataFloat.buffer), hdrBytes.byteLength);
+  const result=new Uint8Array(hdrBytes.byteLength+dataFloat.byteLength);
+  result.set(hdrBytes); result.set(new Uint8Array(dataFloat.buffer),hdrBytes.byteLength);
   return result;
 }
 
-// ─────────────────────────────────────────────
-// Bounding box
-// ─────────────────────────────────────────────
+// ─── SPZ header parser ───────────────────────────────────────────────────────
+
+async function parseSpzHeader(buffer) {
+  const probe = new Uint8Array(buffer, 0, 2);
+  const isGzip = probe[0] === 0x1F && probe[1] === 0x8B;
+
+  let raw;
+  if (isGzip) {
+    // Gzip SPZ: entire file is compressed; decompress to reach the NGSP header.
+    const ds = new DecompressionStream('gzip');
+    const stream = new Blob([buffer]).stream().pipeThrough(ds);
+    raw = new Uint8Array(await new Response(stream).arrayBuffer());
+  } else {
+    // ZSTD multi-stream SPZ: NGSP header is uncompressed at byte 0.
+    raw = new Uint8Array(buffer);
+  }
+
+  if (raw.byteLength < 16) throw new Error('SPZ file too small for header.');
+  const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  const magic = dv.getUint32(0, true);
+  if (magic !== 0x5053474E) return null;
+
+  const header = {
+    version:        dv.getUint32(4, true),
+    numPoints:      dv.getUint32(8, true),
+    shDegree:       dv.getUint8(12),
+    fractionalBits: dv.getUint8(13),
+    flags:          dv.getUint8(14),
+  };
+
+  // Gzip format: byte 15 is reserved (always 0); derive stream count from version.
+  // ZSTD multi-stream format: byte 15 is numStreams (6 for a full-attribute v4 file).
+  const byte15 = dv.getUint8(15);
+  header.numStreams = byte15 > 0 ? byte15 : (header.version >= 4 ? 6 : 1);
+
+  return header;
+}
 
 function bbox(positions) {
-  let x0 = Infinity, y0 = Infinity, z0 = Infinity;
-  let x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
-  for (let i = 0; i < positions.length; i += 3) {
-    if (positions[i]   < x0) x0 = positions[i];
-    if (positions[i]   > x1) x1 = positions[i];
-    if (positions[i+1] < y0) y0 = positions[i+1];
-    if (positions[i+1] > y1) y1 = positions[i+1];
-    if (positions[i+2] < z0) z0 = positions[i+2];
-    if (positions[i+2] > z1) z1 = positions[i+2];
+  let x0=Infinity,y0=Infinity,z0=Infinity,x1=-Infinity,y1=-Infinity,z1=-Infinity;
+  for (let i=0;i<positions.length;i+=3){
+    if(positions[i]<x0)x0=positions[i];if(positions[i]>x1)x1=positions[i];
+    if(positions[i+1]<y0)y0=positions[i+1];if(positions[i+1]>y1)y1=positions[i+1];
+    if(positions[i+2]<z0)z0=positions[i+2];if(positions[i+2]>z1)z1=positions[i+2];
   }
   return [[x0,x1],[y0,y1],[z0,z1]];
 }
 
-const f = v => v.toFixed(3);
-const n = v => v.toLocaleString();
+// ─── Render ──────────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────
-// Tool: SPZ Info
-// ─────────────────────────────────────────────
+let currentFile=null, currentCloud=null, currentBuffer=null, currentType=null, currentSpzHeader=null;
 
-async function runInfo(file) {
-  setStatus('st-info', 'Loading…', 'loading');
-  document.getElementById('info-out').innerHTML = '';
-  try {
-    const mod   = await getSpz();
-    const buf   = await readFile(file);
-    const cloud = mod.loadSpzFromBuffer(
-      new Uint8Array(buf),
-      { to: mod.CoordinateSystem.UNSPECIFIED }
-    );
-    const shDimFromCloud = (cloud.sh && cloud.sh.length > 0)
-      ? Math.round(cloud.sh.length / cloud.numPoints / 3) : 0;
-    const [[x0,x1],[y0,y1],[z0,z1]] = bbox(cloud.positions);
-
-    document.getElementById('info-out').innerHTML = `
-      <table class="info">
-        <tr><td>Points</td><td>${n(cloud.numPoints)}</td></tr>
-        <tr><td>SH degree</td><td>${cloud.shDegree}</td></tr>
-        <tr><td>SH coefficients</td><td>${shDimFromCloud} per channel</td></tr>
-        <tr><td>Antialiased</td><td>${cloud.antialiased ? 'Yes' : 'No'}</td></tr>
-        <tr><td>Bounding X</td><td>${f(x0)} → ${f(x1)}</td></tr>
-        <tr><td>Bounding Y</td><td>${f(y0)} → ${f(y1)}</td></tr>
-        <tr><td>Bounding Z</td><td>${f(z0)} → ${f(z1)}</td></tr>
-        <tr><td>File size</td><td>${(file.size / 1048576).toFixed(2)} MB</td></tr>
-      </table>`;
-    setStatus('st-info', '✓ Done', 'ok');
-  } catch (e) {
-    setStatus('st-info', `Error: ${e.message}`, 'error');
+function renderInfo({ file, cloud, type, spzSize=null, plySize=null }) {
+  showPanel('info');
+  const fileIcon = document.getElementById('fileIcon');
+  fileIcon.textContent = type.toUpperCase();
+  fileIcon.classList.toggle('ply', type === 'ply');
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSub').textContent  = `${fmtBytes(file.size)} · ${type === 'spz' ? 'Compressed splat' : 'Gaussian splat (PLY)'}`;
+  const shDim=(cloud.sh&&cloud.sh.length>0)?Math.round(cloud.sh.length/cloud.numPoints/3):0;
+  const hdr = currentSpzHeader;
+  const spzHdrSection = document.getElementById('spzHeaderSection');
+  if (type === 'spz' && hdr) {
+    spzHdrSection.style.display = '';
+    document.getElementById('statSpzVersion').textContent = `v${hdr.version}`;
+    document.getElementById('statSpzStreams').textContent = hdr.numStreams.toLocaleString();
+  } else {
+    spzHdrSection.style.display = 'none';
   }
+  const [[x0,x1],[y0,y1],[z0,z1]] = bbox(cloud.positions);
+  document.getElementById('statPoints').textContent = n(cloud.numPoints);
+  document.getElementById('statShDeg').textContent  = cloud.shDegree;
+  document.getElementById('statShDim').textContent  = shDim > 0 ? ` · ${shDim} coeff` : '';
+  document.getElementById('statAA').textContent     = cloud.antialiased ? 'Yes' : 'No';
+  document.getElementById('statSize').textContent   = fmtBytes(file.size);
+  document.getElementById('bboxTable').innerHTML = [['X',x0,x1],['Y',y0,y1],['Z',z0,z1]].map(([ax,a,b])=>`
+    <div class="bbox-row">
+      <span class="axis">${ax}</span><span class="num">${f(a)}</span>
+      <span class="arrow">→</span><span class="num">${f(b)}<span class="extent">Δ ${f(b-a)}</span></span>
+    </div>`).join('');
+  const sec = document.getElementById('sizeCompareSection');
+  if (spzSize != null && plySize != null) {
+    sec.style.display = '';
+    const max = Math.max(spzSize, plySize);
+    document.getElementById('plyBar').style.width  = (plySize/max*100)+'%';
+    document.getElementById('spzBar').style.width  = (spzSize/max*100)+'%';
+    document.getElementById('plySize').textContent = fmtBytes(plySize);
+    document.getElementById('spzSize').textContent = fmtBytes(spzSize);
+  } else { sec.style.display = 'none'; }
+  const dl = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+  const fi = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+  const actions = document.getElementById('actions');
+  if (type === 'spz') {
+    actions.innerHTML = `<button class="btn btn-primary" id="btn-convert">${dl} Convert to .ply</button><button class="btn btn-secondary" id="btn-download-json">${fi} Export info as JSON</button>`;
+    document.getElementById('btn-convert').onclick = convertToPly;
+  } else {
+    actions.innerHTML = `<button class="btn btn-primary" id="btn-convert">${dl} Compress to .spz</button><button class="btn btn-secondary" id="btn-download-json">${fi} Export info as JSON</button>`;
+    document.getElementById('btn-convert').onclick = convertToSpz;
+  }
+  document.getElementById('btn-download-json').onclick = exportInfoJson;
 }
 
-// ─────────────────────────────────────────────
-// Tool: PLY → SPZ
-// ─────────────────────────────────────────────
-
-async function runPlyToSpz(file) {
-  setStatus('st-p2s', 'Parsing PLY…', 'loading');
-  try {
-    const mod   = await getSpz();
-    const buf   = await readFile(file);
-    const cloud = parsePly(buf);
-    setStatus('st-p2s', 'Compressing to SPZ…', 'loading');
-    const result = mod.saveSpzToBuffer(cloud, {
-      version:    mod.LATEST_SPZ_HEADER_VERSION,
-      from:       mod.CoordinateSystem.UNSPECIFIED,
-      sh1Bits:    5,
-      shRestBits: 4,
-    });
-    if (!result) throw new Error('saveSpzToBuffer returned null.');
-    const outName = file.name.replace(/\.ply$/i, '.spz');
-    download(outName, result);
-    setStatus('st-p2s', `✓ Done — ${n(cloud.numPoints)} points → ${outName}`, 'ok');
-  } catch (e) {
-    setStatus('st-p2s', `Error: ${e.message}`, 'error');
-  }
+function exportInfoJson() {
+  if (!currentCloud || !currentFile) return;
+  const shDim=(currentCloud.sh&&currentCloud.sh.length>0)?Math.round(currentCloud.sh.length/currentCloud.numPoints/3):0;
+  const [[x0,x1],[y0,y1],[z0,z1]] = bbox(currentCloud.positions);
+  download(currentFile.name.replace(/\.(spz|ply)$/i,'')+'-info.json', JSON.stringify({
+    file: currentFile.name, type: currentType, size_bytes: currentFile.size,
+    num_points: currentCloud.numPoints, sh_degree: currentCloud.shDegree,
+    sh_coefficients: shDim, antialiased: currentCloud.antialiased,
+    bounding_box: { x:[x0,x1], y:[y0,y1], z:[z0,z1] },
+    ...(currentSpzHeader ? { spz_header: currentSpzHeader } : {}),
+  }, null, 2));
+  toast('Info exported', 'ok');
 }
 
-// ─────────────────────────────────────────────
-// Tool: SPZ → PLY
-// ─────────────────────────────────────────────
+// ─── File handling ───────────────────────────────────────────────────────────
 
-async function runSpzToPly(file) {
-  setStatus('st-s2p', 'Loading SPZ…', 'loading');
+async function handleFile(file) {
+  const nm = file.name.toLowerCase();
+  if (!nm.endsWith('.spz') && !nm.endsWith('.ply')) { setError('Unsupported file type', `Expected .spz or .ply — got "${file.name}".`); return; }
+
+  // PLY parsing allocates ~2–4× the file size in typed arrays. Warn early
+  // rather than letting the browser silently OOM mid-read.
+  const GB = 1073741824;
+  if (nm.endsWith('.ply') && file.size > 2 * GB) {
+    showPanel('error');
+    document.getElementById('errorTitle').textContent = `File too large (${fmtBytes(file.size)})`;
+    document.getElementById('errorMsg').innerHTML = `Web browsers can’t hold a PLY this large in memory, it would require several times the file size in RAM.<br>Convert to .spz with the <a href="https://github.com/nianticlabs/spz" target="_blank" rel="noopener">CLI tool</a>.`;
+    return;
+  }
+
+  currentFile = file; currentType = nm.endsWith('.spz') ? 'spz' : 'ply';
+  setLoading(currentType === 'spz' ? 'Loading SPZ…' : 'Parsing PLY…', `Reading ${fmtBytes(file.size)}`);
   try {
-    const mod   = await getSpz();
-    const buf   = await readFile(file);
-    const cloud = mod.loadSpzFromBuffer(
-      new Uint8Array(buf),
-      { to: mod.CoordinateSystem.UNSPECIFIED }
-    );
-    setStatus('st-s2p', 'Writing PLY…', 'loading');
-    const ply     = writePly(cloud);
-    const outName = file.name.replace(/\.spz$/i, '.ply');
+    const buf = await readFile(file); currentBuffer = buf;
+    if (currentType === 'spz') {
+      try { currentSpzHeader = await parseSpzHeader(buf); } catch { currentSpzHeader = null; }
+      const mod = await getSpz();
+      currentCloud = mod.loadSpzFromBuffer(new Uint8Array(buf), { to: mod.CoordinateSystem.RDF });
+    } else { currentSpzHeader = null; currentCloud = parsePly(buf); }
+    renderInfo({ file, cloud: currentCloud, type: currentType });
+  } catch (e) { console.error(e); setError(currentType === 'spz' ? 'Failed to load SPZ' : 'Failed to parse PLY', e.message || String(e)); }
+}
+
+async function convertToPly() {
+  if (!currentCloud) return;
+  setLoading('Writing PLY…', 'Encoding points and SH coefficients');
+  try {
+    await new Promise(r => setTimeout(r, 50));
+    const ply = writePly(currentCloud), outName = currentFile.name.replace(/\.spz$/i, '.ply');
     download(outName, ply);
-    setStatus('st-s2p', `✓ Done — ${n(cloud.numPoints)} points → ${outName}`, 'ok');
-  } catch (e) {
-    setStatus('st-s2p', `Error: ${e.message}`, 'error');
-  }
+    renderInfo({ file: currentFile, cloud: currentCloud, type: currentType, spzSize: currentFile.size, plySize: ply.byteLength });
+    toast(`Exported ${outName}`, 'ok');
+  } catch (e) { console.error(e); setError('Conversion failed', e.message || String(e)); }
 }
 
-// ─────────────────────────────────────────────
-// Wire up
-// ─────────────────────────────────────────────
+async function convertToSpz() {
+  if (!currentCloud) return;
+  setLoading('Compressing to SPZ…', 'Quantizing and packing coefficients');
+  try {
+    const mod = await getSpz(); await new Promise(r => setTimeout(r, 50));
+    const result = mod.saveSpzToBuffer(currentCloud, { version: mod.LATEST_SPZ_HEADER_VERSION, from: mod.CoordinateSystem.RDF, sh1Bits: 5, shRestBits: 4 });
+    if (!result) throw new Error('saveSpzToBuffer returned null.');
+    const outName = currentFile.name.replace(/\.ply$/i, '.spz');
+    download(outName, result);
+    renderInfo({ file: currentFile, cloud: currentCloud, type: currentType, spzSize: result.byteLength, plySize: currentFile.size });
+    toast(`Exported ${outName} (${(result.byteLength/currentFile.size*100).toFixed(1)}% of .ply)`, 'ok');
+  } catch (e) { console.error(e); setError('Compression failed', e.message || String(e)); }
+}
 
-setupDropZone('dz-info', 'fi-info', runInfo);
-setupDropZone('dz-p2s',  'fi-p2s',  runPlyToSpz);
-setupDropZone('dz-s2p',  'fi-s2p',  runSpzToPly);
+function resetAll() {
+  currentFile = currentCloud = currentBuffer = currentType = currentSpzHeader = null;
+  document.getElementById('fileInput').value = '';
+  showPanel('empty');
+}
+
+// ─── Wire up ─────────────────────────────────────────────────────────────────
+
+const dz = document.getElementById('dropzone');
+const fi = document.getElementById('fileInput');
+dz.addEventListener('click',   () => fi.click());
+dz.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){e.preventDefault();fi.click();} });
+fi.addEventListener('change',  () => { if (fi.files[0]) handleFile(fi.files[0]); });
+['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { if (ev==='dragleave'&&e.target!==dz) return; dz.classList.remove('over'); }));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => { e.preventDefault(); if(e.target===dz||dz.contains(e.target))return; const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+document.getElementById('resetBtn').onclick = resetAll;
+
+showPanel('empty');
 
 </script>
 </body>

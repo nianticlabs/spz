@@ -1,0 +1,296 @@
+/* ==========================================================================
+   Scaniverse Enterprise Design System — Colors & Type
+   Source: Figma file "Scaniverse Enterprise DS 2.0" (Niantic Spatial)
+   ========================================================================== */
+
+/* ---------- Webfonts ----------
+   Brand primary: Barlow (user-uploaded TTFs in /fonts).
+   Barlow is Scaniverse Enterprise's body + display sans — it replaces
+   Figtree/Chivo as the single humanist-grotesque workhorse. It carries all
+   nine weights + matching italics, so we use it for everything including
+   the wide-tracked magenta uppercase "system voice" labels.
+
+   Chivo Mono is still loaded from Google Fonts for code-adjacent metadata
+   (node IDs, sizes, version strings) — no mono face was uploaded.
+*/
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 100; font-display: swap; src: url("fonts/Barlow-Thin.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 100; font-display: swap; src: url("fonts/Barlow-ThinItalic.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 200; font-display: swap; src: url("fonts/Barlow-ExtraLight.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 200; font-display: swap; src: url("fonts/Barlow-ExtraLightItalic.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 300; font-display: swap; src: url("fonts/Barlow-Light.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 300; font-display: swap; src: url("fonts/Barlow-LightItalic.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/Barlow-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 400; font-display: swap; src: url("fonts/Barlow-Italic.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 500; font-display: swap; src: url("fonts/Barlow-Medium.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 500; font-display: swap; src: url("fonts/Barlow-MediumItalic.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/Barlow-SemiBold.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 600; font-display: swap; src: url("fonts/Barlow-SemiBoldItalic.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/Barlow-Bold.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 700; font-display: swap; src: url("fonts/Barlow-BoldItalic.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 800; font-display: swap; src: url("fonts/Barlow-ExtraBold.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 800; font-display: swap; src: url("fonts/Barlow-ExtraBoldItalic.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 900; font-display: swap; src: url("fonts/Barlow-Black.ttf") format("truetype"); }
+@font-face { font-family: "Barlow"; font-style: italic; font-weight: 900; font-display: swap; src: url("fonts/Barlow-BlackItalic.ttf") format("truetype"); }
+
+/* Chivo Mono kept via Google Fonts — metadata/system-voice monospace. */
+@import url("https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;500;600;700&display=swap");
+
+:root {
+  /* =====================================================================
+     COLOR PRIMITIVES
+     Every semantic token below resolves to one of these values.
+     Scale follows Figma swatches in /Color/UI.
+     ===================================================================== */
+
+  /* --- Neutrals / Ink / Greys ---------------------------------------- */
+  --ns-white:        #ffffff;
+  --ns-black:        #000000;
+
+  --ns-ink-900:      #0c1220;   /* primary ink, logo-dark, deep bg */
+  --ns-ink-800:      #242a37;
+  --ns-ink-700:      #393e47;
+  --ns-ink-600:      #404654;
+  --ns-ink-500:      #585f6d;   /* secondary text */
+  --ns-ink-400:      #6b6b6b;
+  --ns-ink-300:      #a1a8b8;   /* tertiary / muted labels */
+  --ns-ink-200:      #bbc2d2;   /* disabled foreground */
+  --ns-ink-100:      #d5dcec;   /* standard border */
+  --ns-ink-50:       #e4e7ef;   /* hairline */
+
+  --ns-surface-raised:  #ffffff;
+  --ns-surface-base:    #f5f6fa;   /* app background */
+  --ns-surface-sunken:  #f2f5f7;   /* cards nested inside bg */
+  --ns-surface-rail:    #fafbfd;   /* sidebar / quiet chrome */
+
+  /* --- Primary / Info (Blue) ----------------------------------------- */
+  --ns-blue-50:      #eef4ff;
+  --ns-blue-100:     #dce6f9;
+  --ns-blue-200:     #abcbeb;
+  --ns-blue-300:     #82b1e1;
+  --ns-blue-400:     #5b8ecb;
+  --ns-blue-500:     #496eb5;   /* MAIN — buttons, links, focus */
+  --ns-blue-600:     #264d9b;
+  --ns-blue-700:     #1c3a78;
+  --ns-blue-800:     #132a5a;
+  --ns-blue-900:     #091f40;   /* hero overlay, deep ink */
+
+  /* --- Secondary / Accent (Sky/Cyan — AR chrome) --------------------- */
+  --ns-cyan-300:     #9ccbf4;
+  --ns-cyan-400:     #6cb7ea;
+  --ns-cyan-500:     #24d7ff;   /* AR accents, scan-mode highlight */
+  --ns-cyan-600:     #00a8d8;
+
+  /* --- Brand magenta — used for meta/system labels ------------------- */
+  --ns-magenta-500:  #e400dc;   /* "Main Header" Chivo tracking labels */
+  --ns-magenta-100:  #ffd9fc;
+
+  /* --- Brand orange (from Scaniverse hero wordmark) ------------------ */
+  --ns-orange-500:   #f06c61;
+
+  /* --- Purple (AR localization / experimental) ----------------------- */
+  --ns-purple-500:   #9747ff;
+
+  /* --- Semantic (Success / Warning / Error) -------------------------- */
+  --ns-success-bg:     #e8f4df;
+  --ns-success-fg:     #1e5a2c;
+  --ns-success-border: #a8d597;
+
+  --ns-warning-bg:     #f7e9c8;
+  --ns-warning-fg:     #6e5413;
+  --ns-warning-border: #e8c86a;
+
+  --ns-error-bg:       #f5d4d2;
+  --ns-error-fg:       #b73834;
+  --ns-error-border:   #e6a6a1;
+
+  --ns-info-bg:        #dce6f9;
+  --ns-info-fg:        #1c3a78;
+
+  /* =====================================================================
+     SEMANTIC SURFACE / FG TOKENS
+     ===================================================================== */
+  --bg:              var(--ns-surface-base);
+  --bg-raised:       var(--ns-surface-raised);
+  --bg-sunken:       var(--ns-surface-sunken);
+  --bg-rail:         var(--ns-surface-rail);
+
+  --fg:              var(--ns-ink-900);         /* primary text */
+  --fg-muted:        var(--ns-ink-500);         /* secondary text */
+  --fg-subtle:       var(--ns-ink-300);         /* tertiary / placeholder */
+  --fg-disabled:     var(--ns-ink-200);
+  --fg-inverse:      var(--ns-white);
+
+  --border:          var(--ns-ink-100);         /* 1px solid default */
+  --border-strong:   var(--ns-ink-200);
+  --border-focus:    var(--ns-blue-500);
+  --divider:         var(--ns-ink-50);
+
+  --accent:          var(--ns-blue-500);        /* primary action */
+  --accent-hover:    var(--ns-blue-600);
+  --accent-pressed:  var(--ns-blue-700);
+  --accent-subtle:   var(--ns-blue-100);        /* secondary button bg */
+  --accent-fg:       var(--ns-white);
+
+  --meta:            var(--ns-magenta-500);     /* Chivo uppercase labels */
+
+  /* =====================================================================
+     TYPOGRAPHY — FAMILIES
+     ===================================================================== */
+  --font-sans:   "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:   "Chivo Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-display:"Barlow", ui-sans-serif, sans-serif;  /* wide-tracked labels */
+
+  /* =====================================================================
+     TYPOGRAPHY — SCALE (from /Type-Scale Desktop)
+     ===================================================================== */
+
+  --t-headline-lg-size:    32px;
+  --t-headline-lg-line:    40px;
+  --t-headline-lg-weight:  700;
+
+  --t-headline-md-size:    28px;
+  --t-headline-md-line:    36px;
+  --t-headline-md-weight:  700;
+
+  --t-headline-sm-size:    24px;
+  --t-headline-sm-line:    32px;
+  --t-headline-sm-weight:  700;
+
+  --t-headline-xs-size:    20px;
+  --t-headline-xs-line:    28px;
+  --t-headline-xs-weight:  700;
+
+  --t-title-lg-size:       22px;
+  --t-title-lg-line:       28px;
+  --t-title-lg-weight:     500;
+
+  --t-title-md-size:       16px;
+  --t-title-md-line:       24px;
+  --t-title-md-weight:     500;
+
+  --t-title-sm-size:       14px;
+  --t-title-sm-line:       20px;
+  --t-title-sm-weight:     500;
+
+  --t-label-lg-size:       14px;
+  --t-label-lg-line:       20px;
+  --t-label-lg-weight:     600;
+
+  --t-label-md-size:       12px;
+  --t-label-md-line:       16px;
+  --t-label-md-weight:     600;
+
+  --t-label-sm-size:       11px;
+  --t-label-sm-line:       16px;
+  --t-label-sm-weight:     600;
+
+  --t-body-lg-size:        16px;
+  --t-body-lg-line:        24px;
+  --t-body-lg-weight:      400;
+
+  --t-body-md-size:        14px;
+  --t-body-md-line:        20px;
+  --t-body-md-weight:      400;
+
+  --t-body-sm-size:        12px;
+  --t-body-sm-line:        16px;
+  --t-body-sm-weight:      400;
+
+  --t-body-xs-size:        12px;
+  --t-body-xs-line:        18px;
+  --t-body-xs-weight:      400;
+
+  --t-mono-md-size:        16px;
+  --t-mono-md-line:        16px;
+  --t-mono-lg-size:        32px;
+  --t-mono-lg-line:        40px;
+
+  /* =====================================================================
+     SPACING / RADII / ELEVATION
+     ===================================================================== */
+
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+  --space-16:  64px;
+
+  --radius-xs:    4px;
+  --radius-sm:    8px;
+  --radius-md:    12px;
+  --radius-lg:    16px;
+  --radius-xl:    24px;
+  --radius-pill:  999px;
+
+  --shadow-xs:  0 1px 2px rgba(12,18,32,0.06);
+  --shadow-sm:  0 2px 6px rgba(12,18,32,0.08), 0 1px 2px rgba(12,18,32,0.04);
+  --shadow-md:  0 8px 24px rgba(45,82,144,0.12), 0 2px 6px rgba(12,18,32,0.06);
+  --shadow-lg:  0 24px 48px rgba(45,82,144,0.18), 0 4px 10px rgba(12,18,32,0.08);
+  --shadow-xl:  0 40px 80px rgba(9,31,64,0.30);
+
+  --ease-standard: cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  --ease-emphasis: cubic-bezier(0.2, 0.0, 0.0, 1.2);
+  --dur-fast:   120ms;
+  --dur-normal: 200ms;
+  --dur-slow:   320ms;
+}
+
+/* ==========================================================================
+   SEMANTIC TEXT CLASSES
+   ========================================================================== */
+
+.t-headline-lg { font-family: var(--font-sans); font-weight: var(--t-headline-lg-weight); font-size: var(--t-headline-lg-size); line-height: var(--t-headline-lg-line); color: var(--fg); letter-spacing: -0.01em; }
+.t-headline-md { font-family: var(--font-sans); font-weight: var(--t-headline-md-weight); font-size: var(--t-headline-md-size); line-height: var(--t-headline-md-line); color: var(--fg); letter-spacing: -0.01em; }
+.t-headline-sm { font-family: var(--font-sans); font-weight: var(--t-headline-sm-weight); font-size: var(--t-headline-sm-size); line-height: var(--t-headline-sm-line); color: var(--fg); }
+.t-headline-xs { font-family: var(--font-sans); font-weight: var(--t-headline-xs-weight); font-size: var(--t-headline-xs-size); line-height: var(--t-headline-xs-line); color: var(--fg); }
+
+.t-title-lg    { font-family: var(--font-sans); font-weight: var(--t-title-lg-weight); font-size: var(--t-title-lg-size); line-height: var(--t-title-lg-line); color: var(--fg); }
+.t-title-md    { font-family: var(--font-sans); font-weight: var(--t-title-md-weight); font-size: var(--t-title-md-size); line-height: var(--t-title-md-line); color: var(--fg); }
+.t-title-sm    { font-family: var(--font-sans); font-weight: var(--t-title-sm-weight); font-size: var(--t-title-sm-size); line-height: var(--t-title-sm-line); color: var(--fg); }
+
+.t-label-lg    { font-family: var(--font-sans); font-weight: var(--t-label-lg-weight); font-size: var(--t-label-lg-size); line-height: var(--t-label-lg-line); color: var(--fg); }
+.t-label-md    { font-family: var(--font-sans); font-weight: var(--t-label-md-weight); font-size: var(--t-label-md-size); line-height: var(--t-label-md-line); color: var(--fg); }
+.t-label-sm    { font-family: var(--font-sans); font-weight: var(--t-label-sm-weight); font-size: var(--t-label-sm-size); line-height: var(--t-label-sm-line); color: var(--fg); }
+
+.t-body-lg     { font-family: var(--font-sans); font-weight: var(--t-body-lg-weight); font-size: var(--t-body-lg-size); line-height: var(--t-body-lg-line); color: var(--fg); }
+.t-body-md     { font-family: var(--font-sans); font-weight: var(--t-body-md-weight); font-size: var(--t-body-md-size); line-height: var(--t-body-md-line); color: var(--fg); }
+.t-body-sm     { font-family: var(--font-sans); font-weight: var(--t-body-sm-weight); font-size: var(--t-body-sm-size); line-height: var(--t-body-sm-line); color: var(--fg); }
+
+.t-mono-lg     { font-family: var(--font-mono); font-weight: 500; font-size: var(--t-mono-lg-size); line-height: var(--t-mono-lg-line); color: var(--fg); letter-spacing: 0.02em; }
+.t-mono-md     { font-family: var(--font-mono); font-weight: 500; font-size: var(--t-mono-md-size); line-height: var(--t-mono-md-line); color: var(--fg); letter-spacing: 0.02em; }
+
+.t-meta        { font-family: var(--font-display); font-weight: 500; font-size: 12px; line-height: 16px; color: var(--meta); letter-spacing: 0.14em; text-transform: uppercase; }
+.t-meta-lg     { font-family: var(--font-display); font-weight: 500; font-size: 24px; line-height: 1.2; color: var(--meta); letter-spacing: 0.1em; text-transform: uppercase; }
+
+/* ==========================================================================
+   ELEMENT DEFAULTS
+   ========================================================================== */
+html, body {
+  font-family: var(--font-sans);
+  font-size: var(--t-body-md-size);
+  line-height: var(--t-body-md-line);
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 { font: var(--t-headline-lg-weight) var(--t-headline-lg-size)/var(--t-headline-lg-line) var(--font-sans); letter-spacing: -0.01em; margin: 0; color: var(--fg); }
+h2 { font: var(--t-headline-md-weight) var(--t-headline-md-size)/var(--t-headline-md-line) var(--font-sans); letter-spacing: -0.01em; margin: 0; color: var(--fg); }
+h3 { font: var(--t-headline-sm-weight) var(--t-headline-sm-size)/var(--t-headline-sm-line) var(--font-sans); margin: 0; color: var(--fg); }
+h4 { font: var(--t-headline-xs-weight) var(--t-headline-xs-size)/var(--t-headline-xs-line) var(--font-sans); margin: 0; color: var(--fg); }
+h5 { font: var(--t-title-md-weight) var(--t-title-md-size)/var(--t-title-md-line) var(--font-sans); margin: 0; color: var(--fg); }
+h6 { font: var(--t-label-lg-weight) var(--t-label-lg-size)/var(--t-label-lg-line) var(--font-sans); margin: 0; color: var(--fg); }
+
+p  { font: var(--t-body-md-weight) var(--t-body-md-size)/var(--t-body-md-line) var(--font-sans); color: var(--fg); margin: 0; }
+
+code, pre, kbd { font-family: var(--font-mono); font-size: 0.92em; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+hr { border: 0; border-top: 1px solid var(--divider); }
