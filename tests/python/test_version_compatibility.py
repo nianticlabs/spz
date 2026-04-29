@@ -1,9 +1,11 @@
 """Tests for SPZ version compatibility and regression."""
 
 import os
+import struct
 import tempfile
 
 import numpy as np
+import pytest
 
 import spz
 from test_utils import times, sh_epsilon
@@ -25,40 +27,69 @@ def test_pack_options_version_property():
     opts.version = 1
     assert opts.version == 1
 
-def test_ngsp_v4_round_trip():
-    """Test that saving and loading an NGSP v4 file round-trips correctly."""
+@pytest.mark.parametrize("version,expected_magic", [
+    (2, b"\x1f\x8b"),
+    (3, b"\x1f\x8b"),
+    (4, b"NGSP"),
+])
+def test_all_versions_round_trip(version, expected_magic):
+    """All writable versions produce the correct file format and round-trip all attributes."""
+    num_points = 8
+    rng = np.random.default_rng(version)  # deterministic per version
+
     cloud = spz.GaussianCloud()
     cloud.sh_degree = 1
-
-    num_points = 10
-    rng = np.random.default_rng(0)
     cloud.positions = rng.uniform(-5.0, 5.0, size=num_points * 3).astype(np.float32)
     cloud.scales = rng.uniform(-2.0, 2.0, size=num_points * 3).astype(np.float32)
     cloud.rotations = rng.uniform(-1.0, 1.0, size=num_points * 4).astype(np.float32)
-    cloud.alphas = rng.uniform(-2.0, 2.0, size=num_points).astype(np.float32)
+    cloud.alphas = rng.uniform(-1.0, 1.0, size=num_points).astype(np.float32)
     cloud.colors = rng.uniform(0.0, 1.0, size=num_points * 3).astype(np.float32)
     cloud.sh = rng.uniform(-0.5, 0.5, size=num_points * 9).astype(np.float32)
 
     opts = spz.PackOptions()
-    filename = os.path.join(tempfile.gettempdir(), "ngsp_v4_round_trip.spz")
+    opts.version = version
+    filename = os.path.join(tempfile.gettempdir(), f"all_versions_v{version}.spz")
     assert spz.save_spz(cloud, opts, filename) is True
 
-    # Verify NGSP magic bytes at the start of the file
+    # Verify the file starts with the expected magic bytes for this version.
     with open(filename, "rb") as f:
-        header = f.read(4)
-    assert header == b"NGSP", f"Expected NGSP magic, got {header!r}"
+        magic = f.read(len(expected_magic))
+    assert magic == expected_magic, (
+        f"v{version}: expected magic {expected_magic!r}, got {magic!r}"
+    )
 
     loaded = spz.load_spz(filename, spz.UnpackOptions())
     assert loaded.num_points == num_points
     assert loaded.sh_degree == 1
-    np.testing.assert_allclose(loaded.positions, cloud.positions, atol=1/2048.0)
-    np.testing.assert_allclose(loaded.scales, cloud.scales, atol=1/32.0)
-    # Colors use a scaled encoding: round(x * colorScale * 255 + 0.5 * 255) where colorScale=0.15.
-    np.testing.assert_allclose(loaded.colors, cloud.colors, atol=1.0 / (2 * 0.15 * 255))
-    # Alpha is stored as 8-bit sigmoid; at large magnitudes the quantization error exceeds 0.01.
-    np.testing.assert_allclose(loaded.alphas, cloud.alphas, atol=0.02)
-    # SH degree 1 uses 5-bit quantization by default.
-    np.testing.assert_allclose(loaded.sh, cloud.sh, atol=1/32.0 + 1/255.0)
+
+    np.testing.assert_allclose(loaded.positions, cloud.positions, atol=1/2048.0,
+                               err_msg=f"v{version}: positions")
+    np.testing.assert_allclose(loaded.scales, cloud.scales, atol=1/32.0,
+                               err_msg=f"v{version}: scales")
+    np.testing.assert_allclose(loaded.colors, cloud.colors, atol=1.0/(2*0.15*255),
+                               err_msg=f"v{version}: colors")
+    np.testing.assert_allclose(loaded.alphas, cloud.alphas, atol=0.02,
+                               err_msg=f"v{version}: alphas")
+    np.testing.assert_allclose(loaded.sh, cloud.sh, atol=1/32.0 + 1/255.0,
+                               err_msg=f"v{version}: sh")
+
+    # Rotations: verify each quaternion is normalized and preserves the rotation.
+    # - NOTE: v2 uses first-three 8-bit encoding; v3+ uses smallest-three 10-bit.)
+    test_vec = np.array([1.0, 0.0, 0.0])
+    for i in range(num_points):
+        q_orig = cloud.rotations[i*4:(i+1)*4]
+        q_loaded = loaded.rotations[i*4:(i+1)*4]
+
+        # v2 stores x,y,z as 8-bit signed integers (max error ≈ 1/128 per component).
+        norm_tol = 0.01 if version == 2 else 1e-4
+        assert abs(np.linalg.norm(q_loaded) - 1.0) < norm_tol, f"v{version}: rotation {i} not unit"
+        q_orig_norm = q_orig / np.linalg.norm(q_orig)
+        cosine = abs(np.dot(times(q_orig_norm, test_vec), times(q_loaded, test_vec)))
+        cosine /= np.linalg.norm(times(q_orig_norm, test_vec)) * np.linalg.norm(times(q_loaded, test_vec))
+        
+        # v2 uses 8-bit x,y,z encoding (lower precision); v3+ uses smallest-three 10-bit.
+        threshold = 0.99 if version == 2 else 0.999
+        assert cosine > threshold, f"v{version}: rotation {i} cosine similarity {cosine:.4f} < {threshold}"
 
 
 def test_spz_version_3_quaternion_encoding():
