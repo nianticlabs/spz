@@ -213,6 +213,35 @@ struct membuf : std::streambuf {
 
 }  // namespace
 
+bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out) {
+  std::vector<uint8_t> buffer(8192);
+  z_stream stream = {};
+  if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 16 + MAX_WBITS, 9, Z_DEFAULT_STRATEGY)
+      != Z_OK) {
+    return false;
+  }
+  out->clear();
+  out->reserve(size / 4);
+  stream.next_in = const_cast<Bytef *>(reinterpret_cast<const Bytef *>(data));
+  stream.avail_in = static_cast<uInt>(size);
+  bool success = false;
+  while (true) {
+    stream.next_out = buffer.data();
+    stream.avail_out = static_cast<uInt>(buffer.size());
+    int32_t res = deflate(&stream, Z_FINISH);
+    if (res != Z_OK && res != Z_STREAM_END) {
+      break;
+    }
+    out->insert(out->end(), buffer.data(), buffer.data() + buffer.size() - stream.avail_out);
+    if (res == Z_STREAM_END) {
+      success = true;
+      break;
+    }
+  }
+  deflateEnd(&stream);
+  return success;
+}
+
 bool compressZstd(const uint8_t *data, size_t size, std::vector<uint8_t> *out,
                   int compressionLevel = 12) {
   size_t const bound = ZSTD_compressBound(size);
@@ -705,6 +734,46 @@ bool decompressNgspStreams(const uint8_t *data, size_t size,
   return true;
 }
 
+bool compressNgspStreams(const std::vector<std::pair<const uint8_t *, size_t>> &srcs,
+                         std::vector<std::vector<uint8_t>> *chunks,
+                         std::vector<uint64_t> *uncompressedSizes) {
+#if defined(__EMSCRIPTEN__)
+  // TODO: Add support for parallel compression on WASM.
+  for (const auto &s : srcs) {
+    if (s.second == 0) continue;
+    uncompressedSizes->push_back(s.second);
+    std::vector<uint8_t> chunk;
+    if (!compressZstd(s.first, s.second, &chunk)) {
+      SpzLog("[SPZ ERROR] compressNgspStreams: ZSTD compression failed");
+      return false;
+    }
+    chunks->push_back(std::move(chunk));
+  }
+#else
+  std::vector<std::future<std::vector<uint8_t>>> futures;
+  for (const auto &s : srcs) {
+    if (s.second == 0) continue;
+    uncompressedSizes->push_back(s.second);
+    futures.push_back(std::async(std::launch::async, [s]() -> std::vector<uint8_t> {
+      std::vector<uint8_t> chunk;
+      if (!compressZstd(s.first, s.second, &chunk)) {
+        SpzLog("[SPZ ERROR] compressNgspStreams: ZSTD compression failed");
+        return {};
+      }
+      return chunk;
+    }));
+  }
+  for (auto &f : futures) {
+    chunks->push_back(f.get());
+    if (chunks->back().empty()) {
+      SpzLog("[SPZ ERROR] compressNgspStreams: compression failed");
+      return false;
+    }
+  }
+#endif
+  return true;
+}
+
 PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
                                             const NgspFileHeader &header) {
   const int32_t numPoints = header.numPoints;
@@ -817,19 +886,21 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
 }
 
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out) {
-  PackOptions opts = o;
-  opts.version = LATEST_SPZ_HEADER_VERSION;
-  PackedGaussians packed = packGaussians(g, opts);
+  PackedGaussians packed = packGaussians(g, o);
 
   if (g.numPoints > 0 && packed.numPoints == 0) {
     return false;
   }
 
-  struct Stream {
-    const uint8_t *data;
-    size_t size;
-  };
-  const Stream streams[] = {
+  if (o.version < MIN_ZSTD_SPZ_HEADER_VERSION) {
+    // Legacy gzip path for versions 1–3.
+    std::stringstream ss;
+    serializePackedGaussians(packed, &ss);
+    const std::string data = ss.str();
+    return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
+  }
+
+  const std::vector<std::pair<const uint8_t *, size_t>> srcs = {
     {packed.positions.data(), packed.positions.size()},
     {packed.alphas.data(),    packed.alphas.size()},
     {packed.colors.data(),    packed.colors.size()},
@@ -838,53 +909,16 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
     {packed.sh.data(),        packed.sh.size()},
   };
 
-  std::vector<uint64_t> uncompressedSizes;
   std::vector<std::vector<uint8_t>> chunks;
-
-#if defined(__EMSCRIPTEN__)
-  // TODO: Add support for parallel compression on WASM.
-  for (const auto &s : streams) {
-    if (s.size == 0) {
-      continue;
-    }
-    uncompressedSizes.push_back(s.size);
-    std::vector<uint8_t> chunk;
-    if (!compressZstd(s.data, s.size, &chunk)) {
-      SpzLog("[SPZ ERROR] saveSpz: ZSTD compression failed");
-      return false;
-    }
-    chunks.push_back(std::move(chunk));
+  std::vector<uint64_t> uncompressedSizes;
+  if (!compressNgspStreams(srcs, &chunks, &uncompressedSizes)) {
+    return false;
   }
-#else
-  std::vector<std::future<std::vector<uint8_t>>> futures;
-  for (const auto &s : streams) {
-    if (s.size == 0) {
-      continue;
-    }
-    uncompressedSizes.push_back(s.size);
-    futures.push_back(std::async(std::launch::async, [s]() -> std::vector<uint8_t> {
-      std::vector<uint8_t> chunk;
-      if (!compressZstd(s.data, s.size, &chunk)) {
-        SpzLog("[SPZ ERROR] saveSpz: ZSTD compression failed");
-        return {};
-      }
-      return chunk;
-    }));
-  }
-
-  for (auto &f : futures) {
-    chunks.push_back(f.get());
-    if (chunks.back().empty()) {
-      SpzLog("[SPZ ERROR] saveSpz: compression failed");
-      return false;
-    }
-  }
-#endif
 
   const uint8_t numStreams = static_cast<uint8_t>(chunks.size());
   const uint32_t tocByteOffset = static_cast<uint32_t>(sizeof(NgspFileHeader));
   NgspFileHeader header;
-  header.version        = LATEST_SPZ_HEADER_VERSION;
+  header.version        = o.version;
   header.numPoints      = packed.numPoints;
   header.shDegree       = packed.shDegree;
   header.fractionalBits = packed.fractionalBits;
@@ -892,7 +926,7 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
   header.numStreams     = numStreams;
   header.tocByteOffset  = tocByteOffset;
 
-  // Write plaintext zone: [header][TOC]
+  // Write plaintext zone: [header][*][TOC]
   out->resize(tocByteOffset + numStreams * 2 * sizeof(uint64_t));
   uint8_t *buf = out->data();
   std::memcpy(buf, &header, sizeof(header));
