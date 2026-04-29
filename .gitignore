@@ -1,0 +1,6 @@
+build/
+build-wasm/
+dist/
+src/
+tests/
+.DS_Store
