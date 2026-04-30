@@ -140,6 +140,20 @@
   }
   .privacy svg { flex: none; margin-top: 1px; }
 
+  /* ─────────────────── Format notice ─────────────────── */
+  .format-notice {
+    margin-top: 32px;
+    padding: 12px 16px;
+    background: var(--ns-orange-50, #fff7ed);
+    border: 1px solid var(--ns-orange-100, #fed7aa);
+    border-radius: var(--radius-md);
+    display: flex; align-items: flex-start; gap: 10px;
+    font: 400 13px/20px var(--font-sans);
+    color: var(--ns-orange-700, #9a3412);
+  }
+  .format-notice svg { flex: none; margin-top: 2px; }
+  .format-notice a { color: inherit; font-weight: 600; }
+
   /* ─────────────────── Result panel ─────────────────── */
   .result-panel {
     background: var(--bg-raised);
@@ -525,6 +539,13 @@
       </div>
 
     </div>
+  </div>
+  <div class="format-notice">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    <span><strong>Note:</strong> This tool exports files in the new SPZ v4 format. The format is 3–5× faster to encode, smaller, and supports extensions, but only readers running the latest SPZ library can load these files. Older v2/v3 readers will report an unrecognized format. Developers can update at <a href="https://github.com/nianticlabs/spz" target="_blank" rel="noopener">github.com/nianticlabs/spz</a>.</span>
   </div>
 </main>
 
