@@ -30,6 +30,7 @@ SOFTWARE.
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <vector>
 
 #include "splat-c-types.h"
@@ -38,6 +39,7 @@ SOFTWARE.
 #endif
 
 namespace spz {
+constexpr int SH_MAX_DEGREE = 4;
 
 inline SpzFloatBuffer copyFloatBuffer(const std::vector<float> &vector) {
   SpzFloatBuffer buffer = {0, nullptr};
@@ -59,6 +61,14 @@ enum class CoordinateSystem {
   RDF = 6,  // Right Down Front, PLY coordinate system
   LUF = 7,  // Left Up Front, GLB coordinate system
   RUF = 8,  // Right Up Front, Unity coordinate system
+  LBD = 9,  // Left Back Down
+  RBD = 10, // Right Back Down
+  LBU = 11, // Left Back Up
+  RBU = 12, // Right Back Up
+  LFD = 13, // Left Front Down
+  RFD = 14, // Right Front Down
+  LFU = 15, // Left Front Up
+  RFU = 16, // Right Front Up
 };
 
 struct CoordinateConverter {
@@ -70,6 +80,10 @@ struct CoordinateConverter {
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f};
+  // One entry per SH band order l = 0..4 (five bands); matches max supported SH degree.
+  std::array<std::function<void(float*)>, SH_MAX_DEGREE> rotateShFuncs = {};
+  std::function<void(float*)> rotatePositionFunc = nullptr;
+  std::function<void(float*)> rotateQuaternionFunc = nullptr;
 };
 
 constexpr std::array<bool, 3> axesMatch(CoordinateSystem a, CoordinateSystem b) {
@@ -84,12 +98,124 @@ constexpr std::array<bool, 3> axesMatch(CoordinateSystem a, CoordinateSystem b) 
     ((aNum >> 2) & 1) == ((bNum >> 2) & 1)};
 }
 
-constexpr CoordinateConverter coordinateConverter(CoordinateSystem from, CoordinateSystem to) {
+constexpr bool needRotation(CoordinateSystem a, CoordinateSystem b) {
+  auto aNum = static_cast<int>(a) - 1;
+  auto bNum = static_cast<int>(b) - 1;
+  if (aNum < 0 || bNum < 0) {
+    return false;
+  }
+  return ((aNum >> 3) & 1) != ((bNum >> 3) & 1);
+}
+
+using AnalyticRotateShFn = void (*)(float*);
+inline constexpr std::array<AnalyticRotateShFn, 4> kAnalyticRotatePlusPiHalfAboutXTable = {
+  [](float* p) {
+    const float t0 = p[0], t1 = p[1], t2 = p[2];
+    p[0] = t1;
+    p[1] = -t0;
+    p[2] = t2;
+  },
+  [](float* p) {
+    std::array<float, 5> s{};
+    for (int i = 0; i < 5; ++i) {
+      s[static_cast<size_t>(i)] = p[i];
+    }
+    const float s3 = std::sqrt(3.f);
+    p[0] = s[3];
+    p[1] = -s[1];
+    p[2] = -0.5f * s[2] - (s3 / 2.f) * s[4];
+    p[3] = -s[0];
+    p[4] = -(s3 / 2.f) * s[2] + 0.5f * s[4];
+  },
+  [](float* p) {
+    std::array<float, 7> s{};
+    for (int i = 0; i < 7; ++i) {
+      s[static_cast<size_t>(i)] = p[i];
+    }
+    const float s15 = std::sqrt(15.f);
+    p[0] = -std::sqrt(5.f / 8.f) * s[3] + std::sqrt(3.f / 8.f) * s[5];
+    p[1] = -s[1];
+    p[2] = -std::sqrt(3.f / 8.f) * s[3] - std::sqrt(5.f / 8.f) * s[5];
+    p[3] = std::sqrt(5.f / 8.f) * s[0] + std::sqrt(3.f / 8.f) * s[2];
+    p[4] = -0.25f * s[4] - (s15 / 4.f) * s[6];
+    p[5] = -std::sqrt(3.f / 8.f) * s[0] + std::sqrt(5.f / 8.f) * s[2];
+    p[6] = -(s15 / 4.f) * s[4] + 0.25f * s[6];
+  },
+  [](float* p) {
+    std::array<float, 9> s{};
+    for (int i = 0; i < 9; ++i) {
+      s[static_cast<size_t>(i)] = p[i];
+    }
+    const float s2 = std::sqrt(2.f);
+    const float s5 = std::sqrt(5.f);
+    const float s7 = std::sqrt(7.f);
+    const float s14 = std::sqrt(14.f);
+    const float s35 = std::sqrt(35.f);
+    p[0] = -(s14 / 4.f) * s[5] + (s2 / 4.f) * s[7];
+    p[1] = -0.75f * s[1] + (s7 / 4.f) * s[3];
+    p[2] = -(s2 / 4.f) * s[5] - (s14 / 4.f) * s[7];
+    p[3] = (s7 / 4.f) * s[1] + 0.75f * s[3];
+    p[4] = (3.f / 8.f) * s[4] + (s5 / 4.f) * s[6] + (s35 / 8.f) * s[8];
+    p[5] = (s14 / 4.f) * s[0] + (s2 / 4.f) * s[2];
+    p[6] = (s5 / 4.f) * s[4] + 0.5f * s[6] - (s7 / 4.f) * s[8];
+    p[7] = -(s2 / 4.f) * s[0] + (s14 / 4.f) * s[2];
+    p[8] = (s35 / 8.f) * s[4] - (s7 / 4.f) * s[6] + 0.125f * s[8];
+  },
+};
+
+// Mapping between the coordinate systems after a 90 degree rotation about the x-axis.
+// For example, CoordinateSystem::LDB (1) will be mapped to CoordinateSystem::LBU (11)
+// after the rotation.
+inline constexpr std::array<CoordinateSystem, 17> kCoordinateRotationMapping = {
+  CoordinateSystem::UNSPECIFIED,
+  CoordinateSystem::LBU,
+  CoordinateSystem::RBU,
+  CoordinateSystem::LFU,
+  CoordinateSystem::RFU,
+  CoordinateSystem::LBD,
+  CoordinateSystem::RBD,
+  CoordinateSystem::LFD,
+  CoordinateSystem::RFD,
+  CoordinateSystem::LUB,
+  CoordinateSystem::RUB,
+  CoordinateSystem::LUF,
+  CoordinateSystem::RUF,
+  CoordinateSystem::LDB,
+  CoordinateSystem::RDB,
+  CoordinateSystem::LDF,
+  CoordinateSystem::RDF,
+};
+
+inline CoordinateConverter coordinateConverter(CoordinateSystem from, CoordinateSystem to, int shDegree) {
+  CoordinateConverter result;
+
+  if (needRotation(from, to)) {
+    result = coordinateConverter(kCoordinateRotationMapping[static_cast<int>(from)], to, shDegree);
+    for (int i = 0; i < shDegree && i < SH_MAX_DEGREE; ++i) {
+      result.rotateShFuncs[static_cast<size_t>(i)] = kAnalyticRotatePlusPiHalfAboutXTable[static_cast<size_t>(i)];
+    }
+    result.rotatePositionFunc = [](float* p) {
+      const float x = p[0], y = p[1], z = p[2];
+      p[0] = x;
+      p[1] = -z;
+      p[2] = y;
+    };
+    result.rotateQuaternionFunc = [](float* p) {
+      const float s = std::sqrt(2.f) / 2.f;
+      const float x = p[0], y = p[1], z = p[2], w = p[3];
+      p[0] = s * (w + x);
+      p[1] = s * (y - z);
+      p[2] = s * (y + z);
+      p[3] = s * (w - x);
+    };
+    return result;
+  }
+
   auto [xMatch, yMatch, zMatch] = axesMatch(from, to);
   float x = xMatch ? 1.0f : -1.0f;
   float y = yMatch ? 1.0f : -1.0f;
   float z = zMatch ? 1.0f : -1.0f;
-  CoordinateConverter result;
+
   result.flipP = {x, y, z};
   result.flipQ = {y * z, x * z, x * y};
   result.flipSh = {
@@ -189,11 +315,21 @@ struct GaussianCloud {
       // There is nothing to convert.
       return;
     }
-    CoordinateConverter c = coordinateConverter(from, to);
+    CoordinateConverter c = coordinateConverter(from, to, shDegree);
+    if (c.rotatePositionFunc) {
+      for (size_t i = 0; i < positions.size(); i += 3) {
+        c.rotatePositionFunc(positions.data() + i);
+      }
+    }
     for (size_t i = 0; i < positions.size(); i += 3) {
       positions[i + 0] *= c.flipP[0];
       positions[i + 1] *= c.flipP[1];
       positions[i + 2] *= c.flipP[2];
+    }
+    if (c.rotateQuaternionFunc) {
+      for (size_t i = 0; i < rotations.size(); i += 4) {
+        c.rotateQuaternionFunc(rotations.data() + i);
+      }
     }
     for (size_t i = 0; i < rotations.size(); i += 4) {
       rotations[i + 0] *= c.flipQ[0];
@@ -201,17 +337,37 @@ struct GaussianCloud {
       rotations[i + 2] *= c.flipQ[2];
       // Don't modify rotations[i + 3] (w component)
     }
-    // Rotate spherical harmonics by inverting coefficients that reference the y and z axes, for
-    // each RGB channel. See spherical_harmonics_kernel_impl.h for spherical harmonics formulas.
+    // Spherical harmonics: apply band rotation (same base offsets as PackedGaussian::unpack in
+    // load-spz.cc), then axis flips per coefficient. Interleaved layout is coeff-major, RGB inner.
     const size_t numCoeffs = sh.size() / 3;
     const size_t numCoeffsPerPoint = numCoeffs / numPoints;
-    size_t idx = 0;
-    for (size_t i = 0; i < numCoeffs; i += numCoeffsPerPoint) {
-      for (size_t j = 0; j < numCoeffsPerPoint; ++j, idx += 3) {
-        auto flip = c.flipSh[j];
-        sh[idx + 0] *= flip;
-        sh[idx + 1] *= flip;
-        sh[idx + 2] *= flip;
+    for (size_t coeffBase = 0; coeffBase < numCoeffs; coeffBase += numCoeffsPerPoint) {
+      for (int band = 0; band < shDegree && band < SH_MAX_DEGREE; ++band) {
+        if (!c.rotateShFuncs[static_cast<size_t>(band)]) {
+          continue;
+        }
+        const size_t bandStart = static_cast<size_t>(band * (band + 2));
+        const size_t bandSize = static_cast<size_t>(2 * band + 3);
+        if (bandStart + bandSize > numCoeffsPerPoint) {
+          break;
+        }
+        std::array<float, 9> tmp{};
+        for (int channel = 0; channel < 3; ++channel) {
+          for (size_t k = 0; k < bandSize; ++k) {
+            tmp[k] = sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)];
+          }
+          c.rotateShFuncs[static_cast<size_t>(band)](tmp.data());
+          for (size_t k = 0; k < bandSize; ++k) {
+            sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)] = tmp[k];
+          }
+        }
+      }
+      for (size_t j = 0; j < numCoeffsPerPoint; ++j) {
+        const size_t base = (coeffBase + j) * 3;
+        const auto flip = c.flipSh[j];
+        sh[base + 0] *= flip;
+        sh[base + 1] *= flip;
+        sh[base + 2] *= flip;
       }
     }
   }

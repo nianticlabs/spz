@@ -22,7 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "splat-types.h"
+// Include load-spz.h (not splat-types.h) first so the load-spz ↔ splat-types cycle resolves
+// and CoordinateSystem / CoordinateConverter are complete before load-spz.h uses them.
+#include "load-spz.h"
 
 #include <cmath>
 #include <limits>

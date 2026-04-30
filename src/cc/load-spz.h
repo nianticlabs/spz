@@ -57,7 +57,6 @@ static void SpzLog(const char *fmt) {
 }
 
 // Maximum degree supported
-constexpr int SH_MAX_DEGREE = 4;
 constexpr int SH_MAX_COEFFS = 24;
 constexpr int DEFAULT_SH1_BITS = 5;
 constexpr int DEFAULT_SH_REST_BITS = 4;

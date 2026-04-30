@@ -24,6 +24,7 @@ SOFTWARE.
 */
 
 #include "load-spz.h"
+#include "splat-types.h"
 #ifdef SPZ_BUILD_EXTENSIONS
 #include "splat-extensions.h"
 #endif
@@ -266,6 +267,9 @@ void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const Coord
     // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
     // NOTE: These are already in xyzw order.
     Quat4f q = normalized(quat4f(rotation));
+    if (c.rotateQuaternionFunc) {
+      c.rotateQuaternionFunc(q.data());
+    }
     q[0] *= c.flipQ[0];
     q[1] *= c.flipQ[1];
     q[2] *= c.flipQ[2];
@@ -279,6 +283,9 @@ void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const Coord
 void packQuaternionSmallestThree(uint8_t r[4], const float rotation[4], const CoordinateConverter& c) {
   // Normalize the quaternion
   Quat4f q = normalized(quat4f(&rotation[0]));
+  if (c.rotateQuaternionFunc) {
+    c.rotateQuaternionFunc(q.data());
+  }
   q[0] *= c.flipQ[0];
   q[1] *= c.flipQ[1];
   q[2] *= c.flipQ[2];
@@ -335,7 +342,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     SpzLog("[SPZ WARNING] SPZ with SH degrees %d will not be loadable in a legacy loader of version %d",
         g.shDegree, o.version);
   }
-  CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
+  CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB, g.shDegree);
 
   // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
   // we can use different values on a per-splat basis and still be compatible with the decoder.
@@ -362,12 +369,22 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
   // Store coordinates as 24-bit fixed point values.
   const float scale = (1 << packed.fractionalBits);
-  for (size_t i = 0; i < numPoints * 3; i++) {
-    const int32_t fixed32 =
-      static_cast<int32_t>(std::round(c.flipP[i % 3] * g.positions[i] * scale));
-    packed.positions[i * 3 + 0] = fixed32 & 0xff;
-    packed.positions[i * 3 + 1] = (fixed32 >> 8) & 0xff;
-    packed.positions[i * 3 + 2] = (fixed32 >> 16) & 0xff;
+  std::array<float, 3> bufPos = {};
+  for (int32_t pi = 0; pi < numPoints; ++pi) {
+    const size_t base = static_cast<size_t>(pi) * 3;
+    bufPos[0] = g.positions[base + 0] * scale;
+    bufPos[1] = g.positions[base + 1] * scale;
+    bufPos[2] = g.positions[base + 2] * scale;
+    if (c.rotatePositionFunc) {
+      c.rotatePositionFunc(bufPos.data());
+    }
+    for (size_t j = 0; j < 3; ++j) {
+      const int32_t fixed32 =
+          static_cast<int32_t>(std::round(c.flipP[j] * bufPos[j]));
+      packed.positions[(base + j) * 3 + 0] = fixed32 & 0xff;
+      packed.positions[(base + j) * 3 + 1] = (fixed32 >> 8) & 0xff;
+      packed.positions[(base + j) * 3 + 2] = (fixed32 >> 16) & 0xff;
+    }
   }
 
   for (size_t i = 0; i < numPoints * 3; i++) {
@@ -403,17 +420,26 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     const uint8_t sh1Bits = o.sh1Bits;
     const uint8_t shRestBits = o.shRestBits;
     const int32_t shPerPoint = dimForDegree(g.shDegree) * 3;
+    std::array<float, 24> bufSh = {};
     for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
-      size_t j = 0, k = 0;
-      for (; j < 9; j += 3, k++) {  // There are 9 (3 * 3) coefficients for degree 1
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - sh1Bits));
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - sh1Bits));
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - sh1Bits));
-      }
-      for (; j < shPerPoint; j += 3, k++) {
-        packed.sh[i + j + 0] = quantizeSH(c.flipSh[k] * g.sh[i + j + 0], 1 << (8 - shRestBits));
-        packed.sh[i + j + 1] = quantizeSH(c.flipSh[k] * g.sh[i + j + 1], 1 << (8 - shRestBits));
-        packed.sh[i + j + 2] = quantizeSH(c.flipSh[k] * g.sh[i + j + 2], 1 << (8 - shRestBits));
+      for (size_t channel = 0; channel < 3; channel++) {
+        for (size_t k = 0; k < static_cast<size_t>(shDim); ++k) {
+          bufSh[k] = g.sh[i + k * 3 + channel];
+        }
+        for (size_t band = 0; band < static_cast<size_t>(g.shDegree) && band < static_cast<size_t>(SH_MAX_DEGREE);
+             ++band) {
+          if (c.rotateShFuncs[band]) {
+            const size_t baseIndex = band * (band + 2);
+            c.rotateShFuncs[band](bufSh.data() + baseIndex);
+          }
+        }
+        size_t j = 0, k = 0;
+        for (; j < 9; j += 3, k++) {  // There are 9 (3 * 3) coefficients for degree 1
+          packed.sh[i + j + channel] = quantizeSH(c.flipSh[k] * bufSh[k], 1 << (8 - sh1Bits));
+        }
+        for (; j < shPerPoint; j += 3, k++) {
+          packed.sh[i + j + channel] = quantizeSH(c.flipSh[k] * bufSh[k], 1 << (8 - shRestBits));
+        }
       }
     }
   }
@@ -423,16 +449,22 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
 void unpackQuaternionFirstThree(float rotation[4], const uint8_t r[3], const CoordinateConverter& c = CoordinateConverter())
 {
-  Vec3f xyz = times(
+  Vec3f xyz = 
     plus(
       times(
         Vec3f{ static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2]) },
         1.0f / 127.5f),
-      Vec3f{ -1, -1, -1 }),
-    c.flipQ);
+      Vec3f{ -1, -1, -1 });
   std::copy(xyz.data(), xyz.data() + 3, &rotation[0]);
   // Compute the real component - we know the quaternion is normalized and w is non-negative
   rotation[3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
+  if (c.rotateQuaternionFunc) {
+    c.rotateQuaternionFunc(rotation);
+  }
+  for (int i = 0; i < 3; i++)
+  {
+    rotation[i] *= c.flipQ[i];
+  }
 }
 
 void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const CoordinateConverter& c = CoordinateConverter())
@@ -465,6 +497,10 @@ void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const 
   }
   rotation[i_largest] = sqrt(1.0f - sum_squares);
 
+  if (c.rotateQuaternionFunc) {
+    c.rotateQuaternionFunc(rotation);
+  }
+
   for (int i = 0; i < 3; i++)
   {
     rotation[i] *= c.flipQ[i];
@@ -478,7 +514,7 @@ UnpackedGaussian PackedGaussian::unpack(
     // Decode legacy float16 format. We can remove this at some point as it was never released.
     const auto *halfData = reinterpret_cast<const Half *>(position.data());
     for (size_t i = 0; i < 3; i++) {
-      result.position[i] = c.flipP[i] * halfToFloat(halfData[i]);
+      result.position[i] = halfToFloat(halfData[i]);
     }
   } else {
     // Decode 24-bit fixed point coordinates
@@ -488,8 +524,14 @@ UnpackedGaussian PackedGaussian::unpack(
       fixed32 |= position[i * 3 + 1] << 8;
       fixed32 |= position[i * 3 + 2] << 16;
       fixed32 |= (fixed32 & 0x800000) ? 0xff000000 : 0;  // sign extension
-      result.position[i] = c.flipP[i] * static_cast<float>(fixed32) * scale;
+      result.position[i] = static_cast<float>(fixed32) * scale;
     }
+  }
+  if (c.rotatePositionFunc) {
+    c.rotatePositionFunc(result.position.data());
+  }
+  for (size_t i = 0; i < 3; i++) {
+    result.position[i] *= c.flipP[i];
   }
 
   for (size_t i = 0; i < 3; i++) {
@@ -512,9 +554,25 @@ UnpackedGaussian PackedGaussian::unpack(
   }
 
   for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
-    result.shR[i] = c.flipSh[i] * unquantizeSH(shR[i]);
-    result.shG[i] = c.flipSh[i] * unquantizeSH(shG[i]);
-    result.shB[i] = c.flipSh[i] * unquantizeSH(shB[i]);
+    result.shR[i] = unquantizeSH(shR[i]);
+    result.shG[i] = unquantizeSH(shG[i]);
+    result.shB[i] = unquantizeSH(shB[i]);
+  }
+
+  for (size_t i = 0; i < SH_MAX_DEGREE; i++)
+  {
+    if (c.rotateShFuncs[i]) {
+      const size_t baseIndex = i * (i + 2);
+      c.rotateShFuncs[i](result.shR.data() + baseIndex);
+      c.rotateShFuncs[i](result.shG.data() + baseIndex);
+      c.rotateShFuncs[i](result.shB.data() + baseIndex);
+    }
+  }
+
+  for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
+    result.shR[i] *= c.flipSh[i];
+    result.shG[i] *= c.flipSh[i];
+    result.shB[i] *= c.flipSh[i];
   }
 
   return result;
@@ -847,11 +905,11 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   }
   SpzLog(
     "[SPZ] deserializePackedGaussians: version=%d, numPoints=%d, shDegree=%d, fractionalBits=%d, antialiased=%d, hasExtensions=%d",
-    header.version, 
-    header.numPoints, 
-    header.shDegree, 
-    header.fractionalBits, 
-    int((header.flags & FlagAntialiased) != 0), 
+    header.version,
+    header.numPoints,
+    header.shDegree,
+    header.fractionalBits,
+    int((header.flags & FlagAntialiased) != 0),
     int((header.flags & FlagHasExtensions) != 0)
   );
 
@@ -1340,15 +1398,22 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   const int32_t shDim = static_cast<int>(data.sh.size() / N / 3);
   const int32_t D = 17 + shDim * 3;
 
-  CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RDF);
+  CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RDF, data.shDegree);
 
   std::vector<float> values(N * D, 0.0f);
+  std::array<float, 4> bufQuat = {};
   int32_t outIdx = 0, i3 = 0, i4 = 0;
   for (int32_t i = 0; i < N; i++) {
     // Position (x, y, z)
-    values[outIdx++] = c.flipP[0] * data.positions[i3 + 0];
-    values[outIdx++] = c.flipP[1] * data.positions[i3 + 1];
-    values[outIdx++] = c.flipP[2] * data.positions[i3 + 2];
+    for (size_t j = 0; j < 3; j++) {
+      values[outIdx + j] = data.positions[i3 + j];
+    }
+    if (c.rotatePositionFunc) {
+      c.rotatePositionFunc(values.data() + outIdx);
+    }
+    for (size_t i = 0; i < 3; i++) {
+      values[outIdx++] *= c.flipP[i];
+    }
     // Normals (nx, ny, nz): these are always zero, but some viewers expect them to be present
     outIdx += 3;
     // Color (r, g, b): DC component for spherical harmonics
@@ -1357,14 +1422,19 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
     values[outIdx++] = data.colors[i3 + 2];
     // Spherical harmonics: Interleave so the coefficients are the fastest-changing axis and
     // the channel (r, g, b) is slower-changing axis.
-    for (int32_t j = 0; j < shDim; j++) {
-      values[outIdx++] = c.flipSh[j] * data.sh[(i * shDim + j) * 3];
-    }
-    for (int32_t j = 0; j < shDim; j++) {
-      values[outIdx++] = c.flipSh[j] * data.sh[(i * shDim + j) * 3 + 1];
-    }
-    for (int32_t j = 0; j < shDim; j++) {
-      values[outIdx++] = c.flipSh[j] * data.sh[(i * shDim + j) * 3 + 2];
+    for (int32_t k = 0; k < 3; k++) {
+      for (int32_t j = 0; j < shDim; j++) {
+        values[outIdx + j] = data.sh[(i * shDim + j) * 3 + k];
+      }
+      for (int32_t band = 0; band < data.shDegree && band < SH_MAX_DEGREE; ++band) {
+        if (c.rotateShFuncs[static_cast<size_t>(band)]) {
+          const size_t baseIndex = static_cast<size_t>(band * (band + 2));
+          c.rotateShFuncs[static_cast<size_t>(band)](values.data() + outIdx + baseIndex);
+        }
+      }
+      for (int32_t j = 0; j < shDim; j++) {
+        values[outIdx++] *= c.flipSh[j];
+      }
     }
     // Alpha
     values[outIdx++] = data.alphas[i];
@@ -1373,10 +1443,17 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
     values[outIdx++] = data.scales[i3 + 1];
     values[outIdx++] = data.scales[i3 + 2];
     // Rotation (qw, qx, qy, qz)
-    values[outIdx++] = data.rotations[i4 + 3];
-    values[outIdx++] = c.flipQ[0] * data.rotations[i4 + 0];
-    values[outIdx++] = c.flipQ[1] * data.rotations[i4 + 1];
-    values[outIdx++] = c.flipQ[2] * data.rotations[i4 + 2];
+    for (int32_t j = 0; j < 4; j++) {
+      bufQuat[j] = data.rotations[i4 + j];
+    }
+    if (c.rotateQuaternionFunc) {
+      c.rotateQuaternionFunc(bufQuat.data());
+    }
+    // data.rotations are x,y,z,w per point; PLY expects w then x,y,z (see property order below).
+    values[outIdx++] = bufQuat[3];
+    values[outIdx++] = c.flipQ[0] * bufQuat[0];
+    values[outIdx++] = c.flipQ[1] * bufQuat[1];
+    values[outIdx++] = c.flipQ[2] * bufQuat[2];
     i3 += 3;
     i4 += 4;
   }
