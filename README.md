@@ -121,9 +121,12 @@ Version 4 uses ZSTD compression with a 32-byte plaintext header. Each attribute 
 
 ```
 Bytes  0–31:              NgspFileHeader (32 bytes, plaintext)
-Bytes  32..(32+N*16-1):   TOC — N × [compressedSize u64, uncompressedSize u64]
-Bytes  (32+N*16)..end:    N independent ZSTD-compressed attribute streams
+Bytes  32..(tbo-1):       Extension ILV records, if flags & 0x2  (variable)
+Bytes  tbo..(tbo+N*16-1): TOC — N × [compressedSize u64, uncompressedSize u64]
+Bytes  (tbo+N*16)..end:   N independent ZSTD-compressed attribute streams
 ```
+
+`tbo` = `tocByteOffset` from the header. When no extensions are present, `tbo = 32`.
 
 ### Header (version 4)
 
@@ -150,7 +153,7 @@ All values are little-endian.
 5. **fractionalBits**: The number of bits used for the fractional part of fixed-point coordinates.
 6. **flags**: Bit field.
    - `0x1`: splat was trained with [antialiasing](https://niujinshuchong.github.io/mip-splatting/).
-   - `0x2`: whether the stream contains vendor-specific extensions after the gaussian data.
+   - `0x2`: the header zone contains vendor-specific extension records (see [Extensions](#extensions)).
 7. **numStreams**: Number of ZSTD-compressed attribute streams following the TOC. Typically 6 (positions, alphas, colors, scales, rotations, spherical harmonics).
 8. **tocByteOffset**: Byte offset from the start of the file to the Table of Contents. Everything before `tocByteOffset` is plaintext.
 9. **reserved**: Must be zero.
@@ -222,7 +225,7 @@ This allows users to trade off between file size and quality. The library mainta
 
 ### Extensions
 
-SPZ supports vendor-specific extensions (e.g. camera limits) so multiple vendors can coexist in the same file. The extension stream uses a per-record length so unknown types are skipped. For the extension format and how to add or use extensions, see [extensions/README.md](extensions/README.md).
+SPZ supports vendor-specific extensions (e.g. camera limits) so multiple vendors can coexist in the same file. In version 4, extensions are stored as ILV (type + length + value) records in the plaintext header zone between the fixed header and the TOC — parsers that don't recognize an extension type skip it by length. For the extension format and how to add or use extensions, see [extensions/README.md](extensions/README.md).
 
 ### Camera Orbit Limitation
 
