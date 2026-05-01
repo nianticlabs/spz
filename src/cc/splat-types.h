@@ -316,19 +316,14 @@ struct GaussianCloud {
       return;
     }
     CoordinateConverter c = coordinateConverter(from, to, shDegree);
-    if (c.rotatePositionFunc) {
-      for (size_t i = 0; i < positions.size(); i += 3) {
-        c.rotatePositionFunc(positions.data() + i);
-      }
-    }
     for (size_t i = 0; i < positions.size(); i += 3) {
       positions[i + 0] *= c.flipP[0];
       positions[i + 1] *= c.flipP[1];
       positions[i + 2] *= c.flipP[2];
     }
-    if (c.rotateQuaternionFunc) {
-      for (size_t i = 0; i < rotations.size(); i += 4) {
-        c.rotateQuaternionFunc(rotations.data() + i);
+    if (c.rotatePositionFunc) {
+      for (size_t i = 0; i < positions.size(); i += 3) {
+        c.rotatePositionFunc(positions.data() + i);
       }
     }
     for (size_t i = 0; i < rotations.size(); i += 4) {
@@ -337,11 +332,23 @@ struct GaussianCloud {
       rotations[i + 2] *= c.flipQ[2];
       // Don't modify rotations[i + 3] (w component)
     }
+    if (c.rotateQuaternionFunc) {
+      for (size_t i = 0; i < rotations.size(); i += 4) {
+        c.rotateQuaternionFunc(rotations.data() + i);
+      }
+    }
     // Spherical harmonics: apply band rotation (same base offsets as PackedGaussian::unpack in
     // load-spz.cc), then axis flips per coefficient. Interleaved layout is coeff-major, RGB inner.
     const size_t numCoeffs = sh.size() / 3;
     const size_t numCoeffsPerPoint = numCoeffs / numPoints;
     for (size_t coeffBase = 0; coeffBase < numCoeffs; coeffBase += numCoeffsPerPoint) {
+      for (size_t j = 0; j < numCoeffsPerPoint; ++j) {
+        const size_t base = (coeffBase + j) * 3;
+        const auto flip = c.flipSh[j];
+        sh[base + 0] *= flip;
+        sh[base + 1] *= flip;
+        sh[base + 2] *= flip;
+      }
       for (int band = 0; band < shDegree && band < SH_MAX_DEGREE; ++band) {
         if (!c.rotateShFuncs[static_cast<size_t>(band)]) {
           continue;
@@ -361,13 +368,6 @@ struct GaussianCloud {
             sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)] = tmp[k];
           }
         }
-      }
-      for (size_t j = 0; j < numCoeffsPerPoint; ++j) {
-        const size_t base = (coeffBase + j) * 3;
-        const auto flip = c.flipSh[j];
-        sh[base + 0] *= flip;
-        sh[base + 1] *= flip;
-        sh[base + 2] *= flip;
       }
     }
   }
