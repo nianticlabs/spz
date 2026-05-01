@@ -902,6 +902,14 @@ async function convertToPly() {
 
 async function convertToSpz() {
   if (!currentCloud) return;
+  const shDim = (currentCloud.sh && currentCloud.sh.length > 0) ? Math.round(currentCloud.sh.length / currentCloud.numPoints / 3) : 0;
+  const estimatedBytes = currentCloud.numPoints * (44 + shDim * 12);
+  if (estimatedBytes > 500 * 1048576) {
+    showPanel('error');
+    document.getElementById('errorTitle').textContent = "Too many points to compress in browser (" + currentCloud.numPoints.toLocaleString() + " points)";
+    document.getElementById('errorMsg').innerHTML = "This point cloud is too large to compress in the browser. Use the <a href=\"https://github.com/nianticlabs/spz\" target=\"_blank\" rel=\"noopener\">CLI tool</a> to convert it directly from the command line.";
+    return;
+  }
   setLoading('Compressing to SPZ…', 'Quantizing and packing coefficients');
   try {
     const mod = await getSpz(); await new Promise(r => setTimeout(r, 50));
