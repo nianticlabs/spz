@@ -25,7 +25,7 @@ endif()
 
 set(SPZ_SHOULD_INSTALL TRUE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
+set (CMAKE_CXX_STANDARD 17)
 
 # zlib is required to build the project
 if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
