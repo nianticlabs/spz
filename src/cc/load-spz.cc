@@ -1399,6 +1399,7 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
     if (c.rotatePositionFunc) {
       c.rotatePositionFunc(values.data() + outIdx);
     }
+    outIdx += 3;
     // Normals (nx, ny, nz): these are always zero, but some viewers expect them to be present
     outIdx += 3;
     // Color (r, g, b): DC component for spherical harmonics

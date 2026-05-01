@@ -163,27 +163,27 @@ inline constexpr std::array<AnalyticRotateShFn, 4> kAnalyticRotatePlusPiHalfAbou
   },
 };
 
-// Mapping between the coordinate systems after a 90 degree rotation about the x-axis.
-// For example, CoordinateSystem::LDB (1) will be mapped to CoordinateSystem::LBU (11)
-// after the rotation.
+// Mapping between the coordinate systems after a 90 degree rotation about the x-axis,
+// i.e. applying (x,y,z) -> (x,-z,y). For example, LDB (x=L,y=D,z=B) maps to
+// LFD (x=L,y=F,z=D) because the new y=-z_old=-B=F and new z=y_old=D.
 inline constexpr std::array<CoordinateSystem, 17> kCoordinateRotationMapping = {
   CoordinateSystem::UNSPECIFIED,
-  CoordinateSystem::LBU,
-  CoordinateSystem::RBU,
-  CoordinateSystem::LFU,
-  CoordinateSystem::RFU,
-  CoordinateSystem::LBD,
-  CoordinateSystem::RBD,
-  CoordinateSystem::LFD,
-  CoordinateSystem::RFD,
-  CoordinateSystem::LUB,
-  CoordinateSystem::RUB,
-  CoordinateSystem::LUF,
-  CoordinateSystem::RUF,
-  CoordinateSystem::LDB,
-  CoordinateSystem::RDB,
-  CoordinateSystem::LDF,
-  CoordinateSystem::RDF,
+  CoordinateSystem::LFD,  // LDB (1): y=-B=F, z=D
+  CoordinateSystem::RFD,  // RDB (2): y=-B=F, z=D
+  CoordinateSystem::LFU,  // LUB (3): y=-B=F, z=U
+  CoordinateSystem::RFU,  // RUB (4): y=-B=F, z=U
+  CoordinateSystem::LBD,  // LDF (5): y=-F=B, z=D
+  CoordinateSystem::RBD,  // RDF (6): y=-F=B, z=D
+  CoordinateSystem::LBU,  // LUF (7): y=-F=B, z=U
+  CoordinateSystem::RBU,  // RUF (8): y=-F=B, z=U
+  CoordinateSystem::LUB,  // LBD (9): y=-D=U, z=B
+  CoordinateSystem::RUB,  // RBD (10): y=-D=U, z=B
+  CoordinateSystem::LDB,  // LBU (11): y=-U=D, z=B
+  CoordinateSystem::RDB,  // RBU (12): y=-U=D, z=B
+  CoordinateSystem::LUF,  // LFD (13): y=-D=U, z=F
+  CoordinateSystem::RUF,  // RFD (14): y=-D=U, z=F
+  CoordinateSystem::LDF,  // LFU (15): y=-U=D, z=F
+  CoordinateSystem::RDF,  // RFU (16): y=-U=D, z=F
 };
 
 inline CoordinateConverter coordinateConverter(CoordinateSystem from, CoordinateSystem to, int shDegree) {
