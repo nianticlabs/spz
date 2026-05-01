@@ -861,16 +861,20 @@ async function handleFile(file) {
   const nm = file.name.toLowerCase();
   if (!nm.endsWith('.spz') && !nm.endsWith('.ply')) { setError('Unsupported file type', `Expected .spz or .ply — got "${file.name}".`); return; }
 
-  // PLY parsing allocates ~2–4× the file size in typed arrays. Warn early
-  // rather than letting the browser silently OOM mid-read.
   const GB = 1073741824;
+  const MB = 1048576;
   if (nm.endsWith('.ply') && file.size > 2 * GB) {
     showPanel('error');
-    document.getElementById('errorTitle').textContent = `File too large (${fmtBytes(file.size)})`;
-    document.getElementById('errorMsg').innerHTML = `Web browsers can’t hold a PLY this large in memory, it would require several times the file size in RAM.<br>Convert to .spz with the <a href="https://github.com/nianticlabs/spz" target="_blank" rel="noopener">CLI tool</a>.`;
+    document.getElementById('errorTitle').textContent = "File too large (" + fmtBytes(file.size) + ")";
+    document.getElementById('errorMsg').innerHTML = "Web browsers cannot hold a PLY this large in memory, it would require several times the file size in RAM.<br>Convert to .spz with the <a href=\"https://github.com/nianticlabs/spz\" target=\"_blank\" rel=\"noopener\">CLI tool</a>.";
     return;
   }
-
+  if (nm.endsWith('.spz') && file.size > 200 * MB) {
+    showPanel('error');
+    document.getElementById('errorTitle').textContent = "File too large (" + fmtBytes(file.size) + ")";
+    document.getElementById('errorMsg').innerHTML = "Web browsers cannot hold an SPZ this large in memory, it would require several times the file size in RAM.<br>Convert to .ply with the <a href=\"https://github.com/nianticlabs/spz\" target=\"_blank\" rel=\"noopener\">CLI tool</a>.";
+    return;
+  }
   currentFile = file; currentType = nm.endsWith('.spz') ? 'spz' : 'ply';
   setLoading(currentType === 'spz' ? 'Loading SPZ…' : 'Parsing PLY…', `Reading ${fmtBytes(file.size)}`);
   try {
