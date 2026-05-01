@@ -104,13 +104,22 @@ cloud.rotate_180_deg_about_x()  # Converts between RUB and RDF coordinates
 import spz
 
 # All available coordinate systems
-print("Available coordinate systems:")
-for coord_sys in [spz.CoordinateSystem.UNSPECIFIED, spz.CoordinateSystem.LDB, 
-                  spz.CoordinateSystem.RDB, spz.CoordinateSystem.LUB, 
-                  spz.CoordinateSystem.RUB, spz.CoordinateSystem.LDF,
-                  spz.CoordinateSystem.RDF, spz.CoordinateSystem.LUF, 
-                  spz.CoordinateSystem.RUF]:
-    print(f"  {coord_sys}")
+# Standard family (axes: X=L/R, Y=U/D, Z=F/B):
+standard = [
+    spz.CoordinateSystem.LDB, spz.CoordinateSystem.RDB,
+    spz.CoordinateSystem.LUB, spz.CoordinateSystem.RUB,
+    spz.CoordinateSystem.LDF, spz.CoordinateSystem.RDF,
+    spz.CoordinateSystem.LUF, spz.CoordinateSystem.RUF,
+]
+# Rotated family (axes permuted by a 90-degree rotation about X; Y and Z swapped):
+rotated = [
+    spz.CoordinateSystem.LBD, spz.CoordinateSystem.RBD,
+    spz.CoordinateSystem.LBU, spz.CoordinateSystem.RBU,
+    spz.CoordinateSystem.LFD, spz.CoordinateSystem.RFD,
+    spz.CoordinateSystem.LFU, spz.CoordinateSystem.RFU,
+]
+print("Standard:", standard)
+print("Rotated: ", rotated)
 
 # Load PLY (typically RDF) and convert to Unity coordinates (RUF)
 unpack_options = spz.UnpackOptions()

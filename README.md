@@ -18,6 +18,16 @@ and what coordinate system their rendering system uses when loading. These are s
 PackOptions and UnpackOptions respectively.  If the coordinate system is `UNSPECIFIED`, data will
 be saved and loaded without conversion, which may harm interoperability.
 
+There are 16 named coordinate systems organised in two families:
+
+- **Standard family** — letters denote the X, Y, Z axis directions (e.g. `RUB` = Right, Up, Back):
+  `LDB`, `RDB`, `LUB`, `RUB`, `LDF`, `RDF`, `LUF`, `RUF`
+- **Rotated family** — axes are permuted by a 90-degree rotation about X (Y and Z are swapped):
+  `LBD`, `RBD`, `LBU`, `RBU`, `LFD`, `RFD`, `LFU`, `RFU`
+
+Converting between families applies a 90-degree rotation about the X axis in addition to any axis
+flips, which also rotates spherical-harmonics coefficients via the appropriate Wigner D-matrix.
+
 ## Implementations
 
 ### C++
