@@ -32,6 +32,14 @@ export enum CoordinateSystem {
   RDF,
   LUF,
   RUF,
+  LBD,
+  RBD,
+  LBU,
+  RBU,
+  LFD,
+  RFD,
+  LFU,
+  RFU,
 }
 
 @SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS@

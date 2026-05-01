@@ -21,11 +21,21 @@ def test_coordinate_system_enum():
     assert hasattr(spz, 'RDF')
     assert hasattr(spz, 'LUF')
     assert hasattr(spz, 'RUF')
+    assert hasattr(spz, 'LBD')
+    assert hasattr(spz, 'RBD')
+    assert hasattr(spz, 'LBU')
+    assert hasattr(spz, 'RBU')
+    assert hasattr(spz, 'LFD')
+    assert hasattr(spz, 'RFD')
+    assert hasattr(spz, 'LFU')
+    assert hasattr(spz, 'RFU')
 
     # Test that all enum values are unique
     enum_values = [
         spz.UNSPECIFIED, spz.LDB, spz.RDB, spz.LUB, spz.RUB,
-        spz.LDF, spz.RDF, spz.LUF, spz.RUF
+        spz.LDF, spz.RDF, spz.LUF, spz.RUF,
+        spz.LBD, spz.RBD, spz.LBU, spz.RBU,
+        spz.LFD, spz.RFD, spz.LFU, spz.RFU,
     ]
     assert len(enum_values) == len(set(enum_values))
 

@@ -337,8 +337,8 @@ struct GaussianCloud {
         c.rotateQuaternionFunc(rotations.data() + i);
       }
     }
-    // Spherical harmonics: apply band rotation (same base offsets as PackedGaussian::unpack in
-    // load-spz.cc), then axis flips per coefficient. Interleaved layout is coeff-major, RGB inner.
+    // Spherical harmonics: apply axis flips per coefficient, then band rotation (same order as
+    // packGaussians/PackedGaussian::unpack in load-spz.cc). Interleaved layout is coeff-major, RGB inner.
     const size_t numCoeffs = sh.size() / 3;
     const size_t numCoeffsPerPoint = numCoeffs / numPoints;
     for (size_t coeffBase = 0; coeffBase < numCoeffs; coeffBase += numCoeffsPerPoint) {
