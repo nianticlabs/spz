@@ -24,6 +24,7 @@ SOFTWARE.
 
 #include "splat-extensions.h"
 #include "safe-orbit-camera-adobe.h"
+#include "coordinate-system-adobe.h"
 #include "load-spz.h"
 
 #include <sstream>
@@ -59,6 +60,16 @@ bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
       if (rec)
         out.push_back(std::move(*rec));
       return true;  // continue to next record
+    }
+    case SpzExtensionType::SPZ_ADOBE_coordinate_system: {
+      std::vector<char> payload(byteLength);
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      std::istringstream iss(std::string(payload.data(), payload.size()));
+      auto rec = SpzExtensionCoordinateSystemAdobe::read(iss);
+      if (rec)
+        out.push_back(std::move(*rec));
+      return true;
     }
     default:
       // Unknown type: skip payload and continue

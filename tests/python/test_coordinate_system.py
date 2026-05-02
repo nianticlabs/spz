@@ -293,3 +293,99 @@ def test_sh_rotation_cross_family():
         atol=1e-6,
     )
 
+
+def _make_single_point_cloud(from_coord=None):
+    """Helper: 1-point cloud with simple data, optionally packed with from_coord."""
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = 0
+    cloud.antialiased = False
+    cloud.positions = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    cloud.scales = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    cloud.alphas = np.array([0.5], dtype=np.float32)
+    cloud.colors = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    cloud.sh = np.array([], dtype=np.float32)
+    return cloud
+
+
+def test_coordinate_system_extension_overrides_pack_to():
+    """Extension on the cloud overrides the 'to' coordinate of packGaussians (default RUB → ext coord)."""
+    if not spz.has_extension_support():
+        return
+    # Cloud positions are in RUB. Attach extension requesting storage in RDF.
+    cloud = _make_single_point_cloud()
+    coord_ext = spz.SpzExtensionCoordinateSystemAdobe()
+    coord_ext.coordinate_system = spz.RDF
+    cloud.extensions = [coord_ext]
+
+    pack_opts = spz.PackOptions()
+    pack_opts.from_coord = spz.RUB  # input is RUB; extension says store as RDF
+
+    buf = spz.save_spz_to_buffer(cloud, pack_opts)
+    # Load back with no output conversion: extension drives from=RDF, to=UNSPECIFIED → data in RDF.
+    loaded = spz.load_spz_from_buffer(buf, spz.UnpackOptions())
+
+    # RUB→RDF flips Y and Z: (1,2,3) → (1,-2,-3).
+    np.testing.assert_allclose(
+        loaded.positions,
+        np.array([1.0, -2.0, -3.0], dtype=np.float32),
+        atol=1 / 2048.0,
+    )
+    # Extension must be preserved in the loaded cloud.
+    coord_exts = [
+        e for e in loaded.extensions
+        if e.extension_type == spz.SpzExtensionType.SPZ_ADOBE_coordinate_system
+    ]
+    assert len(coord_exts) == 1
+    assert coord_exts[0].coordinate_system == spz.RDF
+
+
+def test_coordinate_system_extension_absent_uses_rub():
+    """Without the extension, packGaussians converts to RUB as usual."""
+    if not spz.has_extension_support():
+        return
+    cloud = _make_single_point_cloud()
+    # No coordinate system extension on the cloud.
+
+    pack_opts = spz.PackOptions()
+    pack_opts.from_coord = spz.RDF  # input is RDF; no extension → converts to RUB
+
+    buf = spz.save_spz_to_buffer(cloud, pack_opts)
+    # Load back with no output conversion: no extension → from=RUB, to=UNSPECIFIED → data in RUB.
+    loaded = spz.load_spz_from_buffer(buf, spz.UnpackOptions())
+
+    # RDF→RUB flips Y and Z: (1,2,3) → (1,-2,-3).
+    np.testing.assert_allclose(
+        loaded.positions,
+        np.array([1.0, -2.0, -3.0], dtype=np.float32),
+        atol=1 / 2048.0,
+    )
+
+
+def test_coordinate_system_extension_used_on_unpack():
+    """Extension's coordinate is used as 'from' during unpack instead of RUB."""
+    if not spz.has_extension_support():
+        return
+    # Store cloud in RDF (input RUB, extension says store as RDF).
+    cloud = _make_single_point_cloud()
+    coord_ext = spz.SpzExtensionCoordinateSystemAdobe()
+    coord_ext.coordinate_system = spz.RDF
+    cloud.extensions = [coord_ext]
+
+    pack_opts = spz.PackOptions()
+    pack_opts.from_coord = spz.RUB
+
+    filename = os.path.join(tempfile.gettempdir(), "coord_ext_unpack_test.spz")
+    assert spz.save_spz(cloud, pack_opts, filename) is True
+
+    # Load with to_coord=RUB: extension drives from=RDF, RDF→RUB flips Y and Z back.
+    # Stored value is (1,-2,-3); converting RDF→RUB gives (1,2,3) — original positions.
+    unpack_opts = spz.UnpackOptions()
+    unpack_opts.to_coord = spz.RUB
+    loaded = spz.load_spz(filename, unpack_opts)
+    np.testing.assert_allclose(
+        loaded.positions,
+        np.array([1.0, 2.0, 3.0], dtype=np.float32),
+        atol=1 / 2048.0,
+    )
+

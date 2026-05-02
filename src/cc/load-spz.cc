@@ -27,6 +27,7 @@ SOFTWARE.
 #include "splat-types.h"
 #ifdef SPZ_BUILD_EXTENSIONS
 #include "splat-extensions.h"
+#include "coordinate-system-adobe.h"
 #endif
 
 #include <zlib.h>
@@ -341,7 +342,20 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     SpzLog("[SPZ WARNING] SPZ with SH degrees %d will not be loadable in a legacy loader of version %d",
         g.shDegree, o.version);
   }
+#ifdef SPZ_BUILD_EXTENSIONS
+  // If the cloud carries a coordinate-system extension, use its value as the storage target
+  // instead of RUB so that callers can persist data in any coordinate system they choose.
+  CoordinateSystem packToCoord = CoordinateSystem::RUB;
+  {
+    auto coordExt = findExtensionByType<SpzExtensionCoordinateSystemAdobe>(g.extensions);
+    if (coordExt && coordExt->coordinateSystem != CoordinateSystem::UNSPECIFIED) {
+      packToCoord = coordExt->coordinateSystem;
+    }
+  }
+  CoordinateConverter c = coordinateConverter(o.from, packToCoord, g.shDegree);
+#else
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB, g.shDegree);
+#endif
 
   // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
   // we can use different values on a per-splat basis and still be compatible with the decoder.
@@ -672,7 +686,18 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
     result.sh[i] = unquantizeSH(packed.sh[i]);
   }
 
+#ifdef SPZ_BUILD_EXTENSIONS
+  {
+    auto coordExt = findExtensionByType<SpzExtensionCoordinateSystemAdobe>(result.extensions);
+    CoordinateSystem fromCoord =
+        (coordExt && coordExt->coordinateSystem != CoordinateSystem::UNSPECIFIED)
+            ? coordExt->coordinateSystem
+            : CoordinateSystem::RUB;
+    result.convertCoordinates(fromCoord, o.to);
+  }
+#else
   result.convertCoordinates(CoordinateSystem::RUB, o.to);
+#endif
   return result;
 }
 

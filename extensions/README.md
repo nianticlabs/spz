@@ -164,3 +164,16 @@ To add a new extension type in the C++ codebase:
 ## Built-in extensions
 
 - **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `extensions/cc/safe-orbit-camera-adobe.h` and `safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults.
+
+- **SPZ_ADOBE_coordinate_system** (`0xADBE0003`) — Overrides the storage coordinate system. Implemented in `extensions/cc/coordinate-system-adobe.h` and `coordinate-system-adobe.cc`.
+
+  **Payload:** one `uint32_t` — the `CoordinateSystem` enum value (4 bytes).
+
+  Attach this extension to `GaussianCloud::extensions` before saving to store data in a coordinate system other than the default RUB. `packGaussians` will convert `PackOptions::from → extension.coordinateSystem` instead of `PackOptions::from → RUB`; `unpackGaussians` reads it back and converts `extension.coordinateSystem → UnpackOptions::to` instead of `RUB → UnpackOptions::to`. If absent or `UNSPECIFIED`, behaviour is unchanged. The library never creates this extension automatically.
+
+  ```python
+  ext = spz.SpzExtensionCoordinateSystemAdobe()
+  ext.coordinate_system = spz.RDF
+  cloud.extensions = [ext]
+  # pack with from_coord=RUB → stored as RDF; load with to_coord=RUB → converted back
+  ```
