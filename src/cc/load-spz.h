@@ -65,6 +65,15 @@ constexpr int DEFAULT_SH_REST_BITS = 4;
 // Latest version of the packed format, update this when changing the format.
 constexpr int LATEST_SPZ_HEADER_VERSION = 4;
 
+// Minimum version of the ZSTD-compressed SPZ format.
+constexpr int MIN_ZSTD_SPZ_HEADER_VERSION = 4;
+
+// Minimum version of that uses SmallestThree quaternions.
+constexpr int MIN_SMALLEST_THREE_QUATERNIONS_VERSION = 3;
+
+// NGSP Magic Number used for spz file identification.
+constexpr uint32_t NGSP_MAGIC = 0x5053474e;
+
 // Represents a single inflated gaussian. Each gaussian has 344 bytes (position, rotation, scale,
 // color, alpha, and 24 SH coeffs x 3 channels). Although the data is easier to interpret in this
 // format, it is not more precise than the packed format, since it was inflated.
@@ -154,7 +163,7 @@ GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &opt
 
 // Loads Gaussian splat from a file / byte pointer / vector in packed format.
 PackedGaussians loadSpzPacked(const std::string &filename);
-PackedGaussians loadSpzPacked(const uint8_t *data, int32_t size);
+PackedGaussians loadSpzPacked(const uint8_t *data, size_t size);
 PackedGaussians loadSpzPacked(const std::vector<uint8_t> &data);
 
 // Saves Gaussian splat in packed format to a file
@@ -165,7 +174,7 @@ bool saveSpz(
 GaussianCloud loadSpz(const std::string &filename, const UnpackOptions &o);
 
 // Loads Gaussian splat from a byte pointer in packed format.
-GaussianCloud loadSpz(const uint8_t *data, int32_t size, const UnpackOptions &options);
+GaussianCloud loadSpz(const uint8_t *data, size_t size, const UnpackOptions &options);
 
 // Saves Gaussian splat data in .ply format
 bool saveSplatToPly(

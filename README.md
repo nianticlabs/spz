@@ -22,10 +22,10 @@ be saved and loaded without conversion, which may harm interoperability.
 
 ### C++
 
-Requires `libz` as the only dependent library, otherwise the code is completely self-contained.
+Requires `libz` and `libzstd` as dependent libraries, otherwise the code is completely self-contained.
 A CMake build system is provided for convenience.
 
-**Note:** If `libz` is not found on the system, the CMake build system will automatically download zlib version 1.3.1 using FetchContent. This ensures consistent builds across different environments.
+**Note:** If `libz` or `libzstd` are not found on the system, the CMake build system will automatically download them using FetchContent. This ensures consistent builds across different environments.
 
 ### Typescript
 
@@ -115,37 +115,55 @@ The `PackOptions` struct supports the following fields:
 
 ## File Format
 
-The .spz format is a gzipped stream of data consisting of a 16-byte header followed by the
-gaussian data. This data is organized by attribute in the following order: positions,
-alphas, colors, scales, rotations, spherical harmonics.
+Version 4 uses ZSTD compression with a 32-byte plaintext header. Each attribute stream is compressed independently and in parallel, improving both compression and decompression throughput. Files from versions 1–3 (gzip-compressed single-stream format) can still be read. There is no maximum point count enforced during loading.
 
-### Header
+### File layout (version 4)
 
-**Version 4 (current):**
+```
+Bytes  0–31:              NgspFileHeader (32 bytes, plaintext)
+Bytes  32..(tbo-1):       Extension ILV records, if flags & 0x2  (variable)
+Bytes  tbo..(tbo+N*16-1): TOC — N × [compressedSize u64, uncompressedSize u64]
+Bytes  (tbo+N*16)..end:   N independent ZSTD-compressed attribute streams
+```
+
+`tbo` = `tocByteOffset` from the header. When no extensions are present, `tbo = 32`.
+
+### Header (version 4)
+
 ```c
-struct PackedGaussiansHeader {
-  uint32_t magic;
-  uint32_t version;
+struct NgspFileHeader {        // 32 bytes, all fields little-endian
+  uint32_t magic;              // 0x5053474e ("NGSP")
+  uint32_t version;            // 4
   uint32_t numPoints;
-  uint8_t shDegree;
-  uint8_t fractionalBits;
-  uint8_t flags;
-  uint8_t reserved;
+  uint8_t  shDegree;
+  uint8_t  fractionalBits;
+  uint8_t  flags;
+  uint8_t  numStreams;         // number of ZSTD-compressed attribute streams (typically 6)
+  uint32_t tocByteOffset;     // byte offset from file start to the TOC
+  uint8_t  reserved[12];      // zero, reserved for future use
 };
 ```
 
 All values are little-endian.
 
-1. **magic**: This is always 0x5053474e
-2. **version**: Valid versions are 1, 2, 3, and 4 (version 4 is current).
-3. **numPoints**: The number of gaussians
-4. **shDegree**: The degree of spherical harmonics. This must be between 0 and 4 (inclusive).
-5. **fractionalBits**: The number of bits used to store the fractional part of coordinates in
-   the fixed-point encoding.
-6. **flags**: A bit field containing flags.
-   - `0x1`: whether the splat was trained with [antialiasing](https://niujinshuchong.github.io/mip-splatting/).
-   - `0x2`: whether the stream contains vendor-specific extensions after the gaussian data.
-7. **reserved**: Reserved for future use. Must be 0.
+1. **magic**: Always `0x5053474e` (bytes `N`, `G`, `S`, `P` in file order).
+2. **version**: 4 (current). Versions 1–3 use the legacy gzip format (read-only).
+3. **numPoints**: The number of gaussians.
+4. **shDegree**: The degree of spherical harmonics. Must be between 0 and 4 (inclusive).
+5. **fractionalBits**: The number of bits used for the fractional part of fixed-point coordinates.
+6. **flags**: Bit field.
+   - `0x1`: splat was trained with [antialiasing](https://niujinshuchong.github.io/mip-splatting/).
+   - `0x2`: the header zone contains vendor-specific extension records (see [Extensions](#extensions)).
+7. **numStreams**: Number of ZSTD-compressed attribute streams following the TOC. Typically 6 (positions, alphas, colors, scales, rotations, spherical harmonics).
+8. **tocByteOffset**: Byte offset from the start of the file to the Table of Contents. Everything before `tocByteOffset` is plaintext.
+9. **reserved**: Must be zero.
+
+### Format detection (load path)
+
+```
+bytes[0..3] == "NGSP"  →  version 4 ZSTD format
+bytes[0..1] == 0x1f 0x8b  →  legacy gzip format (versions 1–3, read-only)
+```
 
 ### Positions
 
@@ -201,13 +219,13 @@ The quantization precision can be configured via `PackOptions`:
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
 
-**Note:** Quantization bits are only used during packing to reduce information entropy for better g-zipping compression. The unpacking process does not need to know the exact quantization bits, as g-unzipping already fills zero bits for quantized data.
+**Note:** Quantization bits are only used during packing to reduce information entropy for better compression. The unpacking process does not need to know the exact quantization bits, as decompression fills zero bits for quantized data automatically.
 
 This allows users to trade off between file size and quality. The library maintains full backward compatibility with default quantization settings.
 
 ### Extensions
 
-SPZ supports vendor-specific extensions (e.g. camera limits) so multiple vendors can coexist in the same file. The extension stream uses a per-record length so unknown types are skipped. For the extension format and how to add or use extensions, see [extensions/README.md](extensions/README.md).
+SPZ supports vendor-specific extensions (e.g. camera limits) so multiple vendors can coexist in the same file. In version 4, extensions are stored as ILV (type + length + value) records in the plaintext header zone between the fixed header and the TOC — parsers that don't recognize an extension type skip it by length. For the extension format and how to add or use extensions, see [extensions/README.md](extensions/README.md).
 
 ### Camera Orbit Limitation
 
@@ -236,3 +254,7 @@ pip install .
 ```
 
 Please see src/python/README.md for more details and usage examples
+
+## Web Utility
+
+A browser-based utility is available at [nianticlabs.github.io/spz](https://nianticlabs.github.io/spz). It uses the latest WASM build and allows you to inspect file metadata for `.spz` and `.ply` files and convert between the two formats without installing anything. As it runs entirely in the browser, it is subject to browser memory limits and is intended for files up to around 2 GB. For larger files, clone the repository and use the command-line tools directly.
