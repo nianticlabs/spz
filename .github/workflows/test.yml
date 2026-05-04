@@ -68,9 +68,33 @@ jobs:
           ninja install
        working-directory: ./build
 
-     - name: "There are no tests :spoon:"
-       shell: bash -l {0}
+  python-tests:
+    name: Python tests on ${{ matrix.os }} (extensions=${{ matrix.extensions }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        extensions: [ON, OFF]
+
+    steps:
+     - uses: actions/checkout@v4
+     - uses: ilammy/msvc-dev-cmd@v1
+       if: matrix.os == 'windows-latest'
+     - name: Support longpaths
+       run: git config --system core.longpaths true
+       if: matrix.os == 'windows-latest'
+
+     - uses: actions/setup-python@v5
+       with:
+         python-version: "3.12"
+
+     - name: Install spz with extras and run pytest
+       shell: bash
+       env:
+         SKBUILD_CMAKE_DEFINE: SPZ_BUILD_EXTENSIONS=${{ matrix.extensions }}
        run: |
-          echo "There are no tests"
-       working-directory: ./build
+         python -m pip install --upgrade pip
+         python -m pip install ".[tests]"
+         python -m pytest tests/python -v
 
