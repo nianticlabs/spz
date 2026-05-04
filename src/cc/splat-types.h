@@ -228,13 +228,13 @@ struct GaussianCloud {
     // axis. Scales are stored on a log scale, and exp(x) * exp(y) * exp(z) = exp(x + y + z). So we
     // can sort by value = (x + y + z) and compute volume = 4/3 * pi * exp(value) later.
     std::vector<float> scaleSums;
+    scaleSums.reserve(scales.size() / 3);
     for (size_t i = 0; i < scales.size(); i += 3) {
-      float sum = scales[i] + scales[i + 1] + scales[i + 2];
-      scaleSums.push_back(sum);
+      scaleSums.push_back(scales[i] + scales[i + 1] + scales[i + 2]);
     }
-    std::sort(scaleSums.begin(), scaleSums.end());
-    float median = scaleSums[scaleSums.size() / 2];
-    return (M_PI * 4 / 3) * exp(median);
+    const auto mid = scaleSums.begin() + scaleSums.size() / 2;
+    std::nth_element(scaleSums.begin(), mid, scaleSums.end());
+    return (M_PI * 4 / 3) * exp(*mid);
   }
 };
 
