@@ -71,6 +71,25 @@ enum class CoordinateSystem {
   RFU = 16, // Right Front Up
 };
 
+using AnalyticRotateShFn = void (*)(float*);
+
+// Per-band SH rotation stored without std::function to avoid heap allocation and virtual
+// dispatch in the per-Gaussian hot path. operator() preserves the same call interface.
+struct ShBandRotation {
+  AnalyticRotateShFn fn = nullptr;
+  std::array<float, 9> inputSigns = {};  // pre-multiply signs; only used when applyInputSigns=true
+  int n = 0;                             // 2l+1 for this band
+  bool applyInputSigns = false;
+
+  explicit operator bool() const { return fn != nullptr; }
+  void operator()(float* p) const {
+    if (applyInputSigns) {
+      for (int i = 0; i < n; ++i) p[i] *= inputSigns[static_cast<size_t>(i)];
+    }
+    fn(p);
+  }
+};
+
 struct CoordinateConverter {
   std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};  // x, y, z flips.
   std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};  // x, y, z flips, w is never flipped.
@@ -80,8 +99,8 @@ struct CoordinateConverter {
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f};
-  // One entry per SH band order l = 0..4 (five bands); matches max supported SH degree.
-  std::array<std::function<void(float*)>, SH_MAX_DEGREE> rotateShFuncs = {};
+  // One entry per SH band order l = 1..4 (four bands); l = 0 (DC) is never rotated.
+  std::array<ShBandRotation, SH_MAX_DEGREE> rotateShFuncs = {};
   std::function<void(float*)> rotatePositionFunc = nullptr;
   std::function<void(float*)> rotateQuaternionFunc = nullptr;
 };
@@ -107,7 +126,13 @@ constexpr bool needRotation(CoordinateSystem a, CoordinateSystem b) {
   return ((aNum >> 3) & 1) != ((bNum >> 3) & 1);
 }
 
-using AnalyticRotateShFn = void (*)(float*);
+// SH rotation matrices for R_x(+π/2). Each entry operates on the 2l+1 coefficients of band l
+// (l = 1..4).
+//
+// For R_x(-π/2), apply the R_x(π) sign pattern S first, then call the +π/2 function:
+//   Minus(x) = Plus(S·x)
+// where S = D^l(R_x(π)) is diagonal with signs: (-1)^(l+|m|) × (m<0 ? -1 : 1).
+// See coordinateConverter for the runtime construction.
 inline constexpr std::array<AnalyticRotateShFn, 4> kAnalyticRotatePlusPiHalfAboutXTable = {
   [](float* p) {
     const float t0 = p[0], t1 = p[1], t2 = p[2];
@@ -190,23 +215,49 @@ inline CoordinateConverter coordinateConverter(CoordinateSystem from, Coordinate
   CoordinateConverter result;
 
   if (needRotation(from, to)) {
-    result = coordinateConverter(kCoordinateRotationMapping[static_cast<int>(from)], to, shDegree);
+    // convertCoordinates applies the inner converter's flip first, then the outer rotation func.
+    // Both directions use the same within-family inner converter — keyed off the standard-family
+    // member — so the flip is identical in both directions.  The only difference is the sign of
+    // the 90-degree x-axis rotation applied on top: +π/2 for standard→rotated, -π/2 for the
+    // inverse direction.
+    const bool fromIsRotated = ((static_cast<int>(from) - 1) >> 3) & 1;
+    const CoordinateSystem stdCoord   = fromIsRotated ? to   : from;
+    const CoordinateSystem otherCoord = fromIsRotated ? from : to;
+    result = coordinateConverter(kCoordinateRotationMapping[static_cast<int>(stdCoord)], otherCoord, shDegree);
+
+    const float sign = fromIsRotated ? -1.0f : 1.0f;
     for (int i = 0; i < shDegree && i < SH_MAX_DEGREE; ++i) {
-      result.rotateShFuncs[static_cast<size_t>(i)] = kAnalyticRotatePlusPiHalfAboutXTable[static_cast<size_t>(i)];
+      const auto plusFn = kAnalyticRotatePlusPiHalfAboutXTable[static_cast<size_t>(i)];
+      if (!fromIsRotated) {
+        result.rotateShFuncs[static_cast<size_t>(i)] = ShBandRotation{plusFn, {}, 0, false};
+      } else {
+        // R_x(-π/2) on SH = Plus(S·x) where S = D^l(R_x(π)).
+        // S is diagonal: sign(coeff i) = (-1)^(l+|m|) × (m<0 ? -1 : 1), m = i-l, l = band+1.
+        const int l = i + 1;
+        const int n = 2 * l + 1;
+        ShBandRotation r;
+        r.fn = plusFn;
+        r.applyInputSigns = true;
+        r.n = n;
+        for (int ci = 0; ci < n; ++ci) {
+          const int m = ci - l;
+          r.inputSigns[static_cast<size_t>(ci)] = static_cast<float>(((l + std::abs(m)) % 2 == 0 ? 1 : -1) * (m < 0 ? -1 : 1));
+        }
+        result.rotateShFuncs[static_cast<size_t>(i)] = r;
+      }
     }
-    result.rotatePositionFunc = [](float* p) {
-      const float x = p[0], y = p[1], z = p[2];
-      p[0] = x;
-      p[1] = -z;
-      p[2] = y;
+    result.rotatePositionFunc = [sign](float* p) {
+      const float y = p[1], z = p[2];
+      p[1] = -sign * z;
+      p[2] =  sign * y;
     };
-    result.rotateQuaternionFunc = [](float* p) {
+    result.rotateQuaternionFunc = [sign](float* p) {
       const float s = std::sqrt(2.f) / 2.f;
       const float x = p[0], y = p[1], z = p[2], w = p[3];
-      p[0] = s * (w + x);
-      p[1] = s * (y - z);
-      p[2] = s * (y + z);
-      p[3] = s * (w - x);
+      p[0] = s * (sign * w + x);
+      p[1] = s * (y - sign * z);
+      p[2] = s * (sign * y + z);
+      p[3] = s * (w - sign * x);
     };
     return result;
   }
@@ -316,25 +367,32 @@ struct GaussianCloud {
       return;
     }
     CoordinateConverter c = coordinateConverter(from, to, shDegree);
-    for (size_t i = 0; i < positions.size(); i += 3) {
-      positions[i + 0] *= c.flipP[0];
-      positions[i + 1] *= c.flipP[1];
-      positions[i + 2] *= c.flipP[2];
-    }
     if (c.rotatePositionFunc) {
       for (size_t i = 0; i < positions.size(); i += 3) {
-        c.rotatePositionFunc(positions.data() + i);
+        float* p = positions.data() + i;
+        p[0] *= c.flipP[0]; p[1] *= c.flipP[1]; p[2] *= c.flipP[2];
+        c.rotatePositionFunc(p);
       }
-    }
-    for (size_t i = 0; i < rotations.size(); i += 4) {
-      rotations[i + 0] *= c.flipQ[0];
-      rotations[i + 1] *= c.flipQ[1];
-      rotations[i + 2] *= c.flipQ[2];
-      // Don't modify rotations[i + 3] (w component)
+    } else {
+      for (size_t i = 0; i < positions.size(); i += 3) {
+        positions[i + 0] *= c.flipP[0];
+        positions[i + 1] *= c.flipP[1];
+        positions[i + 2] *= c.flipP[2];
+      }
     }
     if (c.rotateQuaternionFunc) {
       for (size_t i = 0; i < rotations.size(); i += 4) {
-        c.rotateQuaternionFunc(rotations.data() + i);
+        float* q = rotations.data() + i;
+        q[0] *= c.flipQ[0]; q[1] *= c.flipQ[1]; q[2] *= c.flipQ[2];
+        // Don't modify q[3] (w component)
+        c.rotateQuaternionFunc(q);
+      }
+    } else {
+      for (size_t i = 0; i < rotations.size(); i += 4) {
+        rotations[i + 0] *= c.flipQ[0];
+        rotations[i + 1] *= c.flipQ[1];
+        rotations[i + 2] *= c.flipQ[2];
+        // Don't modify rotations[i + 3] (w component)
       }
     }
     // Spherical harmonics: apply axis flips per coefficient, then band rotation (same order as

@@ -98,16 +98,19 @@ jobs:
          python -m pip install ".[tests]"
          python -m pytest tests/python -v
 
+  # Ubuntu only: wasm output is platform-independent, so there is no value in
+  # running on macOS or Windows.
   build-wasm:
     name: wasm extensions=${{matrix.extensions}}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         extensions: [ON, OFF]
 
     steps:
      - uses: actions/checkout@v4
-     - uses: emscripten-core/setup-emsdk@v14
+     - uses: emscripten-core/setup-emsdk@v3
 
      - name: Setup
        run: mkdir build-wasm

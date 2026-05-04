@@ -4,6 +4,7 @@ import os
 import tempfile
 
 import numpy as np
+import pytest
 
 import spz
 
@@ -190,24 +191,45 @@ def test_cross_family_position_rotation():
     )
 
 
-def test_cross_family_round_trip():
-    """Positions are restored after a cross-family round-trip (RUB→RBD→RUB)."""
+@pytest.mark.parametrize("from_coord,to_coord", [
+    # standard→rotated: non-trivial inner flip (RFU↔RBD have flipP=(1,-1,-1))
+    (spz.RUB, spz.RBD),
+    # standard→rotated: identity inner flip (RUB and RFU are a direct mapping pair)
+    (spz.RUB, spz.RFU),
+    # left-handed variant of the non-trivial-flip case
+    (spz.LUB, spz.LBD),
+    # cross-family AND cross-handedness: inner has flipP=(-1,-1,-1), exercises the x-flip path
+    (spz.RUB, spz.LBD),
+    # rotated→standard (backward direction of each structural case above)
+    (spz.RBD, spz.RUB),
+    (spz.RFU, spz.RUB),
+    (spz.LBD, spz.RUB),
+])
+@pytest.mark.parametrize("sh_degree", [0, 1, 3])
+def test_cross_family_round_trip(from_coord, to_coord, sh_degree):
+    """All fields are restored after a cross-family A→B→A round-trip."""
+    rng = np.random.default_rng(seed=42)
+
+    num_sh_coeffs = sum(2 * l + 1 for l in range(1, sh_degree + 1)) * 3
+
     cloud = spz.GaussianCloud()
-    cloud.sh_degree = 0
-    cloud.positions = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-    cloud.rotations = np.array([0.1, 0.2, 0.3, 0.9], dtype=np.float32)
+    cloud.sh_degree = sh_degree
+    cloud.positions = rng.random(3).astype(np.float32)
+    q = rng.random(4).astype(np.float32)
+    cloud.rotations = q / np.linalg.norm(q)
+    cloud.sh = rng.random(num_sh_coeffs).astype(np.float32) if num_sh_coeffs else np.array([], dtype=np.float32)
 
     original_positions = cloud.positions.copy()
+    original_rotations = cloud.rotations.copy()
+    original_sh = cloud.sh.copy()
 
-    cloud.convert_coordinates(spz.RUB, spz.RBD)
-    np.testing.assert_allclose(
-        cloud.positions,
-        np.array([1.0, 3.0, -2.0], dtype=np.float32),
-        atol=1e-6,
-    )
+    cloud.convert_coordinates(from_coord, to_coord)
+    cloud.convert_coordinates(to_coord, from_coord)
 
-    cloud.convert_coordinates(spz.RBD, spz.RUB)
-    np.testing.assert_allclose(cloud.positions, original_positions, atol=1e-6)
+    np.testing.assert_allclose(cloud.positions, original_positions, atol=1e-5)
+    np.testing.assert_allclose(cloud.rotations, original_rotations, atol=1e-5)
+    if num_sh_coeffs:
+        np.testing.assert_allclose(cloud.sh, original_sh, atol=1e-5)
 
 
 def test_io_rotated_from_coord():
@@ -294,8 +316,8 @@ def test_sh_rotation_cross_family():
     )
 
 
-def _make_single_point_cloud(from_coord=None):
-    """Helper: 1-point cloud with simple data, optionally packed with from_coord."""
+def _make_single_point_cloud():
+    """Helper: 1-point cloud with simple data."""
     cloud = spz.GaussianCloud()
     cloud.sh_degree = 0
     cloud.antialiased = False

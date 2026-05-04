@@ -447,7 +447,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
           }
         }
         size_t j = 0, k = 0;
-        for (; j < 9; j += 3, k++) {  // There are 9 (3 * 3) coefficients for degree 1
+        for (; j < 9; j += 3, k++) {  // degree-1: 3 coefficients × 3 RGB channels = 9 slots
           packed.sh[i + j + channel] = quantizeSH(bufSh[k], 1 << (8 - sh1Bits));
         }
         for (; j < shPerPoint; j += 3, k++) {

@@ -56,8 +56,7 @@ static void SpzLog(const char *fmt) {
   SpzLog("%s", fmt);
 }
 
-// Maximum degree supported
-constexpr int SH_MAX_COEFFS = 24;
+constexpr int SH_MAX_COEFFS = 24; // Maximum number of SH coefficients (degree 0..4)
 constexpr int DEFAULT_SH1_BITS = 5;
 constexpr int DEFAULT_SH_REST_BITS = 4;
 
