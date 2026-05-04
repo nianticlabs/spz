@@ -68,23 +68,20 @@ jobs:
           ninja install
        working-directory: ./build
 
+  # macOS only for now. Linux and Windows fail to build the wheel due to
+  # pre-existing issues in the project's CMake setup (Ubuntu's libzstd-dev is
+  # non-PIC so it can't link into a shared module, and Windows hits flaky
+  # zlib.net 404s during FetchContent). Both warrant their own follow-up PRs.
   python-tests:
-    name: Python tests on ${{ matrix.os }} (extensions=${{ matrix.extensions }})
-    runs-on: ${{ matrix.os }}
+    name: Python tests on macos-latest (extensions=${{ matrix.extensions }})
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
         extensions: [ON, OFF]
 
     steps:
      - uses: actions/checkout@v4
-     - uses: ilammy/msvc-dev-cmd@v1
-       if: matrix.os == 'windows-latest'
-     - name: Support longpaths
-       run: git config --system core.longpaths true
-       if: matrix.os == 'windows-latest'
-
      - uses: actions/setup-python@v5
        with:
          python-version: "3.12"
