@@ -71,11 +71,32 @@ jobs:
           ninja install
        working-directory: ./build
 
-     - name: "There are no tests :spoon:"
-       shell: bash -l {0}
+  # macOS only for now. Linux and Windows fail to build the wheel due to
+  # pre-existing issues in the project's CMake setup (Ubuntu's libzstd-dev is
+  # non-PIC so it can't link into a shared module, and Windows hits flaky
+  # zlib.net 404s during FetchContent). Both warrant their own follow-up PRs.
+  python-tests:
+    name: Python tests on macos-latest (extensions=${{ matrix.extensions }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        extensions: [ON, OFF]
+
+    steps:
+     - uses: actions/checkout@v4
+     - uses: actions/setup-python@v5
+       with:
+         python-version: "3.12"
+
+     - name: Install spz with extras and run pytest
+       shell: bash
+       env:
+         SKBUILD_CMAKE_DEFINE: SPZ_BUILD_EXTENSIONS=${{ matrix.extensions }}
        run: |
-          echo "There are no tests"
-       working-directory: ./build
+         python -m pip install --upgrade pip
+         python -m pip install ".[tests]"
+         python -m pytest tests/python -v
 
   build-wasm:
     name: wasm extensions=${{matrix.extensions}}
