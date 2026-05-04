@@ -361,10 +361,28 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 #endif
 
   // Store coordinates as 24-bit fixed point values.
+  // Reject any input whose encoded integer falls outside the int24 range
+  // [-2^23, 2^23 - 1]. Without this check, overflow is silently masked to the
+  // low 24 bits and sign-extended on decode, so a coordinate at e.g. 2.5km
+  // with the default fractionalBits=12 (range +/- 2048m) would decode to
+  // about -1.6km. The check operates on the post-rounding integer rather than
+  // |position| directly, which catches the boundary case where rounding tips
+  // a value just below the limit into overflow (e.g. 2047.9999 with N=12).
   const float scale = (1 << packed.fractionalBits);
+  constexpr int32_t kMaxInt24 = (1 << 23) - 1;
+  constexpr int32_t kMinInt24 = -(1 << 23);
   for (size_t i = 0; i < numPoints * 3; i++) {
     const int32_t fixed32 =
       static_cast<int32_t>(std::round(c.flipP[i % 3] * g.positions[i] * scale));
+    if (fixed32 > kMaxInt24 || fixed32 < kMinInt24) {
+      SpzLog("[SPZ ERROR] position[%zu]=%g overflows the int24 representable "
+             "range at fractionalBits=%d (range: +/- %g). Recenter the cloud "
+             "to keep all positions within range.",
+             i, static_cast<double>(g.positions[i]),
+             static_cast<int>(packed.fractionalBits),
+             static_cast<double>(kMaxInt24) / scale);
+      return {};
+    }
     packed.positions[i * 3 + 0] = fixed32 & 0xff;
     packed.positions[i * 3 + 1] = (fixed32 >> 8) & 0xff;
     packed.positions[i * 3 + 2] = (fixed32 >> 16) & 0xff;
