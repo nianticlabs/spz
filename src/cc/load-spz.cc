@@ -270,10 +270,11 @@ void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const Coord
     Quat4f q = normalized(quat4f(rotation));
     if (c.rotateQuaternionFunc) {
       c.rotateQuaternionFunc(q.data());
+    } else {
+      q[0] *= c.flipQ[0];
+      q[1] *= c.flipQ[1];
+      q[2] *= c.flipQ[2];
     }
-    q[0] *= c.flipQ[0];
-    q[1] *= c.flipQ[1];
-    q[2] *= c.flipQ[2];
     q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
     q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
     r[0] = toUint8(q[0]);
@@ -284,13 +285,8 @@ void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const Coord
 void packQuaternionSmallestThree(uint8_t r[4], const float rotation[4], const CoordinateConverter& c) {
   // Normalize the quaternion
   Quat4f q = normalized(quat4f(&rotation[0]));
-  if (c.flipBeforeRotate) {
-    q[0] *= c.flipQ[0]; q[1] *= c.flipQ[1]; q[2] *= c.flipQ[2];
-    if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(q.data()); }
-  } else {
-    if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(q.data()); }
-    q[0] *= c.flipQ[0]; q[1] *= c.flipQ[1]; q[2] *= c.flipQ[2];
-  }
+  if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(q.data()); }
+  else { q[0] *= c.flipQ[0]; q[1] *= c.flipQ[1]; q[2] *= c.flipQ[2]; }
   // Find largest component
   unsigned iLargest = 0;
   for (unsigned i = 1; i < 4; ++i)
@@ -389,13 +385,8 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     bufPos[0] = g.positions[base + 0] * scale;
     bufPos[1] = g.positions[base + 1] * scale;
     bufPos[2] = g.positions[base + 2] * scale;
-    if (c.flipBeforeRotate) {
-      bufPos[0] *= c.flipP[0]; bufPos[1] *= c.flipP[1]; bufPos[2] *= c.flipP[2];
-      if (c.rotatePositionFunc) { c.rotatePositionFunc(bufPos.data()); }
-    } else {
-      if (c.rotatePositionFunc) { c.rotatePositionFunc(bufPos.data()); }
-      bufPos[0] *= c.flipP[0]; bufPos[1] *= c.flipP[1]; bufPos[2] *= c.flipP[2];
-    }
+    if (c.rotatePositionFunc) { c.rotatePositionFunc(bufPos.data()); }
+    else { bufPos[0] *= c.flipP[0]; bufPos[1] *= c.flipP[1]; bufPos[2] *= c.flipP[2]; }
     for (size_t j = 0; j < 3; ++j) {
       const int32_t fixed32 =
           static_cast<int32_t>(std::round(bufPos[j]));
@@ -444,17 +435,10 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
         for (size_t k = 0; k < static_cast<size_t>(shDim); ++k) {
           bufSh[k] = g.sh[i + k * 3 + channel];
         }
-        if (c.flipBeforeRotate) {
-          for (size_t k = 0; k < static_cast<size_t>(shDim); ++k) { bufSh[k] *= c.flipSh[k]; }
-          for (size_t band = 0; band < static_cast<size_t>(g.shDegree) && band < static_cast<size_t>(SH_MAX_DEGREE); ++band) {
-            if (c.rotateShFuncs[band]) { c.rotateShFuncs[band](bufSh.data() + band * (band + 2)); }
-          }
-        } else {
-          for (size_t band = 0; band < static_cast<size_t>(g.shDegree) && band < static_cast<size_t>(SH_MAX_DEGREE); ++band) {
-            if (c.rotateShFuncs[band]) { c.rotateShFuncs[band](bufSh.data() + band * (band + 2)); }
-          }
-          for (size_t k = 0; k < static_cast<size_t>(shDim); ++k) { bufSh[k] *= c.flipSh[k]; }
+        for (size_t band = 0; band < static_cast<size_t>(g.shDegree) && band < static_cast<size_t>(SH_MAX_DEGREE); ++band) {
+          if (c.rotateShFuncs[band]) { c.rotateShFuncs[band](bufSh.data() + band * (band + 2)); }
         }
+        for (size_t k = 0; k < static_cast<size_t>(shDim); ++k) { bufSh[k] *= c.flipSh[k]; }
         size_t j = 0, k = 0;
         for (; j < 9; j += 3, k++) {  // degree-1: 3 coefficients × 3 RGB channels = 9 slots
           packed.sh[i + j + channel] = quantizeSH(bufSh[k], 1 << (8 - sh1Bits));
@@ -480,13 +464,8 @@ void unpackQuaternionFirstThree(float rotation[4], const uint8_t r[3], const Coo
   std::copy(xyz.data(), xyz.data() + 3, &rotation[0]);
   // Compute the real component - we know the quaternion is normalized and w is non-negative
   rotation[3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
-  if (c.flipBeforeRotate) {
-    for (int i = 0; i < 3; i++) { rotation[i] *= c.flipQ[i]; }
-    if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(rotation); }
-  } else {
-    if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(rotation); }
-    for (int i = 0; i < 3; i++) { rotation[i] *= c.flipQ[i]; }
-  }
+  if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(rotation); }
+  else { for (int i = 0; i < 3; i++) rotation[i] *= c.flipQ[i]; }
 }
 
 void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const CoordinateConverter& c = CoordinateConverter())
@@ -518,13 +497,8 @@ void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const 
     }
   }
   rotation[i_largest] = sqrt(1.0f - sum_squares);
-  if (c.flipBeforeRotate) {
-    for (int i = 0; i < 3; i++) { rotation[i] *= c.flipQ[i]; }
-    if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(rotation); }
-  } else {
-    if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(rotation); }
-    for (int i = 0; i < 3; i++) { rotation[i] *= c.flipQ[i]; }
-  }
+  if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(rotation); }
+  else { for (int i = 0; i < 3; i++) rotation[i] *= c.flipQ[i]; }
 }
 
 UnpackedGaussian PackedGaussian::unpack(
@@ -547,13 +521,8 @@ UnpackedGaussian PackedGaussian::unpack(
       result.position[i] = static_cast<float>(fixed32) * scale;
     }
   }
-  if (c.flipBeforeRotate) {
-    for (size_t i = 0; i < 3; i++) { result.position[i] *= c.flipP[i]; }
-    if (c.rotatePositionFunc) { c.rotatePositionFunc(result.position.data()); }
-  } else {
-    if (c.rotatePositionFunc) { c.rotatePositionFunc(result.position.data()); }
-    for (size_t i = 0; i < 3; i++) { result.position[i] *= c.flipP[i]; }
-  }
+  if (c.rotatePositionFunc) { c.rotatePositionFunc(result.position.data()); }
+  else { for (size_t i = 0; i < 3; i++) result.position[i] *= c.flipP[i]; }
 
   for (size_t i = 0; i < 3; i++) {
     result.scale[i] = (scale[i] / 16.0f - 10.0f);
@@ -580,34 +549,18 @@ UnpackedGaussian PackedGaussian::unpack(
     result.shB[i] = unquantizeSH(shB[i]);
   }
 
-  if (c.flipBeforeRotate) {
-    for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
-      result.shR[i] *= c.flipSh[i];
-      result.shG[i] *= c.flipSh[i];
-      result.shB[i] *= c.flipSh[i];
+  for (size_t i = 0; i < SH_MAX_DEGREE; i++) {
+    if (c.rotateShFuncs[i]) {
+      const size_t baseIndex = i * (i + 2);
+      c.rotateShFuncs[i](result.shR.data() + baseIndex);
+      c.rotateShFuncs[i](result.shG.data() + baseIndex);
+      c.rotateShFuncs[i](result.shB.data() + baseIndex);
     }
-    for (size_t i = 0; i < SH_MAX_DEGREE; i++) {
-      if (c.rotateShFuncs[i]) {
-        const size_t baseIndex = i * (i + 2);
-        c.rotateShFuncs[i](result.shR.data() + baseIndex);
-        c.rotateShFuncs[i](result.shG.data() + baseIndex);
-        c.rotateShFuncs[i](result.shB.data() + baseIndex);
-      }
-    }
-  } else {
-    for (size_t i = 0; i < SH_MAX_DEGREE; i++) {
-      if (c.rotateShFuncs[i]) {
-        const size_t baseIndex = i * (i + 2);
-        c.rotateShFuncs[i](result.shR.data() + baseIndex);
-        c.rotateShFuncs[i](result.shG.data() + baseIndex);
-        c.rotateShFuncs[i](result.shB.data() + baseIndex);
-      }
-    }
-    for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
-      result.shR[i] *= c.flipSh[i];
-      result.shG[i] *= c.flipSh[i];
-      result.shB[i] *= c.flipSh[i];
-    }
+  }
+  for (size_t i = 0; i < SH_MAX_COEFFS; i++) {
+    result.shR[i] *= c.flipSh[i];
+    result.shG[i] *= c.flipSh[i];
+    result.shB[i] *= c.flipSh[i];
   }
 
   return result;
@@ -1452,11 +1405,9 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   for (int32_t i = 0; i < N; i++) {
     // Position (x, y, z)
     for (size_t j = 0; j < 3; j++) { values[outIdx + j] = data.positions[i3 + j]; }
-    if (c.flipBeforeRotate) {
-      for (size_t j = 0; j < 3; j++) { values[outIdx + j] *= c.flipP[j]; }
-      if (c.rotatePositionFunc) { c.rotatePositionFunc(values.data() + outIdx); }
+    if (c.rotatePositionFunc) {
+      c.rotatePositionFunc(values.data() + outIdx);
     } else {
-      if (c.rotatePositionFunc) { c.rotatePositionFunc(values.data() + outIdx); }
       for (size_t j = 0; j < 3; j++) { values[outIdx + j] *= c.flipP[j]; }
     }
     outIdx += 3;
@@ -1472,21 +1423,12 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
       for (int32_t j = 0; j < shDim; j++) {
         values[outIdx + j] = data.sh[(i * shDim + j) * 3 + k];
       }
-      if (c.flipBeforeRotate) {
-        for (int32_t j = 0; j < shDim; j++) { values[outIdx + j] *= c.flipSh[j]; }
-        for (int32_t band = 0; band < data.shDegree && band < SH_MAX_DEGREE; ++band) {
-          if (c.rotateShFuncs[static_cast<size_t>(band)]) {
-            c.rotateShFuncs[static_cast<size_t>(band)](values.data() + outIdx + static_cast<size_t>(band * (band + 2)));
-          }
+      for (int32_t band = 0; band < data.shDegree && band < SH_MAX_DEGREE; ++band) {
+        if (c.rotateShFuncs[static_cast<size_t>(band)]) {
+          c.rotateShFuncs[static_cast<size_t>(band)](values.data() + outIdx + static_cast<size_t>(band * (band + 2)));
         }
-      } else {
-        for (int32_t band = 0; band < data.shDegree && band < SH_MAX_DEGREE; ++band) {
-          if (c.rotateShFuncs[static_cast<size_t>(band)]) {
-            c.rotateShFuncs[static_cast<size_t>(band)](values.data() + outIdx + static_cast<size_t>(band * (band + 2)));
-          }
-        }
-        for (int32_t j = 0; j < shDim; j++) { values[outIdx + j] *= c.flipSh[j]; }
       }
+      for (int32_t j = 0; j < shDim; j++) { values[outIdx + j] *= c.flipSh[j]; }
       outIdx += shDim;
     }
     // Alpha
@@ -1497,11 +1439,9 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
     values[outIdx++] = data.scales[i3 + 2];
     // Rotation (qw, qx, qy, qz)
     for (int32_t j = 0; j < 4; j++) { bufQuat[j] = data.rotations[i4 + j]; }
-    if (c.flipBeforeRotate) {
-      for (int32_t j = 0; j < 3; j++) { bufQuat[j] *= c.flipQ[j]; }
-      if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(bufQuat.data()); }
+    if (c.rotateQuaternionFunc) {
+      c.rotateQuaternionFunc(bufQuat.data());
     } else {
-      if (c.rotateQuaternionFunc) { c.rotateQuaternionFunc(bufQuat.data()); }
       for (int32_t j = 0; j < 3; j++) { bufQuat[j] *= c.flipQ[j]; }
     }
     // data.rotations are x,y,z,w per point; PLY expects w then x,y,z (see property order below).
