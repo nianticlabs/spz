@@ -420,7 +420,7 @@ struct GaussianCloud {
         positions[i + 2] *= c.flipP[2];
       }
     }
-    // Rotations: same pattern; w component is never modified.
+    // Rotations: same pattern. Within-family only flips x,y,z; w is untouched. Cross-family rotates all four.
     if (c.rotateQuaternionFunc) {
       for (size_t i = 0; i < rotations.size(); i += 4) {
         c.rotateQuaternionFunc(rotations.data() + i);
@@ -432,7 +432,9 @@ struct GaussianCloud {
         rotations[i + 2] *= c.flipQ[2];
       }
     }
-    // SH: per-band transform (rotation+flip baked in for cross-family), then flipSh for within-family.
+    // SH: the two mechanisms below are mutually exclusive.
+    // Cross-family: rotateShFuncs[b] has rotation+flip baked in; flipSh is all 1s, so the second loop is a no-op.
+    // Within-family: rotateShFuncs are null, so the first loop is skipped; flipSh carries the sign flips.
     // Interleaved layout is coeff-major, RGB inner.
     const size_t numCoeffs = sh.size() / 3;
     const size_t numCoeffsPerPoint = numCoeffs / numPoints;
