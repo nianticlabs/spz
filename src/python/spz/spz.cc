@@ -115,6 +115,11 @@ static auto vector_setter = [](std::vector<float>& vec,
 NB_MODULE(spz, m) {
     m.doc() = "Python bindings for the spz library (Gaussian splatting).";
 
+    // Module-level constants exposing limits/defaults that callers may need.
+    m.attr("MIN_FRACTIONAL_BITS") = spz::MIN_FRACTIONAL_BITS;
+    m.attr("MAX_FRACTIONAL_BITS") = spz::MAX_FRACTIONAL_BITS;
+    m.attr("DEFAULT_FRACTIONAL_BITS") = spz::DEFAULT_FRACTIONAL_BITS;
+
     // -------------------------------------------------------------------------
     // Enums
     // Coordinate system enum with comprehensive documentation
@@ -159,7 +164,11 @@ NB_MODULE(spz, m) {
         .def_rw("sh1_bits", &spz::PackOptions::sh1Bits,
                 "Bits used for first-order spherical harmonics quantization")
         .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
-                "Bits used for non-first-order spherical harmonics quantization");
+                "Bits used for non-first-order spherical harmonics quantization")
+        .def_rw("fractional_bits", &spz::PackOptions::fractionalBits,
+                "Number of fractional bits for fixed-point position coordinates "
+                "(spz.MIN_FRACTIONAL_BITS to spz.MAX_FRACTIONAL_BITS). "
+                "Higher = finer resolution, smaller representable range.");
 
     nb::class_<spz::UnpackOptions>(m, "UnpackOptions")
         .def(nb::init<>())

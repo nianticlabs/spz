@@ -112,6 +112,7 @@ The `PackOptions` struct supports the following fields:
 - `version`: Version of the packed format (default: `4`)
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
+- `fractionalBits`: Number of fractional bits for fixed-point position coordinates (default: 12, range: 4-23). Positions are stored as 24-bit signed integers, so the per-axis representable range is ±2^(23-`fractionalBits`) and the resolution is 2^-`fractionalBits`. The decoder reads this value from the header, so any value in range round-trips. Values below 4 are rejected as too coarse for any plausible Gaussian-splat use case (e.g. N=3 gives 12.5 cm resolution over a 1048 km range).
 
 ## File Format
 
