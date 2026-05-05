@@ -110,7 +110,7 @@ jobs:
 
     steps:
      - uses: actions/checkout@v4
-     - uses: emscripten-core/setup-emsdk@v3
+     - uses: emscripten-core/setup-emsdk@v16
 
      - name: Setup
        run: mkdir build-wasm
