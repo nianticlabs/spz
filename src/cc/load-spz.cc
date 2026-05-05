@@ -328,6 +328,12 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
            o.sh1Bits, o.shRestBits);
     return {};
   }
+  if (o.fractionalBits < MIN_FRACTIONAL_BITS ||
+      o.fractionalBits > MAX_FRACTIONAL_BITS) {
+    SpzLog("[SPZ ERROR] fractionalBits must be in [%d, %d], got %d",
+           MIN_FRACTIONAL_BITS, MAX_FRACTIONAL_BITS, o.fractionalBits);
+    return {};
+  }
 
   const int32_t numPoints = g.numPoints;
   const int32_t shDim = dimForDegree(g.shDegree);
@@ -337,13 +343,14 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB);
 
-  // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
-  // we can use different values on a per-splat basis and still be compatible with the decoder.
+  // Per-axis representable range is +/- 2^(23 - fractionalBits); resolution is 2^-fractionalBits.
+  // The decoder reads fractionalBits from the file header, so any value the encoder
+  // accepts (MIN_FRACTIONAL_BITS..MAX_FRACTIONAL_BITS) round-trips through every existing reader.
   PackedGaussians packed;
   packed.version = o.version;
   packed.numPoints = g.numPoints;
   packed.shDegree = g.shDegree;
-  packed.fractionalBits = 12;
+  packed.fractionalBits = o.fractionalBits;
   packed.antialiased = g.antialiased;
   // Turn off quaternion-smallest-three for backward compatibility, since version 2 does not
   // support it.

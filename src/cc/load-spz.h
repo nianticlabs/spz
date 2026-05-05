@@ -62,6 +62,28 @@ constexpr int SH_MAX_COEFFS = 24;
 constexpr int DEFAULT_SH1_BITS = 5;
 constexpr int DEFAULT_SH_REST_BITS = 4;
 
+// Number of bits used for the fractional part of fixed-point position
+// coordinates. Positions are stored as 24-bit signed fixed-point per axis, so
+// the representable range is +/- 2^(23 - fractionalBits). With the default 12,
+// this is ~0.25 mm resolution over a +/- 2048 m range.
+constexpr int DEFAULT_FRACTIONAL_BITS = 12;
+
+// Maximum number of fractional bits that fit in the 24-bit signed integer
+// representation of positions. At this maximum, all 23 value bits are
+// fractional and the per-axis representable range collapses to +/- 1.0.
+// Higher values would either silently truncate the encoded fixed-point value
+// (it would no longer fit in int24) or invoke undefined behavior in the
+// (1 << fractionalBits) computation used by both encode and decode.
+constexpr int MAX_FRACTIONAL_BITS = 23;
+
+// Minimum number of fractional bits accepted by the encoder. Below this the
+// resolution is too coarse for any realistic Gaussian-splat use case: at N=4
+// the per-axis range is +/- 524288 m and resolution is 6.25 cm, already
+// generous for aerial / city-scale scenes. N=3 has 12.5 cm resolution over a
+// 1048 km range, and the lower values get progressively worse -- almost
+// certainly a configuration mistake, so reject loudly instead.
+constexpr int MIN_FRACTIONAL_BITS = 4;
+
 // Latest version of the packed format, update this when changing the format.
 constexpr int LATEST_SPZ_HEADER_VERSION = 4;
 
@@ -140,6 +162,13 @@ struct PackOptions {
   // Unpacking doesn't need these values since g-unzipping already fills zero bits for quantized data.
   uint8_t sh1Bits = DEFAULT_SH1_BITS;     // Bits for SH degree 1 coefficients
   uint8_t shRestBits = DEFAULT_SH_REST_BITS;  // Bits for SH degree 2+ coefficients
+
+  // Number of fractional bits for fixed-point position coordinates. See
+  // DEFAULT_FRACTIONAL_BITS for the meaning. Must satisfy
+  // MIN_FRACTIONAL_BITS <= fractionalBits <= MAX_FRACTIONAL_BITS. The decoder
+  // reads this value from the file header, so any value in range is fully
+  // backward-compatible.
+  uint8_t fractionalBits = DEFAULT_FRACTIONAL_BITS;
 };
 
 struct UnpackOptions {
