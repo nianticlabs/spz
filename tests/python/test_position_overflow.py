@@ -80,6 +80,18 @@ def test_rounding_edge_case_rejected(tmp_path):
     assert spz.save_spz(cloud, spz.PackOptions(), path) is False
 
 
+@pytest.mark.parametrize("v", [
+    float("nan"),
+    float("inf"),
+    float("-inf"),
+])
+def test_nonfinite_positions_are_rejected(v, tmp_path):
+    """NaN and +/- Inf must be rejected; static_cast<int32_t> on them is UB."""
+    cloud = _cloud_with_position(v)
+    path = str(tmp_path / "nonfinite.spz")
+    assert spz.save_spz(cloud, spz.PackOptions(), path) is False
+
+
 def test_existing_samples_still_save(tmp_path):
     """The two repo samples are well within range; they must continue to save."""
     for name in ["hornedlizard.spz", "racoonfamily.spz"]:

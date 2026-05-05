@@ -361,28 +361,37 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 #endif
 
   // Store coordinates as 24-bit fixed point values.
-  // Reject any input whose encoded integer falls outside the int24 range
-  // [-2^23, 2^23 - 1]. Without this check, overflow is silently masked to the
-  // low 24 bits and sign-extended on decode, so a coordinate at e.g. 2.5km
-  // with the default fractionalBits=12 (range +/- 2048m) would decode to
-  // about -1.6km. The check operates on the post-rounding integer rather than
-  // |position| directly, which catches the boundary case where rounding tips
-  // a value just below the limit into overflow (e.g. 2047.9999 with N=12).
+  // Reject any input whose encoded value falls outside the int24 range
+  // [-2^23, 2^23 - 1]. Without this check, overflow is silently masked to
+  // the low 24 bits and sign-extended on decode, so a coordinate at e.g.
+  // 2.5km with the default fractionalBits=12 (range +/- 2048m) would decode
+  // to about -1.6km. The check is performed on the post-rounding float
+  // value rather than on |position| directly, which catches the boundary
+  // case where rounding tips a value just below the limit into overflow
+  // (e.g. 2047.9999 with N=12 rounds to 8388608, exceeding the int24 max
+  // of 2^23 - 1). Checking before the static_cast also avoids the
+  // undefined behavior of casting an out-of-range float to int32_t, and
+  // rejects NaN / +-Inf via std::isfinite.
   const float scale = (1 << packed.fractionalBits);
   constexpr int32_t kMaxInt24 = (1 << 23) - 1;
   constexpr int32_t kMinInt24 = -(1 << 23);
+  constexpr float kMaxInt24f = static_cast<float>(kMaxInt24);  // exactly 2^23 - 1
+  constexpr float kMinInt24f = static_cast<float>(kMinInt24);  // exactly -2^23
   for (size_t i = 0; i < numPoints * 3; i++) {
-    const int32_t fixed32 =
-      static_cast<int32_t>(std::round(c.flipP[i % 3] * g.positions[i] * scale));
-    if (fixed32 > kMaxInt24 || fixed32 < kMinInt24) {
-      SpzLog("[SPZ ERROR] position[%zu]=%g overflows the int24 representable "
-             "range at fractionalBits=%d (range: +/- %g). Recenter the cloud "
-             "to keep all positions within range.",
-             i, static_cast<double>(g.positions[i]),
+    const float val =
+      std::round(c.flipP[i % 3] * g.positions[i] * scale);
+    if (!std::isfinite(val) || val > kMaxInt24f || val < kMinInt24f) {
+      static const char kAxisName[3] = {'x', 'y', 'z'};
+      SpzLog("[SPZ ERROR] position point=%zu axis=%c value=%g overflows the "
+             "int24 representable range at fractionalBits=%d (range: +/- %g). "
+             "Recenter the cloud to keep all positions within range.",
+             i / 3, kAxisName[i % 3],
+             static_cast<double>(g.positions[i]),
              static_cast<int>(packed.fractionalBits),
              static_cast<double>(kMaxInt24) / scale);
       return {};
     }
+    const int32_t fixed32 = static_cast<int32_t>(val);
     packed.positions[i * 3 + 0] = fixed32 & 0xff;
     packed.positions[i * 3 + 1] = (fixed32 >> 8) & 0xff;
     packed.positions[i * 3 + 2] = (fixed32 >> 16) & 0xff;
