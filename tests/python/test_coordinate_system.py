@@ -205,7 +205,7 @@ def test_cross_family_position_rotation():
     (spz.RFU, spz.RUB),
     (spz.LBD, spz.RUB),
 ])
-@pytest.mark.parametrize("sh_degree", [0, 1, 3])
+@pytest.mark.parametrize("sh_degree", [0, 1, 3, 4])
 def test_cross_family_round_trip(from_coord, to_coord, sh_degree):
     """All fields are restored after a cross-family A→B→A round-trip."""
     rng = np.random.default_rng(seed=42)
@@ -314,6 +314,103 @@ def test_sh_rotation_cross_family():
         np.array([-4.0, -5.0, -6.0, 1.0, 2.0, 3.0, 7.0, 8.0, 9.0], dtype=np.float32),
         atol=1e-6,
     )
+
+
+def _sh_plus_rotation_matrix(band_idx):
+    """
+    Extract the (2l+1)×(2l+1) rotation matrix for R_x(+π/2) on SH band l=band_idx+1.
+
+    Uses RUF→RBU, which has an identity inner converter (both same coord) so flipSh is
+    all-ones and rotateShFuncs contains only the Plus rotation — no contaminating flips.
+    """
+    l = band_idx + 1
+    n = 2 * l + 1
+    coeffs_before = band_idx * (band_idx + 2)  # == C++ bandStart = band*(band+2)
+    total_coeffs = coeffs_before + n
+    sh_size = total_coeffs * 3
+
+    matrix = np.zeros((n, n))
+    for col in range(n):
+        sh = np.zeros(sh_size, dtype=np.float32)
+        sh[(coeffs_before + col) * 3] = 1.0  # unit vector in R channel of coefficient col
+        cloud = spz.GaussianCloud()
+        cloud.sh_degree = l
+        cloud.positions = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+        cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        cloud.sh = sh
+        cloud.convert_coordinates(spz.RUF, spz.RBU)
+        for row in range(n):
+            matrix[row, col] = cloud.sh[(coeffs_before + row) * 3]
+    return matrix
+
+
+@pytest.mark.parametrize("band_idx", [1, 2, 3])  # l = 2, 3, 4
+def test_sh_rotation_higher_bands_orthogonal(band_idx):
+    """R_x(+π/2) SH rotation matrix for bands l=2,3,4 is orthogonal with determinant +1."""
+    R = _sh_plus_rotation_matrix(band_idx)
+    n = R.shape[0]
+    np.testing.assert_allclose(R.T @ R, np.eye(n), atol=1e-5)
+    np.testing.assert_allclose(np.linalg.det(R), 1.0, atol=1e-5)
+
+
+@pytest.mark.parametrize("sh_degree", [2, 3, 4])
+def test_sh_rotation_higher_bands_four_cycle(sh_degree):
+    """Applying R_x(+π/2) four times (=360°) restores SH coefficients for degrees 2–4."""
+    rng = np.random.default_rng(seed=42)
+    num_sh_coeffs = sum(2 * l + 1 for l in range(1, sh_degree + 1)) * 3
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = sh_degree
+    cloud.positions = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    cloud.sh = rng.random(num_sh_coeffs).astype(np.float32)
+    original_sh = cloud.sh.copy()
+    # RUF→RBU has identity SH flip: only R_x(+π/2) is applied each time.
+    for _ in range(4):
+        cloud.convert_coordinates(spz.RUF, spz.RBU)
+    np.testing.assert_allclose(cloud.sh, original_sh, atol=1e-5)
+
+
+def test_cross_family_quaternion_nontrivial():
+    """Quaternion rotation is correct for cross-family conversions with a non-trivial quaternion."""
+    from scipy.spatial.transform import Rotation as R
+
+    rng = np.random.default_rng(seed=123)
+    r_rx_plus = R.from_euler('x', 90, degrees=True)
+
+    # Case 1: RUF→RBU — identity inner flip (flipQ={1,1,1}), pure R_x(+π/2).
+    q = rng.random(4).astype(np.float32)
+    q /= np.linalg.norm(q)
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = 0
+    cloud.positions = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    cloud.rotations = q.copy()
+    cloud.sh = np.array([], dtype=np.float32)
+    cloud.convert_coordinates(spz.RUF, spz.RBU)
+
+    expected = (r_rx_plus * R.from_quat(q.astype(np.float64))).as_quat()
+    result = cloud.rotations.astype(np.float64)
+    if np.dot(result, expected) < 0:
+        expected = -expected
+    np.testing.assert_allclose(result, expected, atol=1e-5)
+
+    # Case 2: RUB→RBD — R_x(+π/2) first, then inner flip flipQ={1,-1,-1} (from within-rotated RFU↔RBD).
+    # Order: rotate-then-flip (forward direction).
+    q2 = rng.random(4).astype(np.float32)
+    q2 /= np.linalg.norm(q2)
+    cloud2 = spz.GaussianCloud()
+    cloud2.sh_degree = 0
+    cloud2.positions = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    cloud2.rotations = q2.copy()
+    cloud2.sh = np.array([], dtype=np.float32)
+    cloud2.convert_coordinates(spz.RUB, spz.RBD)
+
+    # Rotate first, then apply flipQ=(1,-1,-1): negate y and z quaternion components.
+    q2_rotated = (r_rx_plus * R.from_quat(q2.astype(np.float64))).as_quat()
+    expected2 = np.array([q2_rotated[0], -q2_rotated[1], -q2_rotated[2], q2_rotated[3]], dtype=np.float64)
+    result2 = cloud2.rotations.astype(np.float64)
+    if np.dot(result2, expected2) < 0:
+        expected2 = -expected2
+    np.testing.assert_allclose(result2, expected2, atol=1e-5)
 
 
 def _make_single_point_cloud():
