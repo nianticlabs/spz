@@ -205,7 +205,7 @@ def test_cross_family_position_rotation():
     (spz.RFU, spz.RUB),
     (spz.LBD, spz.RUB),
 ])
-@pytest.mark.parametrize("sh_degree", [0, 1, 3, 4])
+@pytest.mark.parametrize("sh_degree", range(5))
 def test_cross_family_round_trip(from_coord, to_coord, sh_degree):
     """All fields are restored after a cross-family A→B→A round-trip."""
     rng = np.random.default_rng(seed=42)
@@ -440,9 +440,10 @@ def test_coordinate_system_extension_overrides_pack_to():
     pack_opts = spz.PackOptions()
     pack_opts.from_coord = spz.RUB  # input is RUB; extension says store as RDF
 
-    buf = spz.save_spz_to_buffer(cloud, pack_opts)
+    filename = os.path.join(tempfile.gettempdir(), "coord_ext_override_test.spz")
+    assert spz.save_spz(cloud, pack_opts, filename) is True
     # Load back with no output conversion: extension drives from=RDF, to=UNSPECIFIED → data in RDF.
-    loaded = spz.load_spz_from_buffer(buf, spz.UnpackOptions())
+    loaded = spz.load_spz(filename, spz.UnpackOptions())
 
     # RUB→RDF flips Y and Z: (1,2,3) → (1,-2,-3).
     np.testing.assert_allclose(
@@ -469,9 +470,10 @@ def test_coordinate_system_extension_absent_uses_rub():
     pack_opts = spz.PackOptions()
     pack_opts.from_coord = spz.RDF  # input is RDF; no extension → converts to RUB
 
-    buf = spz.save_spz_to_buffer(cloud, pack_opts)
+    filename = os.path.join(tempfile.gettempdir(), "coord_ext_absent_test.spz")
+    assert spz.save_spz(cloud, pack_opts, filename) is True
     # Load back with no output conversion: no extension → from=RUB, to=UNSPECIFIED → data in RUB.
-    loaded = spz.load_spz_from_buffer(buf, spz.UnpackOptions())
+    loaded = spz.load_spz(filename, spz.UnpackOptions())
 
     # RDF→RUB flips Y and Z: (1,2,3) → (1,-2,-3).
     np.testing.assert_allclose(
@@ -508,3 +510,155 @@ def test_coordinate_system_extension_used_on_unpack():
         atol=1 / 2048.0,
     )
 
+
+def test_coordinate_system_extension_unspecified_uses_rub():
+    """Extension with UNSPECIFIED coordinateSystem is ignored; packGaussians falls back to RUB."""
+    if not spz.has_extension_support():
+        return
+    cloud = _make_single_point_cloud()
+    coord_ext = spz.SpzExtensionCoordinateSystemAdobe()
+    coord_ext.coordinate_system = spz.UNSPECIFIED  # present but UNSPECIFIED → treated as no extension
+    cloud.extensions = [coord_ext]
+
+    pack_opts = spz.PackOptions()
+    pack_opts.from_coord = spz.RDF  # input is RDF; extension is UNSPECIFIED → converts to RUB
+
+    filename = os.path.join(tempfile.gettempdir(), "coord_ext_unspecified_test.spz")
+    assert spz.save_spz(cloud, pack_opts, filename) is True
+    loaded = spz.load_spz(filename, spz.UnpackOptions())
+
+    # Same result as no extension: RDF→RUB flips Y and Z: (1,2,3) → (1,-2,-3).
+    np.testing.assert_allclose(
+        loaded.positions,
+        np.array([1.0, -2.0, -3.0], dtype=np.float32),
+        atol=1 / 2048.0,
+    )
+
+
+def test_coordinate_system_extension_rotated_family():
+    """Extension with a rotated-family coordinate exercises the cross-family pack/unpack path."""
+    if not spz.has_extension_support():
+        return
+    # Input is in RUB; extension requests storage in RBD (rotated family → cross-family conversion).
+    cloud = _make_single_point_cloud()
+    coord_ext = spz.SpzExtensionCoordinateSystemAdobe()
+    coord_ext.coordinate_system = spz.RBD
+    cloud.extensions = [coord_ext]
+
+    pack_opts = spz.PackOptions()
+    pack_opts.from_coord = spz.RUB
+
+    filename = os.path.join(tempfile.gettempdir(), "coord_ext_rotated_test.spz")
+    assert spz.save_spz(cloud, pack_opts, filename) is True
+
+    # Load with to_coord=RUB: extension drives from=RBD, cross-family RBD→RUB restores originals.
+    unpack_opts = spz.UnpackOptions()
+    unpack_opts.to_coord = spz.RUB
+    loaded = spz.load_spz(filename, unpack_opts)
+    np.testing.assert_allclose(
+        loaded.positions,
+        np.array([1.0, 2.0, 3.0], dtype=np.float32),
+        atol=1 / 2048.0,
+    )
+
+
+def test_cross_family_multipoint():
+    """Cross-family convert_coordinates applies the same transform to every point."""
+    N = 4
+    rng = np.random.default_rng(seed=99)
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = 0
+    cloud.positions = rng.random(N * 3).astype(np.float32)
+    q = rng.random((N, 4)).astype(np.float32)
+    q /= np.linalg.norm(q, axis=1, keepdims=True)
+    cloud.rotations = q.flatten()
+    cloud.sh = np.array([], dtype=np.float32)
+
+    original_positions = cloud.positions.copy()
+    original_rotations = cloud.rotations.copy()
+
+    cloud.convert_coordinates(spz.RUB, spz.RBD)
+    cloud.convert_coordinates(spz.RBD, spz.RUB)
+
+    np.testing.assert_allclose(cloud.positions, original_positions, atol=1e-5)
+    np.testing.assert_allclose(cloud.rotations, original_rotations, atol=1e-5)
+
+
+def test_ply_cross_family_round_trip():
+    """saveSplatToPly/loadSplatFromPly with a cross-family coordinate restores all fields."""
+    rng = np.random.default_rng(seed=7)
+    N = 3
+    sh_degree = 1
+    num_sh_per_point = sum(2 * l + 1 for l in range(1, sh_degree + 1)) * 3  # 9
+
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = sh_degree
+    cloud.antialiased = False
+    cloud.positions = rng.random(N * 3).astype(np.float32)
+    cloud.scales = rng.random(N * 3).astype(np.float32)
+    q = rng.random((N, 4)).astype(np.float32)
+    q /= np.linalg.norm(q, axis=1, keepdims=True)
+    cloud.rotations = q.flatten()
+    cloud.alphas = rng.random(N).astype(np.float32)
+    cloud.colors = rng.random(N * 3).astype(np.float32)
+    cloud.sh = rng.random(N * num_sh_per_point).astype(np.float32)
+
+    filename = os.path.join(tempfile.gettempdir(), "ply_cross_family_test.ply")
+    pack_opts = spz.PackOptions()
+    pack_opts.from_coord = spz.RBD
+    assert spz.save_splat_to_ply(cloud, pack_opts, filename) is True
+
+    unpack_opts = spz.UnpackOptions()
+    unpack_opts.to_coord = spz.RBD
+    loaded = spz.load_splat_from_ply(filename, unpack_opts)
+
+    assert loaded.num_points == N
+    np.testing.assert_allclose(loaded.positions, cloud.positions, atol=1e-5)
+    np.testing.assert_allclose(loaded.sh, cloud.sh, atol=1e-5)
+    # PLY stores quaternions as float32 with no quantization; check per-point
+    # after resolving the double-cover sign ambiguity.
+    for i in range(N):
+        r = loaded.rotations[i * 4:(i + 1) * 4]
+        e = cloud.rotations[i * 4:(i + 1) * 4]
+        if np.dot(r, e) < 0:
+            r = -r
+        np.testing.assert_allclose(r, e, atol=1e-5)
+
+
+def test_spz_cross_family_rotation_and_sh():
+    """SPZ pack/unpack with a cross-family coordinate correctly transforms rotations and SH.
+
+    Positions are already verified by test_io_rotated_from_coord / test_io_rotated_to_coord.
+    Multi-point stride is covered by test_cross_family_multipoint.
+    """
+    rng = np.random.default_rng(seed=11)
+    q = rng.random(4).astype(np.float32)
+    q /= np.linalg.norm(q)
+    sh = rng.random(9).astype(np.float32)  # sh_degree=1: 3 coeffs × 3 channels
+
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = 1
+    cloud.antialiased = False
+    cloud.positions = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    cloud.scales = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    cloud.rotations = q.copy()
+    cloud.alphas = np.array([0.5], dtype=np.float32)
+    cloud.colors = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    cloud.sh = sh.copy()
+
+    filename = os.path.join(tempfile.gettempdir(), "spz_cross_family_rot_sh.spz")
+    pack_opts = spz.PackOptions()
+    pack_opts.from_coord = spz.RBD
+    assert spz.save_spz(cloud, pack_opts, filename) is True
+
+    unpack_opts = spz.UnpackOptions()
+    unpack_opts.to_coord = spz.RBD
+    loaded = spz.load_spz(filename, unpack_opts)
+
+    # SH degree-1 uses 5-bit quantization → max error ~1/16.
+    np.testing.assert_allclose(loaded.sh, sh, atol=0.1)
+    # Quaternion SmallestThree: 8-bit per component → max error ~1/128.
+    r = loaded.rotations
+    if np.dot(r, q) < 0:
+        r = -r
+    np.testing.assert_allclose(r, q, atol=1e-2)
