@@ -74,12 +74,13 @@ enum class CoordinateSystem {
 using AnalyticRotateShFn = void (*)(float*);
 
 struct CoordinateConverter {
-  // Flip signs for within-family conversions (identity for cross-family — baked into functions below).
-  std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};
-  std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};
-  std::array<float, 24> flipSh = {
-    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+  std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};  // x, y, z flips.
+  std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};  // x, y, z flips, w is never flipped.
+  std::array<float, 24> flipSh =  // Flips for the 24 spherical harmonics coefficients.
+    {1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f};
   // Per-band SH transform; for cross-family, rotation and flip are baked in together.
   // For within-family, these are empty and flipSh above is used instead.
