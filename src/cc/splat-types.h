@@ -61,14 +61,14 @@ enum class CoordinateSystem {
   RDF = 6,  // Right Down Front, PLY coordinate system
   LUF = 7,  // Left Up Front, GLB coordinate system
   RUF = 8,  // Right Up Front, Unity coordinate system
-  LBD = 9,  // Left Back Down
-  RBD = 10, // Right Back Down
-  LBU = 11, // Left Back Up
-  RBU = 12, // Right Back Up
-  LFD = 13, // Left Front Down
-  RFD = 14, // Right Front Down
-  LFU = 15, // Left Front Up
-  RFU = 16, // Right Front Up
+  LFD = 9,  // Left Front Down
+  RFD = 10, // Right Front Down
+  LFU = 11, // Left Front Up
+  RFU = 12, // Right Front Up
+  LBD = 13, // Left Back Down
+  RBD = 14, // Right Back Down
+  LBU = 15, // Left Back Up
+  RBU = 16, // Right Back Up
 };
 
 using AnalyticRotateShFn = void (*)(float*);
@@ -216,40 +216,21 @@ inline constexpr std::array<AnalyticRotateShFn, 4> kAnalyticRotateMinusPiHalfAbo
   },
 };
 
-// Mapping between the coordinate systems after a 90 degree rotation about the x-axis,
-// i.e. applying (x,y,z) -> (x,-z,y). For example, LDB (x=L,y=D,z=B) maps to
-// LFD (x=L,y=F,z=D) because the new y=-z_old=-B=F and new z=y_old=D.
-inline constexpr std::array<CoordinateSystem, 17> kCoordinateRotationMapping = {
-  CoordinateSystem::UNSPECIFIED,
-  CoordinateSystem::LFD,  // LDB (1): y=-B=F, z=D
-  CoordinateSystem::RFD,  // RDB (2): y=-B=F, z=D
-  CoordinateSystem::LFU,  // LUB (3): y=-B=F, z=U
-  CoordinateSystem::RFU,  // RUB (4): y=-B=F, z=U
-  CoordinateSystem::LBD,  // LDF (5): y=-F=B, z=D
-  CoordinateSystem::RBD,  // RDF (6): y=-F=B, z=D
-  CoordinateSystem::LBU,  // LUF (7): y=-F=B, z=U
-  CoordinateSystem::RBU,  // RUF (8): y=-F=B, z=U
-  CoordinateSystem::LUB,  // LBD (9): y=-D=U, z=B
-  CoordinateSystem::RUB,  // RBD (10): y=-D=U, z=B
-  CoordinateSystem::LDB,  // LBU (11): y=-U=D, z=B
-  CoordinateSystem::RDB,  // RBU (12): y=-U=D, z=B
-  CoordinateSystem::LUF,  // LFD (13): y=-D=U, z=F
-  CoordinateSystem::RUF,  // RFD (14): y=-D=U, z=F
-  CoordinateSystem::LDF,  // LFU (15): y=-U=D, z=F
-  CoordinateSystem::RDF,  // RFU (16): y=-U=D, z=F
-};
-
 inline CoordinateConverter coordinateConverter(CoordinateSystem from, CoordinateSystem to, int shDegree) {
   CoordinateConverter result;
 
   if (needRotation(from, to)) {
+    // A cross-family conversion decomposes into R_x(±π/2) plus a within-family flip.
+    // Shift `from` into the same family as `to` so the recursive call resolves to a flip only.
     const bool backward = ((static_cast<int>(from) - 1) >> 3) & 1;
-    const CoordinateSystem stdCoord   = backward ? to   : from;
-    const CoordinateSystem otherCoord = backward ? from : to;
-    result = coordinateConverter(kCoordinateRotationMapping[static_cast<int>(stdCoord)], otherCoord, shDegree);
+    const CoordinateSystem innerFrom = backward
+        ? static_cast<CoordinateSystem>(static_cast<int>(from) - 8)  // rotated→standard: shift from into standard family
+        : static_cast<CoordinateSystem>(static_cast<int>(from) + 8); // standard→rotated: shift from into rotated family
+    result = coordinateConverter(innerFrom, to, shDegree);
 
     // Bake the inner flip into each transform function so callers never need to know the order.
-    // Forward (standard→rotated): rotate then flip.  Backward (rotated→standard): flip then rotate.
+    // Forward (standard→rotated): rotate then flip.
+    // Backward (rotated→standard): flip then rotate.
     const auto fp = result.flipP;
     const auto fq = result.flipQ;
     if (backward) {
@@ -432,34 +413,37 @@ struct GaussianCloud {
         rotations[i + 2] *= c.flipQ[2];
       }
     }
-    // SH: the two mechanisms below are mutually exclusive.
-    // Cross-family: rotateShFuncs[b] has rotation+flip baked in; flipSh is all 1s, so the second loop is a no-op.
-    // Within-family: rotateShFuncs are null, so the first loop is skipped; flipSh carries the sign flips.
     // Interleaved layout is coeff-major, RGB inner.
     const size_t numCoeffs = sh.size() / 3;
     const size_t numCoeffsPerPoint = numCoeffs / numPoints;
-    for (size_t coeffBase = 0; coeffBase < numCoeffs; coeffBase += numCoeffsPerPoint) {
-      for (int band = 0; band < shDegree && band < SH_MAX_DEGREE; ++band) {
-        if (!c.rotateShFuncs[static_cast<size_t>(band)]) { continue; }
-        const size_t bandStart = static_cast<size_t>(band * (band + 2));
-        const size_t bandSize  = static_cast<size_t>(2 * band + 3);
-        if (bandStart + bandSize > numCoeffsPerPoint) { break; }
-        std::array<float, 9> tmp{};
-        for (int channel = 0; channel < 3; ++channel) {
-          for (size_t k = 0; k < bandSize; ++k) {
-            tmp[k] = sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)];
-          }
-          c.rotateShFuncs[static_cast<size_t>(band)](tmp.data());
-          for (size_t k = 0; k < bandSize; ++k) {
-            sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)] = tmp[k];
+    if (c.rotateShFuncs[0]) {
+      // Cross-family: rotation+flip baked into rotateShFuncs per band.
+      for (size_t coeffBase = 0; coeffBase < numCoeffs; coeffBase += numCoeffsPerPoint) {
+        for (int band = 0; band < shDegree && band < SH_MAX_DEGREE; ++band) {
+          const size_t bandStart = static_cast<size_t>(band * (band + 2));
+          const size_t bandSize  = static_cast<size_t>(2 * band + 3);
+          if (bandStart + bandSize > numCoeffsPerPoint) { break; }
+          std::array<float, 9> tmp{};
+          for (int channel = 0; channel < 3; ++channel) {
+            for (size_t k = 0; k < bandSize; ++k) {
+              tmp[k] = sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)];
+            }
+            c.rotateShFuncs[static_cast<size_t>(band)](tmp.data());
+            for (size_t k = 0; k < bandSize; ++k) {
+              sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)] = tmp[k];
+            }
           }
         }
       }
-      for (size_t j = 0; j < numCoeffsPerPoint; ++j) {
-        const size_t base = (coeffBase + j) * 3;
-        sh[base + 0] *= c.flipSh[j];
-        sh[base + 1] *= c.flipSh[j];
-        sh[base + 2] *= c.flipSh[j];
+    } else {
+      // Within-family: apply per-coefficient sign flips.
+      for (size_t coeffBase = 0; coeffBase < numCoeffs; coeffBase += numCoeffsPerPoint) {
+        for (size_t j = 0; j < numCoeffsPerPoint; ++j) {
+          const size_t base = (coeffBase + j) * 3;
+          sh[base + 0] *= c.flipSh[j];
+          sh[base + 1] *= c.flipSh[j];
+          sh[base + 2] *= c.flipSh[j];
+        }
       }
     }
   }
