@@ -412,9 +412,9 @@ struct GaussianCloud {
         rotations[i + 0] *= c.flipQ[0];
         rotations[i + 1] *= c.flipQ[1];
         rotations[i + 2] *= c.flipQ[2];
+        // Don't modify rotations[i + 3] (w component)
       }
     }
-    // Interleaved layout is coeff-major, RGB inner.
     const size_t numCoeffs = sh.size() / 3;
     const size_t numCoeffsPerPoint = numCoeffs / numPoints;
     if (c.rotFlipShFuncs[0]) {
@@ -437,7 +437,9 @@ struct GaussianCloud {
         }
       }
     } else {
-      // Within-family: apply per-coefficient sign flips.
+      // Within-family: rotate spherical harmonics by inverting coefficients that reference the
+      // y and z axes, for each RGB channel. See spherical_harmonics_kernel_impl.h for spherical
+      // harmonics formulas.
       for (size_t coeffBase = 0; coeffBase < numCoeffs; coeffBase += numCoeffsPerPoint) {
         for (size_t j = 0; j < numCoeffsPerPoint; ++j) {
           const size_t base = (coeffBase + j) * 3;
