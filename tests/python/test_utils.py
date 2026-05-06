@@ -95,6 +95,43 @@ def read_file(path):
         return f.read().decode("utf-8", errors="replace")
 
 
+def make_single_point_cloud():
+    """Return a 1-point GaussianCloud with simple data at (1, 2, 3)."""
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = 0
+    cloud.antialiased = False
+    cloud.positions = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    cloud.scales = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    cloud.alphas = np.array([0.5], dtype=np.float32)
+    cloud.colors = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    cloud.sh = np.array([], dtype=np.float32)
+    return cloud
+
+
+def sh_plus_rotation_matrix(band_idx):
+    """Return the (2l+1)×(2l+1) SH rotation matrix for R_x(+π/2) on band l=band_idx+1."""
+    l = band_idx + 1
+    n = 2 * l + 1
+    coeffs_before = band_idx * (band_idx + 2)  # == C++ bandStart = band*(band+2)
+    total_coeffs = coeffs_before + n
+    sh_size = total_coeffs * 3
+
+    matrix = np.zeros((n, n))
+    for col in range(n):
+        sh = np.zeros(sh_size, dtype=np.float32)
+        sh[(coeffs_before + col) * 3] = 1.0  # unit vector in R channel of coefficient col
+        cloud = spz.GaussianCloud()
+        cloud.sh_degree = l
+        cloud.positions = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+        cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        cloud.sh = sh
+        cloud.convert_coordinates(spz.RUF, spz.RBU)
+        for row in range(n):
+            matrix[row, col] = cloud.sh[(coeffs_before + row) * 3]
+    return matrix
+
+
 def make_test_gaussian_cloud(include_sh):
     """
     Create a GaussianCloud with two splats for testing.

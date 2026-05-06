@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import spz
+from test_utils import make_single_point_cloud
 
 
 def test_coordinate_system_enum():
@@ -292,84 +293,6 @@ def test_io_rotated_to_coord():
     )
 
 
-def test_sh_rotation_cross_family():
-    """Degree-1 SH coefficients are rotated when converting between coordinate families."""
-    cloud = spz.GaussianCloud()
-    cloud.sh_degree = 1
-    cloud.positions = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-    # 3 coeffs × 3 channels = 9 floats (coeff-major, channel-minor):
-    # [sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b]
-    cloud.sh = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0], dtype=np.float32)
-
-    # RUB→RBD: flipSh=[y=-1, z=-1, x=+1], then band-0 Wigner rotation (t0,t1,t2)→(t1,-t0,t2)
-    # applied per channel.
-    # After flip: sh1n1=[-1,-2,-3], sh10=[-4,-5,-6], sh1p1=[7,8,9]
-    # After rotation per channel:
-    #   R: [-1,-4,7] → [-4,1,7]   G: [-2,-5,8] → [-5,2,8]   B: [-3,-6,9] → [-6,3,9]
-    # Result: sh1n1=[-4,-5,-6], sh10=[1,2,3], sh1p1=[7,8,9]
-    cloud.convert_coordinates(spz.RUB, spz.RBD)
-    np.testing.assert_allclose(
-        cloud.sh,
-        np.array([-4.0, -5.0, -6.0, 1.0, 2.0, 3.0, 7.0, 8.0, 9.0], dtype=np.float32),
-        atol=1e-6,
-    )
-
-
-def _sh_plus_rotation_matrix(band_idx):
-    """
-    Extract the (2l+1)×(2l+1) rotation matrix for R_x(+π/2) on SH band l=band_idx+1.
-
-    Uses RUF→RBU, which has an identity inner converter (both same coord) so flipSh is
-    all-ones and rotateShFuncs contains only the Plus rotation — no contaminating flips.
-    """
-    l = band_idx + 1
-    n = 2 * l + 1
-    coeffs_before = band_idx * (band_idx + 2)  # == C++ bandStart = band*(band+2)
-    total_coeffs = coeffs_before + n
-    sh_size = total_coeffs * 3
-
-    matrix = np.zeros((n, n))
-    for col in range(n):
-        sh = np.zeros(sh_size, dtype=np.float32)
-        sh[(coeffs_before + col) * 3] = 1.0  # unit vector in R channel of coefficient col
-        cloud = spz.GaussianCloud()
-        cloud.sh_degree = l
-        cloud.positions = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-        cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-        cloud.sh = sh
-        cloud.convert_coordinates(spz.RUF, spz.RBU)
-        for row in range(n):
-            matrix[row, col] = cloud.sh[(coeffs_before + row) * 3]
-    return matrix
-
-
-@pytest.mark.parametrize("band_idx", [1, 2, 3])  # l = 2, 3, 4
-def test_sh_rotation_higher_bands_orthogonal(band_idx):
-    """R_x(+π/2) SH rotation matrix for bands l=2,3,4 is orthogonal with determinant +1."""
-    R = _sh_plus_rotation_matrix(band_idx)
-    n = R.shape[0]
-    np.testing.assert_allclose(R.T @ R, np.eye(n), atol=1e-5)
-    np.testing.assert_allclose(np.linalg.det(R), 1.0, atol=1e-5)
-
-
-@pytest.mark.parametrize("sh_degree", [2, 3, 4])
-def test_sh_rotation_higher_bands_four_cycle(sh_degree):
-    """Applying R_x(+π/2) four times (=360°) restores SH coefficients for degrees 2–4."""
-    rng = np.random.default_rng(seed=42)
-    num_sh_coeffs = sum(2 * l + 1 for l in range(1, sh_degree + 1)) * 3
-    cloud = spz.GaussianCloud()
-    cloud.sh_degree = sh_degree
-    cloud.positions = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-    cloud.sh = rng.random(num_sh_coeffs).astype(np.float32)
-    original_sh = cloud.sh.copy()
-    # RUF→RBU has identity SH flip: only R_x(+π/2) is applied each time.
-    for _ in range(4):
-        cloud.convert_coordinates(spz.RUF, spz.RBU)
-    np.testing.assert_allclose(cloud.sh, original_sh, atol=1e-5)
-
-
 def test_cross_family_quaternion_nontrivial():
     """Quaternion rotation is correct for cross-family conversions with a non-trivial quaternion."""
     from scipy.spatial.transform import Rotation as R
@@ -413,26 +336,12 @@ def test_cross_family_quaternion_nontrivial():
     np.testing.assert_allclose(result2, expected2, atol=1e-5)
 
 
-def _make_single_point_cloud():
-    """Helper: 1-point cloud with simple data."""
-    cloud = spz.GaussianCloud()
-    cloud.sh_degree = 0
-    cloud.antialiased = False
-    cloud.positions = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-    cloud.scales = np.array([0.1, 0.2, 0.3], dtype=np.float32)
-    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-    cloud.alphas = np.array([0.5], dtype=np.float32)
-    cloud.colors = np.array([0.1, 0.2, 0.3], dtype=np.float32)
-    cloud.sh = np.array([], dtype=np.float32)
-    return cloud
-
-
 def test_coordinate_system_extension_overrides_pack_to():
     """Extension on the cloud overrides the 'to' coordinate of packGaussians (default RUB → ext coord)."""
     if not spz.has_extension_support():
         return
     # Cloud positions are in RUB. Attach extension requesting storage in RDF.
-    cloud = _make_single_point_cloud()
+    cloud = make_single_point_cloud()
     coord_ext = spz.SpzExtensionCoordinateSystemAdobe()
     coord_ext.coordinate_system = spz.RDF
     cloud.extensions = [coord_ext]
@@ -464,7 +373,7 @@ def test_coordinate_system_extension_absent_uses_rub():
     """Without the extension, packGaussians converts to RUB as usual."""
     if not spz.has_extension_support():
         return
-    cloud = _make_single_point_cloud()
+    cloud = make_single_point_cloud()
     # No coordinate system extension on the cloud.
 
     pack_opts = spz.PackOptions()
@@ -488,7 +397,7 @@ def test_coordinate_system_extension_used_on_unpack():
     if not spz.has_extension_support():
         return
     # Store cloud in RDF (input RUB, extension says store as RDF).
-    cloud = _make_single_point_cloud()
+    cloud = make_single_point_cloud()
     coord_ext = spz.SpzExtensionCoordinateSystemAdobe()
     coord_ext.coordinate_system = spz.RDF
     cloud.extensions = [coord_ext]
@@ -515,7 +424,7 @@ def test_coordinate_system_extension_unspecified_uses_rub():
     """Extension with UNSPECIFIED coordinateSystem is ignored; packGaussians falls back to RUB."""
     if not spz.has_extension_support():
         return
-    cloud = _make_single_point_cloud()
+    cloud = make_single_point_cloud()
     coord_ext = spz.SpzExtensionCoordinateSystemAdobe()
     coord_ext.coordinate_system = spz.UNSPECIFIED  # present but UNSPECIFIED → treated as no extension
     cloud.extensions = [coord_ext]
@@ -540,7 +449,7 @@ def test_coordinate_system_extension_rotated_family():
     if not spz.has_extension_support():
         return
     # Input is in RUB; extension requests storage in RBD (rotated family → cross-family conversion).
-    cloud = _make_single_point_cloud()
+    cloud = make_single_point_cloud()
     coord_ext = spz.SpzExtensionCoordinateSystemAdobe()
     coord_ext.coordinate_system = spz.RBD
     cloud.extensions = [coord_ext]
