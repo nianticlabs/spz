@@ -113,10 +113,10 @@ standard = [
 ]
 # Rotated family (axes permuted by a 90-degree rotation about X; Y and Z swapped):
 rotated = [
-    spz.CoordinateSystem.LBD, spz.CoordinateSystem.RBD,
-    spz.CoordinateSystem.LBU, spz.CoordinateSystem.RBU,
     spz.CoordinateSystem.LFD, spz.CoordinateSystem.RFD,
     spz.CoordinateSystem.LFU, spz.CoordinateSystem.RFU,
+    spz.CoordinateSystem.LBD, spz.CoordinateSystem.RBD,
+    spz.CoordinateSystem.LBU, spz.CoordinateSystem.RBU,
 ]
 print("Standard:", standard)
 print("Rotated: ", rotated)

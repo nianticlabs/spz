@@ -137,14 +137,14 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .value("RDF", spz::CoordinateSystem::RDF)
       .value("LUF", spz::CoordinateSystem::LUF)
       .value("RUF", spz::CoordinateSystem::RUF)
-      .value("LBD", spz::CoordinateSystem::LBD)
-      .value("RBD", spz::CoordinateSystem::RBD)
-      .value("LBU", spz::CoordinateSystem::LBU)
-      .value("RBU", spz::CoordinateSystem::RBU)
       .value("LFD", spz::CoordinateSystem::LFD)
       .value("RFD", spz::CoordinateSystem::RFD)
       .value("LFU", spz::CoordinateSystem::LFU)
-      .value("RFU", spz::CoordinateSystem::RFU);
+      .value("RFU", spz::CoordinateSystem::RFU)
+      .value("LBD", spz::CoordinateSystem::LBD)
+      .value("RBD", spz::CoordinateSystem::RBD)
+      .value("LBU", spz::CoordinateSystem::LBU)
+      .value("RBU", spz::CoordinateSystem::RBU);
 
 #ifdef SPZ_BUILD_EXTENSIONS
   spz::emscripten::register_extensions();

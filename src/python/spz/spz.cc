@@ -131,13 +131,13 @@ NB_MODULE(spz, m) {
 
         Rotated systems (axes are permuted by a 90-degree rotation about X; letters denote
         X, Y, Z axis directions in the permuted frame where Y and Z are swapped):
-        - LBD, RBD, LBU, RBU, LFD, RFD, LFU, RFU
+        - LFD, RFD, LFU, RFU, LBD, RBD, LBU, RBU
 
         Common usage patterns:
         - RDF: Standard PLY file format (right-handed, Y-down, Z-forward)
         - RUB: Three.js coordinate system (right-handed, Y-up, Z-backward)
-        - LUF: glTF/GLB format (left-handed, Y-up, Z-forward)
-        - RUF: Unity game engine (right-handed, Y-up, Z-forward)
+        - LUF: glTF/GLB format (right-handed, Y-up, Z-forward)
+        - RUF: Unity game engine (left-handed, Y-up, Z-forward)
 
         Use convert_coordinates() to transform between different coordinate systems.
     )doc")
@@ -150,14 +150,14 @@ NB_MODULE(spz, m) {
         .value("RDF",         spz::CoordinateSystem::RDF, "Right Down Front - right-handed, Y-down, Z-forward (PLY format)")
         .value("LUF",         spz::CoordinateSystem::LUF, "Left Up Front - left-handed, Y-up, Z-forward (GLB format)")
         .value("RUF",         spz::CoordinateSystem::RUF, "Right Up Front - right-handed, Y-up, Z-forward (Unity)")
-        .value("LBD",         spz::CoordinateSystem::LBD, "Left Back Down - rotated system (x=Left, y=Back, z=Down)")
-        .value("RBD",         spz::CoordinateSystem::RBD, "Right Back Down - rotated system (x=Right, y=Back, z=Down)")
-        .value("LBU",         spz::CoordinateSystem::LBU, "Left Back Up - rotated system (x=Left, y=Back, z=Up)")
-        .value("RBU",         spz::CoordinateSystem::RBU, "Right Back Up - rotated system (x=Right, y=Back, z=Up)")
         .value("LFD",         spz::CoordinateSystem::LFD, "Left Front Down - rotated system (x=Left, y=Front, z=Down)")
         .value("RFD",         spz::CoordinateSystem::RFD, "Right Front Down - rotated system (x=Right, y=Front, z=Down)")
         .value("LFU",         spz::CoordinateSystem::LFU, "Left Front Up - rotated system (x=Left, y=Front, z=Up)")
         .value("RFU",         spz::CoordinateSystem::RFU, "Right Front Up - rotated system (x=Right, y=Front, z=Up)")
+        .value("LBD",         spz::CoordinateSystem::LBD, "Left Back Down - rotated system (x=Left, y=Back, z=Down)")
+        .value("RBD",         spz::CoordinateSystem::RBD, "Right Back Down - rotated system (x=Right, y=Back, z=Down)")
+        .value("LBU",         spz::CoordinateSystem::LBU, "Left Back Up - rotated system (x=Left, y=Back, z=Up)")
+        .value("RBU",         spz::CoordinateSystem::RBU, "Right Back Up - rotated system (x=Right, y=Back, z=Up)")
         .export_values();
 
     // -------------------------------------------------------------------------
