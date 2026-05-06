@@ -83,9 +83,9 @@ struct CoordinateConverter {
     1.0f, 1.0f, 1.0f, 1.0f};
   // Per-band SH transform; for cross-family, rotation and flip are baked in together.
   // For within-family, these are empty and flipSh above is used instead.
-  std::array<std::function<void(float*)>, SH_MAX_DEGREE> rotateShFuncs = {};
-  std::function<void(float*)> rotatePositionFunc = nullptr;
-  std::function<void(float*)> rotateQuaternionFunc = nullptr;
+  std::array<std::function<void(float*)>, SH_MAX_DEGREE> rotFlipShFuncs = {};
+  std::function<void(float*)> rotFlipPFunc = nullptr;
+  std::function<void(float*)> rotFlipQFunc = nullptr;
 };
 
 constexpr std::array<bool, 3> axesMatch(CoordinateSystem a, CoordinateSystem b) {
@@ -234,22 +234,22 @@ inline CoordinateConverter coordinateConverter(CoordinateSystem from, Coordinate
     const auto fp = result.flipP;
     const auto fq = result.flipQ;
     if (backward) {
-      result.rotatePositionFunc = [fp](float* p) {
+      result.rotFlipPFunc = [fp](float* p) {
         p[0] *= fp[0]; p[1] *= fp[1]; p[2] *= fp[2];
         const float y = p[1], z = p[2]; p[1] = z; p[2] = -y;  // R_x(-π/2)
       };
-      result.rotateQuaternionFunc = [fq](float* p) {
+      result.rotFlipQFunc = [fq](float* p) {
         p[0] *= fq[0]; p[1] *= fq[1]; p[2] *= fq[2];
         const float s = std::sqrt(2.f) / 2.f;
         const float x = p[0], y = p[1], z = p[2], w = p[3];
         p[0] = s * (-w + x); p[1] = s * (y + z); p[2] = s * (-y + z); p[3] = s * (w + x);
       };
     } else {
-      result.rotatePositionFunc = [fp](float* p) {
+      result.rotFlipPFunc = [fp](float* p) {
         const float y = p[1], z = p[2]; p[1] = -z; p[2] = y;  // R_x(+π/2)
         p[0] *= fp[0]; p[1] *= fp[1]; p[2] *= fp[2];
       };
-      result.rotateQuaternionFunc = [fq](float* p) {
+      result.rotFlipQFunc = [fq](float* p) {
         const float s = std::sqrt(2.f) / 2.f;
         const float x = p[0], y = p[1], z = p[2], w = p[3];
         p[0] = s * (w + x); p[1] = s * (y - z); p[2] = s * (y + z); p[3] = s * (w - x);
@@ -269,12 +269,12 @@ inline CoordinateConverter coordinateConverter(CoordinateSystem from, Coordinate
       std::array<float, 9> bandFlip{};
       for (size_t k = 0; k < bandSize; ++k) bandFlip[k] = result.flipSh[bandStart + k];
       if (backward) {
-        result.rotateShFuncs[static_cast<size_t>(b)] = [rotFn, bandFlip, bandSize](float* p) {
+        result.rotFlipShFuncs[static_cast<size_t>(b)] = [rotFn, bandFlip, bandSize](float* p) {
           for (size_t k = 0; k < bandSize; ++k) p[k] *= bandFlip[k];
           rotFn(p);
         };
       } else {
-        result.rotateShFuncs[static_cast<size_t>(b)] = [rotFn, bandFlip, bandSize](float* p) {
+        result.rotFlipShFuncs[static_cast<size_t>(b)] = [rotFn, bandFlip, bandSize](float* p) {
           rotFn(p);
           for (size_t k = 0; k < bandSize; ++k) p[k] *= bandFlip[k];
         };
@@ -390,9 +390,9 @@ struct GaussianCloud {
     }
     CoordinateConverter c = coordinateConverter(from, to, shDegree);
     // Positions: call transform (which includes flip for cross-family), else apply flipP.
-    if (c.rotatePositionFunc) {
+    if (c.rotFlipPFunc) {
       for (size_t i = 0; i < positions.size(); i += 3) {
-        c.rotatePositionFunc(positions.data() + i);
+        c.rotFlipPFunc(positions.data() + i);
       }
     } else {
       for (size_t i = 0; i < positions.size(); i += 3) {
@@ -402,9 +402,9 @@ struct GaussianCloud {
       }
     }
     // Rotations: same pattern. Within-family only flips x,y,z; w is untouched. Cross-family rotates all four.
-    if (c.rotateQuaternionFunc) {
+    if (c.rotFlipQFunc) {
       for (size_t i = 0; i < rotations.size(); i += 4) {
-        c.rotateQuaternionFunc(rotations.data() + i);
+        c.rotFlipQFunc(rotations.data() + i);
       }
     } else {
       for (size_t i = 0; i < rotations.size(); i += 4) {
@@ -416,8 +416,8 @@ struct GaussianCloud {
     // Interleaved layout is coeff-major, RGB inner.
     const size_t numCoeffs = sh.size() / 3;
     const size_t numCoeffsPerPoint = numCoeffs / numPoints;
-    if (c.rotateShFuncs[0]) {
-      // Cross-family: rotation+flip baked into rotateShFuncs per band.
+    if (c.rotFlipShFuncs[0]) {
+      // Cross-family: rotation+flip baked into rotFlipShFuncs per band.
       for (size_t coeffBase = 0; coeffBase < numCoeffs; coeffBase += numCoeffsPerPoint) {
         for (int band = 0; band < shDegree && band < SH_MAX_DEGREE; ++band) {
           const size_t bandStart = static_cast<size_t>(band * (band + 2));
@@ -428,7 +428,7 @@ struct GaussianCloud {
             for (size_t k = 0; k < bandSize; ++k) {
               tmp[k] = sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)];
             }
-            c.rotateShFuncs[static_cast<size_t>(band)](tmp.data());
+            c.rotFlipShFuncs[static_cast<size_t>(band)](tmp.data());
             for (size_t k = 0; k < bandSize; ++k) {
               sh[(coeffBase + bandStart + k) * 3 + static_cast<size_t>(channel)] = tmp[k];
             }
