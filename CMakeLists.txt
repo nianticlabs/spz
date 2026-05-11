@@ -168,6 +168,7 @@ if(SPZ_BUILD_WASM)
     "-sMODULARIZE=1"
     "-sEXPORT_NAME=createSpzModule"
     "-sALLOW_MEMORY_GROWTH=1"
+    "-sMAXIMUM_MEMORY=4294967296"
     "-sENVIRONMENT=web"
     "-sEXPORT_ES6=1"
     "-sSINGLE_FILE=1"
