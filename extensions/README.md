@@ -45,11 +45,12 @@ If an SPZ file that contains extensions is loaded by a library build that was **
 
 - **The load still succeeds.** Core Gaussian splat data (positions, colors, SH, etc.) is read and returned as usual.
 - **Extension data is ignored.** The header’s extension flag is read, but the extension block is not parsed. A warning is logged. The exact message depends on the file format:
-  - NGSP v4: `[SPZ WARNING] loadSpzPacked: file has header extensions but extension support is disabled`
-  - Legacy gzip: `[SPZ WARNING] deserializePackedGaussians: the stream has extensions but extensions are unsupported in the current build of SPZ`
+  - NGSP v4: `[SPZ WARNING] loadSpzPacked: file has extensions but extension support is disabled — skipped extensions may affect how data was packed or will be unpacked; build with SPZ_BUILD_EXTENSIONS to ensure correct results`
+  - Legacy gzip: `[SPZ WARNING] deserializePackedGaussians: stream has extensions but extension support is disabled — skipped extensions may affect how data was packed or will be unpacked; build with SPZ_BUILD_EXTENSIONS to ensure correct results`
 - **Returned clouds have no extensions.** `PackedGaussians` and `GaussianCloud` in a no-extension build do not have an `extensions` member; the loaded result simply omits any extension data.
+- **Data may be incorrect.** Some extensions (such as `SPZ_ADOBE_coordinate_system`) alter how data is packed or unpacked. If a file was written with such an extension, a build without extension support will silently misinterpret the data — for example, applying the wrong coordinate system conversion. The warning above is the only signal this has occurred.
 
-So builds without extensions can safely load files that contain extensions; they get the core data and drop the rest. To preserve or use extension data, build with `-DSPZ_BUILD_EXTENSIONS=ON` and use a build that includes the extension sources.
+To preserve or use extension data, and to ensure correct data interpretation, build with `-DSPZ_BUILD_EXTENSIONS=ON`.
 
 ## Using extensions
 
@@ -165,15 +166,21 @@ To add a new extension type in the C++ codebase:
 
 - **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `extensions/cc/safe-orbit-camera-adobe.h` and `safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults.
 
-- **SPZ_ADOBE_coordinate_system** (`0xADBE0003`) — Overrides the storage coordinate system. Implemented in `extensions/cc/coordinate-system-adobe.h` and `coordinate-system-adobe.cc`.
+- **SPZ_ADOBE_coordinate_system** (`0xADBE0003`) — Records the coordinate system in which the Gaussian data is physically stored in the file. Implemented in `extensions/cc/coordinate-system-adobe.h` and `coordinate-system-adobe.cc`.
 
-  **Payload:** one `uint32_t` — the `CoordinateSystem` enum value (4 bytes).
+  **Payload:** one `uint32_t` — the `CoordinateSystem` enum value (4 bytes). Valid range: 1–16 (see `CoordinateSystem` enum). Value 0 (`UNSPECIFIED`) is treated as absent and will produce a warning; it is not a valid way to express "use the default".
 
-  Attach this extension to `GaussianCloud::extensions` before saving to store data in a coordinate system other than the default RUB. `packGaussians` will convert `PackOptions::from → extension.coordinateSystem` instead of `PackOptions::from → RUB`; `unpackGaussians` reads it back and converts `extension.coordinateSystem → UnpackOptions::to` instead of `RUB → UnpackOptions::to`. If absent or `UNSPECIFIED`, behaviour is unchanged. The library never creates this extension automatically.
+  **This extension is a descriptor, not an instruction.** It labels what coordinate system the packed data is already in. Readers must not apply an additional conversion based on it — `unpackGaussians` uses it internally and performs the full conversion to `UnpackOptions::to` automatically. Manually applying a conversion on top will double-transform the data.
+
+  **For writers:** attach this extension before saving to store data in a coordinate system other than the default RUB. `packGaussians` will then convert `PackOptions::from → extension.coordinateSystem` instead of `PackOptions::from → RUB`. The library never creates this extension automatically.
+
+  **For readers:** if you use `unpackGaussians` / `loadSpz`, no action is needed — the conversion is handled for you. Only inspect this extension directly if you are processing raw packed data outside of those functions.
+
+  **Compatibility note:** a non-extension build silently ignores this extension and always assumes RUB. If the file was stored in a different coordinate system, the resulting data will be incorrect. See "Builds without extension support" above.
 
   ```python
   ext = spz.SpzExtensionCoordinateSystemAdobe()
   ext.coordinate_system = spz.RDF
   cloud.extensions = [ext]
-  # pack with from_coord=RUB → stored as RDF; load with to_coord=RUB → converted back
+  # pack with from_coord=RUB → stored as RDF; load with to_coord=RUB → converted back automatically
   ```

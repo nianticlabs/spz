@@ -10,8 +10,9 @@ with minimal visual differences between the two.
 
 ### Coordinate System
 
-SPZ stores data internally in an RUB coordinate system following the OpenGL and three.js
-convention. This differs from other data formats such as PLY (which typically uses RDF), GLB (which
+By default, SPZ stores data in an RUB coordinate system following the OpenGL and three.js
+convention. This can be overridden via the `SPZ_ADOBE_coordinate_system` extension, which allows
+data to be stored in any named coordinate system (see [extensions/README.md](extensions/README.md)). This differs from other data formats such as PLY (which typically uses RDF), GLB (which
 typically uses LUF), or Unity (which typically uses RUF). To aid with coordinate system conversions,
 callers should specify the coordinate system their Gaussian Cloud data is represented in when saving
 and what coordinate system their rendering system uses when loading. These are specified in the

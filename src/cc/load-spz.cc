@@ -27,7 +27,6 @@ SOFTWARE.
 #include "splat-types.h"
 #ifdef SPZ_BUILD_EXTENSIONS
 #include "splat-extensions.h"
-#include "coordinate-system-adobe.h"
 #endif
 
 #include <zlib.h>
@@ -342,13 +341,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 #ifdef SPZ_BUILD_EXTENSIONS
   // If the cloud carries a coordinate-system extension, use its value as the storage target
   // instead of RUB so that callers can persist data in any coordinate system they choose.
-  CoordinateSystem packToCoord = CoordinateSystem::RUB;
-  {
-    auto coordExt = findExtensionByType<SpzExtensionCoordinateSystemAdobe>(g.extensions);
-    if (coordExt && coordExt->coordinateSystem != CoordinateSystem::UNSPECIFIED) {
-      packToCoord = coordExt->coordinateSystem;
-    }
-  }
+  CoordinateSystem packToCoord = getPackedCoordinateSystem(g.extensions);
   CoordinateConverter c = coordinateConverter(o.from, packToCoord, g.shDegree);
 #else
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB, g.shDegree);
@@ -676,14 +669,15 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
 
 #ifdef SPZ_BUILD_EXTENSIONS
   {
-    auto coordExt = findExtensionByType<SpzExtensionCoordinateSystemAdobe>(result.extensions);
-    CoordinateSystem fromCoord =
-        (coordExt && coordExt->coordinateSystem != CoordinateSystem::UNSPECIFIED)
-            ? coordExt->coordinateSystem
-            : CoordinateSystem::RUB;
+    CoordinateSystem fromCoord = getPackedCoordinateSystem(result.extensions);
     result.convertCoordinates(fromCoord, o.to);
   }
 #else
+  if (packed.hadSkippedExtensions) {
+    SpzLog("[SPZ WARNING] unpackGaussians: extensions were skipped at load time — "
+           "unpacked data may be incorrect due to unknown packing behavior; "
+           "build with SPZ_BUILD_EXTENSIONS to ensure correct results");
+  }
   result.convertCoordinates(CoordinateSystem::RUB, o.to);
 #endif
   return result;
@@ -877,7 +871,10 @@ PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
       std::istringstream extStream(std::move(extStr));
       readAllExtensions(extStream, result.extensions);
 #else
-      SpzLog("[SPZ WARNING] loadSpzPacked: file has header extensions but extension support is disabled");
+      SpzLog("[SPZ WARNING] loadSpzPacked: file has extensions but extension support is disabled — "
+             "skipped extensions may affect how data was packed or will be unpacked; "
+             "build with SPZ_BUILD_EXTENSIONS to ensure correct results");
+      result.hadSkippedExtensions = true;
 #endif
     }
   }
@@ -945,8 +942,10 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
 #ifdef SPZ_BUILD_EXTENSIONS
     readAllExtensions(in, result.extensions);
 #else
-    SpzLog(
-        "[SPZ WARNING] deserializePackedGaussians: the stream has extensions but extensions are unsupported in the current build of SPZ");
+    SpzLog("[SPZ WARNING] deserializePackedGaussians: stream has extensions but extension support is disabled — "
+           "skipped extensions may affect how data was packed or will be unpacked; "
+           "build with SPZ_BUILD_EXTENSIONS to ensure correct results");
+    result.hadSkippedExtensions = true;
 #endif
   }
 

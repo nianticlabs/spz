@@ -101,6 +101,20 @@ const std::unordered_set<std::string>& getKnownPlyExtensionElementNames() {
 }
 }  // namespace
 
+CoordinateSystem getPackedCoordinateSystem(
+    const std::vector<SpzExtensionBasePtr>& extensions) {
+  for (const auto& ext : extensions) {
+    switch (ext->extensionType) {
+      case SpzExtensionType::SPZ_ADOBE_coordinate_system:
+        if (auto coordExt = std::dynamic_pointer_cast<SpzExtensionCoordinateSystemAdobe>(ext))
+          return coordExt->resolve();
+      default:
+        break;
+    }
+  }
+  return CoordinateSystem::RUB;
+}
+
 bool isKnownPlyExtensionElement(const std::string& elementName) {
   return getKnownPlyExtensionElementNames().count(elementName) != 0;
 }

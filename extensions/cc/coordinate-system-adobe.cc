@@ -33,6 +33,14 @@ bool readExact(std::istream& is, T& out) {
 }
 }  // namespace
 
+CoordinateSystem SpzExtensionCoordinateSystemAdobe::resolve() const {
+  if (coordinateSystem == CoordinateSystem::UNSPECIFIED) {
+    SpzLog("[SPZ WARNING] CoordinateSystemAdobe: coordinate system is UNSPECIFIED — falling back to RUB");
+    return CoordinateSystem::RUB;
+  }
+  return coordinateSystem;
+}
+
 SpzExtensionCoordinateSystemAdobe::SpzExtensionCoordinateSystemAdobe()
     : SpzExtensionBase(SpzExtensionType::SPZ_ADOBE_coordinate_system) {}
 
@@ -54,6 +62,11 @@ std::optional<SpzExtensionBasePtr> SpzExtensionCoordinateSystemAdobe::read(std::
   uint32_t coordValue{};
   if (!readExact(is, coordValue)) {
     SpzLog("[SPZ ERROR] Failed to read CoordinateSystemAdobe payload");
+    return std::nullopt;
+  }
+  constexpr uint32_t kMaxCoordinateSystem = 16;  // RBU, the highest defined value
+  if (coordValue > kMaxCoordinateSystem) {
+    SpzLog("[SPZ ERROR] CoordinateSystemAdobe extension has unknown coordinate system value: %u", static_cast<unsigned>(coordValue));
     return std::nullopt;
   }
   auto rec = std::make_shared<SpzExtensionCoordinateSystemAdobe>();

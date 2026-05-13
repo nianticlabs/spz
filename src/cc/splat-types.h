@@ -51,7 +51,7 @@ inline SpzFloatBuffer copyFloatBuffer(const std::vector<float> &vector) {
   return buffer;
 }
 
-enum class CoordinateSystem {
+enum class CoordinateSystem : int {
   UNSPECIFIED = 0,
   LDB = 1,  // Left Down Back
   RDB = 2,  // Right Down Back
