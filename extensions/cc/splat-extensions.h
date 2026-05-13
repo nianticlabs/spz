@@ -47,7 +47,7 @@ namespace spz {
 // Forward declaration to avoid circular dependency
 // The full definition is in load-spz.h, which is included in splat-extensions.cc
 struct PlyExtraElement;
-enum class CoordinateSystem : int;
+enum class CoordinateSystem : uint32_t;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
   SPZ_ADOBE_coordinate_system = 0xADBE0003u,
