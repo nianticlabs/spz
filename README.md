@@ -10,13 +10,24 @@ with minimal visual differences between the two.
 
 ### Coordinate System
 
-SPZ stores data internally in an RUB coordinate system following the OpenGL and three.js
-convention. This differs from other data formats such as PLY (which typically uses RDF), GLB (which
+By default, SPZ stores data in an RUB coordinate system following the OpenGL and three.js
+convention. This can be overridden via the `SPZ_ADOBE_coordinate_system` extension, which allows
+data to be stored in any named coordinate system (see [extensions/README.md](extensions/README.md)). This differs from other data formats such as PLY (which typically uses RDF), GLB (which
 typically uses LUF), or Unity (which typically uses RUF). To aid with coordinate system conversions,
 callers should specify the coordinate system their Gaussian Cloud data is represented in when saving
 and what coordinate system their rendering system uses when loading. These are specified in the
 PackOptions and UnpackOptions respectively.  If the coordinate system is `UNSPECIFIED`, data will
 be saved and loaded without conversion, which may harm interoperability.
+
+There are 16 named coordinate systems organised in two families:
+
+- **Standard family** — letters denote the X, Y, Z axis directions (e.g. `RUB` = Right, Up, Back):
+  `LDB`, `RDB`, `LUB`, `RUB`, `LDF`, `RDF`, `LUF`, `RUF`
+- **Rotated family** — axes are permuted by a 90-degree rotation about X (Y and Z are swapped):
+  `LFD`, `RFD`, `LFU`, `RFU`, `LBD`, `RBD`, `LBU`, `RBU`
+
+Converting between families applies a 90-degree rotation about the X axis in addition to any axis
+flips, which also rotates spherical-harmonics coefficients via the appropriate Wigner D-matrix.
 
 ## Implementations
 

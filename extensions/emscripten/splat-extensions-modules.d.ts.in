@@ -3,6 +3,7 @@
   // Extension classes
   SpzExtensionBase: typeof SpzExtensionBase;
   SpzExtensionSafeOrbitCameraAdobe: typeof SpzExtensionSafeOrbitCameraAdobe;
+  SpzExtensionCoordinateSystemAdobe: typeof SpzExtensionCoordinateSystemAdobe;
 
   /** Returns true if the PLY extra element name is handled by an extension. */
   isKnownPlyExtensionElement: (elementName: string) => boolean;

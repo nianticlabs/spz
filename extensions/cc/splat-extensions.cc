@@ -24,6 +24,7 @@ SOFTWARE.
 
 #include "splat-extensions.h"
 #include "safe-orbit-camera-adobe.h"
+#include "coordinate-system-adobe.h"
 #include "load-spz.h"
 
 #include <sstream>
@@ -60,9 +61,20 @@ bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
         out.push_back(std::move(*rec));
       return true;  // continue to next record
     }
+    case SpzExtensionType::SPZ_ADOBE_coordinate_system: {
+      std::vector<char> payload(byteLength);
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      std::istringstream iss(std::string(payload.data(), payload.size()));
+      auto rec = SpzExtensionCoordinateSystemAdobe::read(iss);
+      if (rec)
+        out.push_back(std::move(*rec));
+      return true;
+    }
     default:
       // Unknown type: skip payload and continue
-      SpzLog("[SPZ WARNING] Skipping unknown extension type: 0x%08x (%u bytes)", static_cast<unsigned>(type_u32), static_cast<unsigned>(byteLength));
+      SpzLog("[SPZ WARNING] Unknown extension type 0x%08x (%u bytes) was skipped — loaded data may be incorrect",
+             static_cast<unsigned>(type_u32), static_cast<unsigned>(byteLength));
       if (byteLength > 0)
         is.ignore(static_cast<std::streamsize>(byteLength));
       return true;
@@ -89,6 +101,14 @@ const std::unordered_set<std::string>& getKnownPlyExtensionElementNames() {
   return known;
 }
 }  // namespace
+
+CoordinateSystem getPackedCoordinateSystem(
+    const std::vector<SpzExtensionBasePtr>& extensions) {
+  if (auto coordExt = findExtensionByType<SpzExtensionCoordinateSystemAdobe>(extensions))
+    return coordExt->resolve();
+  // Unrecognized extension types are already warned about in tryParseExtension.
+  return CoordinateSystem::RUB;  // default: no known extension overrides the packed coordinate system
+}
 
 bool isKnownPlyExtensionElement(const std::string& elementName) {
   return getKnownPlyExtensionElementNames().count(elementName) != 0;

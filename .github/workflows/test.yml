@@ -8,12 +8,13 @@ concurrency:
 
 jobs:
   build:
-    name: ${{ matrix.os }} with BUILD_SHARED_LIBS=${{matrix.shared}}
+    name: ${{ matrix.os }} with BUILD_SHARED_LIBS=${{matrix.shared}} SPZ_BUILD_EXTENSIONS=${{matrix.extensions}}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
         shared: [ON, OFF]
+        extensions: [ON, OFF]
 
     steps:
      - uses: actions/checkout@v4
@@ -37,6 +38,7 @@ jobs:
        shell: bash -l {0}
        env:
         BUILD_SHARED_LIBS: ${{ matrix.shared }}
+        SPZ_BUILD_EXTENSIONS: ${{ matrix.extensions }}
 
        run: |
 
@@ -48,6 +50,7 @@ jobs:
         cmake   -G "Ninja"  \
               -DCMAKE_BUILD_TYPE=RelWithDebInfo \
               -DBUILD_SHARED_LIBS=$BUILD_SHARED_LIBS \
+              -DSPZ_BUILD_EXTENSIONS=$SPZ_BUILD_EXTENSIONS \
               -DBUILD_TESTING=ON \
               -DCMAKE_INSTALL_PREFIX=${CONDA_PREFIX} \
               -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON \
@@ -94,4 +97,35 @@ jobs:
          python -m pip install --upgrade pip
          python -m pip install ".[tests]"
          python -m pytest tests/python -v
+
+  # Ubuntu only: wasm output is platform-independent, so there is no value in
+  # running on macOS or Windows.
+  build-wasm:
+    name: wasm with SPZ_BUILD_EXTENSIONS=${{matrix.extensions}}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        extensions: [ON, OFF]
+
+    steps:
+     - uses: actions/checkout@v4
+     - uses: emscripten-core/setup-emsdk@v16
+
+     - name: Setup
+       run: mkdir build-wasm
+
+     - name: CMake
+       env:
+         SPZ_BUILD_EXTENSIONS: ${{ matrix.extensions }}
+       run: |
+         emcmake cmake -G "Ninja" \
+           -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+           -DSPZ_BUILD_EXTENSIONS=$SPZ_BUILD_EXTENSIONS \
+           ..
+       working-directory: ./build-wasm
+
+     - name: Compile
+       run: ninja
+       working-directory: ./build-wasm
 

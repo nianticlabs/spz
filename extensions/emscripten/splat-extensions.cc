@@ -27,6 +27,7 @@ SOFTWARE.
 #include "src/cc/load-spz.h"
 #include "extensions/cc/splat-extensions.h"
 #include "extensions/cc/safe-orbit-camera-adobe.h"
+#include "extensions/cc/coordinate-system-adobe.h"
 #include "extensions/emscripten/splat-extensions.h"
 #include "src/emscripten/utils.h"
 
@@ -36,7 +37,8 @@ namespace emscripten {
 // Register all extension-related Emscripten bindings
 void register_extensions() {
   ::emscripten::enum_<spz::SpzExtensionType>("SpzExtensionType")
-      .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera);
+      .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera)
+      .value("SPZ_ADOBE_coordinate_system", spz::SpzExtensionType::SPZ_ADOBE_coordinate_system);
 
   ::emscripten::class_<spz::SpzExtensionBase>("SpzExtensionBase")
       .smart_ptr<std::shared_ptr<spz::SpzExtensionBase>>("SpzExtensionBasePtr")
@@ -48,6 +50,11 @@ void register_extensions() {
       .property("safeOrbitElevationMax", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitElevationMax)
       .property("safeOrbitRadiusMin", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin)
       .class_function("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type);
+
+  ::emscripten::class_<spz::SpzExtensionCoordinateSystemAdobe, ::emscripten::base<spz::SpzExtensionBase>>("SpzExtensionCoordinateSystemAdobe")
+      .constructor<>()
+      .property("coordinateSystem", &spz::SpzExtensionCoordinateSystemAdobe::coordinateSystem)
+      .class_function("type", &spz::SpzExtensionCoordinateSystemAdobe::type);
 
   ::emscripten::function("isKnownPlyExtensionElement", &spz::isKnownPlyExtensionElement);
 }
