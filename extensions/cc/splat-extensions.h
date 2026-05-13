@@ -47,8 +47,10 @@ namespace spz {
 // Forward declaration to avoid circular dependency
 // The full definition is in load-spz.h, which is included in splat-extensions.cc
 struct PlyExtraElement;
+enum class CoordinateSystem : uint32_t;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
+  SPZ_ADOBE_coordinate_system = 0xADBE0003u,
 };
 
 struct SpzExtensionBase {
@@ -81,6 +83,10 @@ void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensio
 void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out);
 
 bool isKnownPlyExtensionElement(const std::string& elementName);
+
+// Returns the coordinate system in which the Gaussian data is stored, as recorded by any
+// behavior-modifying extension. Falls back to RUB if no such extension is present.
+CoordinateSystem getPackedCoordinateSystem(const std::vector<SpzExtensionBasePtr>& extensions);
 
 inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
   SpzExtensionNode* head = nullptr;

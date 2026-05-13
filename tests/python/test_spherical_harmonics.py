@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import spz
-from test_utils import sh_epsilon
+from test_utils import sh_epsilon, sh_plus_rotation_matrix
 
 
 def test_sh_encoding_for_zeros_and_edges():
@@ -197,4 +197,54 @@ def test_sh_degree_4_invalid_length():
 
     with pytest.raises(ValueError, match="sh length must equal num_points"):
         cloud.sh = np.zeros(144, dtype=np.float32)
+
+
+def test_sh_rotation_cross_family():
+    """Degree-1 SH coefficients are rotated when converting between coordinate families."""
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = 1
+    cloud.positions = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    # 3 coeffs × 3 channels = 9 floats (coeff-major, channel-minor):
+    # [sh1n1_r, sh1n1_g, sh1n1_b, sh10_r, sh10_g, sh10_b, sh1p1_r, sh1p1_g, sh1p1_b]
+    cloud.sh = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0], dtype=np.float32)
+
+    # RUB→RBD: flipSh=[y=-1, z=-1, x=+1], then band-0 Wigner rotation (t0,t1,t2)→(t1,-t0,t2)
+    # applied per channel.
+    # After flip: sh1n1=[-1,-2,-3], sh10=[-4,-5,-6], sh1p1=[7,8,9]
+    # After rotation per channel:
+    #   R: [-1,-4,7] → [-4,1,7]   G: [-2,-5,8] → [-5,2,8]   B: [-3,-6,9] → [-6,3,9]
+    # Result: sh1n1=[-4,-5,-6], sh10=[1,2,3], sh1p1=[7,8,9]
+    cloud.convert_coordinates(spz.RUB, spz.RBD)
+    np.testing.assert_allclose(
+        cloud.sh,
+        np.array([-4.0, -5.0, -6.0, 1.0, 2.0, 3.0, 7.0, 8.0, 9.0], dtype=np.float32),
+        atol=1e-6,
+    )
+
+
+@pytest.mark.parametrize("band_idx", [1, 2, 3])  # l = 2, 3, 4
+def test_sh_rotation_higher_bands_orthogonal(band_idx):
+    """R_x(+π/2) SH rotation matrix for bands l=2,3,4 is orthogonal with determinant +1."""
+    R = sh_plus_rotation_matrix(band_idx)
+    n = R.shape[0]
+    np.testing.assert_allclose(R.T @ R, np.eye(n), atol=1e-5)
+    np.testing.assert_allclose(np.linalg.det(R), 1.0, atol=1e-5)
+
+
+@pytest.mark.parametrize("sh_degree", [2, 3, 4])
+def test_sh_rotation_higher_bands_four_cycle(sh_degree):
+    """Applying R_x(+π/2) four times (=360°) restores SH coefficients for degrees 2–4."""
+    rng = np.random.default_rng(seed=42)
+    num_sh_coeffs = sum(2 * l + 1 for l in range(1, sh_degree + 1)) * 3
+    cloud = spz.GaussianCloud()
+    cloud.sh_degree = sh_degree
+    cloud.positions = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    cloud.rotations = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    cloud.sh = rng.random(num_sh_coeffs).astype(np.float32)
+    original_sh = cloud.sh.copy()
+    # RUF→RBU has identity SH flip: only R_x(+π/2) is applied each time.
+    for _ in range(4):
+        cloud.convert_coordinates(spz.RUF, spz.RBU)
+    np.testing.assert_allclose(cloud.sh, original_sh, atol=1e-5)
 

@@ -9,6 +9,7 @@
 #include "src/cc/splat-types.h"
 #include "extensions/cc/splat-extensions.h"
 #include "extensions/cc/safe-orbit-camera-adobe.h"
+#include "extensions/cc/coordinate-system-adobe.h"
 #include "extensions/python/splat-extensions.h"
 
 namespace nb = nanobind;
@@ -30,6 +31,8 @@ void register_extensions(nb::module_& m) {
     )doc")
         .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera,
                "Adobe safe orbit camera extension")
+        .value("SPZ_ADOBE_coordinate_system", spz::SpzExtensionType::SPZ_ADOBE_coordinate_system,
+               "Adobe coordinate system extension — records the native coordinate system of the asset")
         .export_values();
 
     nb::class_<spz::SpzExtensionBase>(m, "SpzExtensionBase")
@@ -45,6 +48,12 @@ void register_extensions(nb::module_& m) {
         .def_rw("safe_orbit_radius_min", &spz::SpzExtensionSafeOrbitCameraAdobe::safeOrbitRadiusMin,
                 "Minimum radius for safe orbit")
         .def_static("type", &spz::SpzExtensionSafeOrbitCameraAdobe::type,
+                    "Static method to get the extension type enum value");
+    nb::class_<spz::SpzExtensionCoordinateSystemAdobe, spz::SpzExtensionBase>(m, "SpzExtensionCoordinateSystemAdobe")
+        .def(nb::init<>())
+        .def_rw("coordinate_system", &spz::SpzExtensionCoordinateSystemAdobe::coordinateSystem,
+                "Native coordinate system of the asset's Gaussian data")
+        .def_static("type", &spz::SpzExtensionCoordinateSystemAdobe::type,
                     "Static method to get the extension type enum value");
     m.def("is_known_ply_extension_element", &spz::isKnownPlyExtensionElement, nb::arg("element_name"),
           "Returns True if the PLY extra element name is handled by an extension.");

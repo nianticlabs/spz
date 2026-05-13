@@ -56,9 +56,7 @@ static void SpzLog(const char *fmt) {
   SpzLog("%s", fmt);
 }
 
-// Maximum degree supported
-constexpr int SH_MAX_DEGREE = 4;
-constexpr int SH_MAX_COEFFS = 24;
+constexpr int SH_MAX_COEFFS = 24; // Maximum number of SH coefficients (degree 0..4)
 constexpr int DEFAULT_SH1_BITS = 5;
 constexpr int DEFAULT_SH_REST_BITS = 4;
 
@@ -114,6 +112,7 @@ struct PackedGaussians {
   int32_t fractionalBits = 0;  // Number of bits used for fractional part of fixed-point coords
   bool antialiased = false;    // Whether gaussians should be rendered with mip-splat antialiasing
   bool usesQuaternionSmallestThree = true; // Whether gaussians use the smallest three method to store quaternions
+  bool hadSkippedExtensions = false; // True when extensions were present in the file but ignored at load time
 
   std::vector<uint8_t> positions;
   std::vector<uint8_t> scales;

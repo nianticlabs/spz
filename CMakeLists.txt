@@ -90,10 +90,12 @@ if(SPZ_BUILD_EXTENSIONS)
   list(APPEND spz_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/coordinate-system-adobe.cc"
   )
   list(APPEND spz_headers
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/coordinate-system-adobe.h"
   )
 endif()
 
@@ -226,7 +228,7 @@ if (SPZ_SHOULD_INSTALL)
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/spz"
   )
 
   install(EXPORT spzTargets

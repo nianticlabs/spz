@@ -1,5 +1,6 @@
 export enum SpzExtensionType {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002,
+  SPZ_ADOBE_coordinate_system = 0xADBE0003,
 }
 
 export class SpzExtensionBase {
@@ -10,6 +11,12 @@ export class SpzExtensionSafeOrbitCameraAdobe extends SpzExtensionBase {
   safeOrbitElevationMin: number;
   safeOrbitElevationMax: number;
   safeOrbitRadiusMin: number;
+  constructor();
+  static type(): SpzExtensionType;
+}
+
+export class SpzExtensionCoordinateSystemAdobe extends SpzExtensionBase {
+  coordinateSystem: CoordinateSystem;
   constructor();
   static type(): SpzExtensionType;
 }
