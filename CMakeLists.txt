@@ -144,6 +144,7 @@ if(SPZ_BUILD_WASM)
 
   set(spz_binding_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-bindings.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/chunked-unpack.cc"
   )
 
   if(SPZ_BUILD_EXTENSIONS)
@@ -168,6 +169,7 @@ if(SPZ_BUILD_WASM)
     "-sMODULARIZE=1"
     "-sEXPORT_NAME=createSpzModule"
     "-sALLOW_MEMORY_GROWTH=1"
+    "-sINITIAL_MEMORY=512MB"
     "-sMAXIMUM_MEMORY=4294967296"
     "-sENVIRONMENT=web"
     "-sEXPORT_ES6=1"

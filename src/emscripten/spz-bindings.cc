@@ -31,7 +31,9 @@ SOFTWARE.
 #include <utility>
 #include <vector>
 
+#include "chunked-unpack.h"
 #include "load-spz.h"
+#include "splat-utils.h"
 #include "utils.h"
 #ifdef SPZ_BUILD_EXTENSIONS
 #include "extensions/emscripten/splat-extensions.h"
@@ -74,27 +76,87 @@ inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer
   return array;
 }
 
+// Chunk size of 64K points keeps the scratch buffer ~18 MB at worst.
+constexpr int32_t kStreamingChunkPoints = 1 << 16;
+
+// Fill a pre-allocated JS Float32Array with one attribute by chunked unpacking
+// through a reusable WASM-side scratch buffer.
+inline void streamAttributeIntoJsArray(spz::PackedGaussians& packed,
+                                       spz::SplatAttribute attr,
+                                       spz::CoordinateSystem coordTo,
+                                       std::vector<float>& scratch,
+                                       emscripten::val& outArray) {
+  const int32_t numPoints = packed.numPoints;
+  const size_t fpp = spz::floatsPerPoint(attr, packed.shDegree);
+  if (fpp == 0 || numPoints == 0) {
+    spz::releasePacked(packed, attr);
+    return;
+  }
+  for (int32_t off = 0; off < numPoints; off += kStreamingChunkPoints) {
+    const int32_t cnt = std::min(kStreamingChunkPoints, numPoints - off);
+    const size_t floats = static_cast<size_t>(cnt) * fpp;
+    if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), coordTo)) {
+      break;
+    }
+    outArray.call<void>("set",
+                        emscripten::typed_memory_view(floats, scratch.data()),
+                        static_cast<size_t>(off) * fpp);
+  }
+  spz::releasePacked(packed, attr);
+}
+
 EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::UnpackOptions& options) {
   std::vector<uint8_t> bufferInternal;
   vectorFromJsArray(buffer, bufferInternal);
 
-  spz::GaussianCloud cloud = spz::loadSpz(bufferInternal, options);
+  // NOTE: This can surpass the 2GB WASM heap limit if the input buffer is too large.
+  // Consider using a streaming approach if the input buffer is too large.
+  spz::PackedGaussians packed = spz::loadSpzPacked(bufferInternal.data(),
+                                                   bufferInternal.size());
+
+  // Release the input bytes from the WASM heap.
+  std::vector<uint8_t>().swap(bufferInternal);
 
   EmGaussianCloud emCloud;
-  emCloud.numPoints = cloud.numPoints;
-  emCloud.shDegree = cloud.shDegree;
-  emCloud.antialiased = cloud.antialiased;
+  emCloud.numPoints = packed.numPoints;
+  emCloud.shDegree = packed.shDegree;
+  emCloud.antialiased = packed.antialiased;
 #ifdef SPZ_BUILD_EXTENSIONS
-  emCloud.extensions = jsArrayFromVector(cloud.extensions);
+  emCloud.extensions = jsArrayFromVector(packed.extensions);
 #else
-  emCloud.extensions = emscripten::val::array();  // Empty array when extensions disabled
+  emCloud.extensions = emscripten::val::array();
 #endif
-  emCloud.positions = jsFloat32ArrayFromVector(cloud.positions);
-  emCloud.scales = jsFloat32ArrayFromVector(cloud.scales);
-  emCloud.rotations = jsFloat32ArrayFromVector(cloud.rotations);
-  emCloud.alphas = jsFloat32ArrayFromVector(cloud.alphas);
-  emCloud.colors = jsFloat32ArrayFromVector(cloud.colors);
-  emCloud.sh = jsFloat32ArrayFromVector(cloud.sh);
+
+  // Pre-allocate the six output Float32Arrays in JS heap (outside WASM linear
+  // memory) so they don't count against the WASM heap budget.
+  emscripten::val Float32Array = emscripten::val::global("Float32Array");
+  auto allocFloatArray = [&](spz::SplatAttribute attr) {
+    return Float32Array.new_(spz::floatCount(packed, attr));
+  };
+  emCloud.positions = allocFloatArray(spz::SplatAttribute::Positions);
+  emCloud.scales    = allocFloatArray(spz::SplatAttribute::Scales);
+  emCloud.rotations = allocFloatArray(spz::SplatAttribute::Rotations);
+  emCloud.alphas    = allocFloatArray(spz::SplatAttribute::Alphas);
+  emCloud.colors    = allocFloatArray(spz::SplatAttribute::Colors);
+  emCloud.sh        = allocFloatArray(spz::SplatAttribute::Sh);
+
+  // Reusable WASM-side chunk buffer sized for the widest attribute (SH;
+  // floor of 4 covers rotations when shDegree == 0).
+  const size_t maxFpp = std::max<size_t>(
+      4,
+      spz::floatsPerPoint(spz::SplatAttribute::Sh, packed.shDegree));
+  std::vector<float> scratch(static_cast<size_t>(kStreamingChunkPoints) * maxFpp);
+
+  emscripten::val* slots[] = {
+    &emCloud.positions, &emCloud.alphas, &emCloud.colors,
+    &emCloud.scales,    &emCloud.rotations, &emCloud.sh,
+  };
+  static_assert(sizeof(slots) / sizeof(slots[0]) == spz::kAllSplatAttributes.size(),
+                "slot count must match kAllSplatAttributes");
+  for (size_t i = 0; i < spz::kAllSplatAttributes.size(); ++i) {
+    streamAttributeIntoJsArray(packed, spz::kAllSplatAttributes[i], options.to,
+                               scratch, *slots[i]);
+  }
 
   return emCloud;
 }

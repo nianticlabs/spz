@@ -24,6 +24,7 @@ SOFTWARE.
 */
 
 #include "load-spz.h"
+#include "splat-utils.h"
 #include "splat-types.h"
 #ifdef SPZ_BUILD_EXTENSIONS
 #include "splat-extensions.h"
@@ -46,42 +47,6 @@ namespace spz {
 
 namespace {
 
-// Scale factor for DC color components. To convert to RGB, we should multiply by 0.282, but it can
-// be useful to represent base colors that are out of range if the higher spherical harmonics bands
-// bring them back into range so we multiply by a smaller value.
-constexpr float colorScale = 0.15f;
-constexpr float sqrt1_2 = (float)0.707106781186547524401; // 1/sqrt(2)
-
-int32_t degreeForDim(int32_t dim) {
-  if (dim < 3)
-    return 0;
-  if (dim < 8)
-    return 1;
-  if (dim < 15)
-    return 2;
-  if (dim < 24)
-    return 3;
-  return 4;
-}
-
-int32_t dimForDegree(int32_t degree) {
-  switch (degree) {
-    case 0:
-      return 0;
-    case 1:
-      return 3;
-    case 2:
-      return 8;
-    case 3:
-      return 15;
-    case 4:
-      return 24;
-    default:
-      SpzLog("[SPZ: ERROR] Unsupported SH degree: %d\n", degree);
-      return 0;
-  }
-}
-
 uint8_t toUint8(float x) { return static_cast<uint8_t>(std::clamp(std::round(x), 0.0f, 255.0f)); }
 
 // Quantizes to 8 bits, then rounds to nearest bucket center. 0 always maps to a bucket center.
@@ -91,11 +56,7 @@ uint8_t quantizeSH(float x, int32_t bucketSize) {
   return static_cast<uint8_t>(std::clamp(q, 0, 255));
 }
 
-float unquantizeSH(uint8_t x) { return (static_cast<float>(x) - 128.0f) / 128.0f; }
-
 float sigmoid(float x) { return 1 / (1 + std::exp(-x)); }
-
-float invSigmoid(float x) { return std::log(x / (1.0f - x)); }
 
 template <typename T>
 size_t countBytes(std::vector<T> vec) {
@@ -456,54 +417,6 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   }
 
   return packed;
-}
-
-void unpackQuaternionFirstThree(float rotation[4], const uint8_t r[3], const CoordinateConverter& c = CoordinateConverter())
-{
-  Vec3f xyz = 
-    plus(
-      times(
-        Vec3f{ static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2]) },
-        1.0f / 127.5f),
-      Vec3f{ -1, -1, -1 });
-  std::copy(xyz.data(), xyz.data() + 3, &rotation[0]);
-  // Compute the real component - we know the quaternion is normalized and w is non-negative
-  rotation[3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
-  if (c.rotFlipQFunc) { c.rotFlipQFunc(rotation); }
-  else { for (int i = 0; i < 3; i++) rotation[i] *= c.flipQ[i]; }
-}
-
-void unpackQuaternionSmallestThree(float rotation[4], const uint8_t r[4], const CoordinateConverter& c = CoordinateConverter())
-{
-  uint32_t comp =
-    r[0] +
-    (r[1] << 8) +
-    (r[2] << 16) +
-    (r[3] << 24);
-
-  constexpr uint32_t c_mask = (1u << 9u) - 1u;
-
-  const int i_largest = comp >> 30;
-  float sum_squares = 0;
-  // [unroll]
-  for (int i = 3; i >= 0; --i)
-  {
-    if (i != i_largest)
-    {
-      uint32_t mag    = comp & c_mask;
-      uint32_t negbit = (comp >> 9u) & 0x1u;
-      comp            = comp >> 10u;
-      rotation[i]     = sqrt1_2 * ((float)mag) / float(c_mask);
-      if (negbit == 1)
-      {
-        rotation[i] = -rotation[i];
-      }
-      sum_squares += rotation[i] * rotation[i];
-    }
-  }
-  rotation[i_largest] = sqrt(1.0f - sum_squares);
-  if (c.rotFlipQFunc) { c.rotFlipQFunc(rotation); }
-  else { for (int i = 0; i < 3; i++) rotation[i] *= c.flipQ[i]; }
 }
 
 UnpackedGaussian PackedGaussian::unpack(
@@ -868,9 +781,9 @@ PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
 
   // Build destination list in the same order saveSpz writes streams, skipping zero-size buffers.
   std::vector<std::pair<uint8_t *, size_t>> dests;
-  for (auto *v : {&result.positions, &result.alphas, &result.colors,
-                  &result.scales, &result.rotations, &result.sh}) {
-    if (!v->empty()) dests.push_back({v->data(), v->size()});
+  for (auto attr : kAllSplatAttributes) {
+    auto &v = packedBuffer(result, attr);
+    if (!v.empty()) dests.push_back({v.data(), v.size()});
   }
 
   if (!decompressNgspStreams(data, size, header, dests)) {
