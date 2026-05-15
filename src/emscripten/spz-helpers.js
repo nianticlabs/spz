@@ -42,7 +42,7 @@ export const SplatAttribute = Object.freeze({
 
 // Copy `bytes` into a freshly allocated WASM-heap region, run `fn(ptr, len)`,
 // and free the region in `finally` so the heap doesn't leak on throw. Use this
-// when you need to call a heap-ptr binding (e.g. loadSpzFromHeapPtr) directly.
+// when you need to call a heap-ptr binding (e.g. loadSpzStreaming) directly.
 export const withHeapBuffer = (spz, bytes, fn) => {
   const len = bytes.byteLength;
   const ptr = spz._malloc(len);
