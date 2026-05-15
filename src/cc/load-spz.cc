@@ -32,10 +32,6 @@ SOFTWARE.
 #include <zlib.h>
 #include <zstd.h>
 
-#ifdef ANDROID
-#include <android/log.h>
-#endif
-
 #include <algorithm>
 #include <cmath>
 #include <cstring>

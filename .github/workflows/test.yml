@@ -129,3 +129,39 @@ jobs:
        run: ninja
        working-directory: ./build-wasm
 
+  build-android:
+    name: android ${{ matrix.abi }} SPZ_BUILD_EXTENSIONS=${{ matrix.extensions }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a]
+        extensions: [ON, OFF]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27d
+          add-to-path: false
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: CMake
+        env:
+          SPZ_BUILD_EXTENSIONS: ${{ matrix.extensions }}
+        run: |
+          cmake -G Ninja -B build-android \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-24 \
+            -DSPZ_BUILD_EXTENSIONS=$SPZ_BUILD_EXTENSIONS \
+            -DSPZ_BUILD_TOOLS=OFF \
+            .
+
+      - name: Compile
+        run: cmake --build build-android
+
