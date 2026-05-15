@@ -26,6 +26,7 @@ SOFTWARE.
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -76,7 +77,7 @@ inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer
   return array;
 }
 
-// Chunk size of 64K points keeps the scratch buffer ~18 MB at worst.
+// WASM-side unpack chunk size. 64K points keeps the scratch ~18 MB at SH=4.
 constexpr int32_t kStreamingChunkPoints = 1 << 16;
 
 // Fill a pre-allocated JS Float32Array with one attribute by chunked unpacking
@@ -105,18 +106,10 @@ inline void streamAttributeIntoJsArray(spz::PackedGaussians& packed,
   spz::releasePacked(packed, attr);
 }
 
-EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::UnpackOptions& options) {
-  std::vector<uint8_t> bufferInternal;
-  vectorFromJsArray(buffer, bufferInternal);
-
-  // NOTE: This can surpass the 2GB WASM heap limit if the input buffer is too large.
-  // Consider using a streaming approach if the input buffer is too large.
-  spz::PackedGaussians packed = spz::loadSpzPacked(bufferInternal.data(),
-                                                   bufferInternal.size());
-
-  // Release the input bytes from the WASM heap.
-  std::vector<uint8_t>().swap(bufferInternal);
-
+// Build the EmGaussianCloud from already-parsed packed data. `packed` is consumed
+// attribute-by-attribute during streaming, so its buffers are released as soon
+// as each attribute has been written into a JS-side Float32Array.
+EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptions& options) {
   EmGaussianCloud emCloud;
   emCloud.numPoints = packed.numPoints;
   emCloud.shDegree = packed.shDegree;
@@ -128,7 +121,11 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
 #endif
 
   // Pre-allocate the six output Float32Arrays in JS heap (outside WASM linear
-  // memory) so they don't count against the WASM heap budget.
+  // memory) so they don't count against the WASM heap budget. For very large
+  // splats at SH degree 3+, the single SH Float32Array can hit browser
+  // TypedArray size limits — those callers should use `loadSpzStreaming` /
+  // `loadSpzStreamingAsync` instead, which routes chunks directly into
+  // caller-managed destinations.
   emscripten::val Float32Array = emscripten::val::global("Float32Array");
   auto allocFloatArray = [&](spz::SplatAttribute attr) {
     return Float32Array.new_(spz::floatCount(packed, attr));
@@ -161,6 +158,39 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   return emCloud;
 }
 
+// Load directly from a buffer the caller has already placed in the WASM heap.
+//
+// Ownership: the caller allocates `ptr` (e.g. Module._malloc) and is responsible
+// for freeing it (Module._free) after this function returns. This function does
+// not free `ptr`. Use this entry point when you can release the JS-side source
+// buffer before parsing — that lets peak memory drop below 2x the input size.
+EmGaussianCloud loadSpzFromHeapPtr(uintptr_t ptr, size_t byteLength,
+                                   const spz::UnpackOptions& options) {
+  const uint8_t* data = reinterpret_cast<const uint8_t*>(ptr);
+  spz::PackedGaussians packed = spz::loadSpzPacked(data, byteLength);
+  return buildEmCloud(std::move(packed), options);
+}
+
+EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::UnpackOptions& options) {
+  // Allocate one input region in the WASM heap and copy directly from the
+  // JS-side Uint8Array via HEAPU8.set. Same single-allocation path that
+  // loadSpzFromHeapPtr uses; this just hides the malloc/free behind the
+  // convenience API. Peak memory while parsing is still ~2x the input because
+  // the caller's JS Uint8Array remains alive — to avoid that, call
+  // loadSpzFromHeapPtr directly and drop the JS reference before the call.
+  const size_t byteLength = buffer["byteLength"].as<size_t>();
+  uint8_t* data = byteLength > 0 ? static_cast<uint8_t*>(std::malloc(byteLength)) : nullptr;
+  if (data != nullptr) {
+    emscripten::val::module_property("HEAPU8").call<void>(
+        "set", buffer, reinterpret_cast<uintptr_t>(data));
+  }
+
+  spz::PackedGaussians packed = spz::loadSpzPacked(data, byteLength);
+  std::free(data);
+
+  return buildEmCloud(std::move(packed), options);
+}
+
 emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackOptions& options) {
   spz::GaussianCloud cloud;
   cloud.numPoints = emCloud.numPoints;
@@ -171,11 +201,11 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   vectorFromJsArray(emCloud.extensions, cloud.extensions);
 #endif
   vectorFromJsArray(emCloud.positions, cloud.positions);
-  vectorFromJsArray(emCloud.scales, cloud.scales);
+  vectorFromJsArray(emCloud.scales,    cloud.scales);
   vectorFromJsArray(emCloud.rotations, cloud.rotations);
-  vectorFromJsArray(emCloud.alphas, cloud.alphas);
-  vectorFromJsArray(emCloud.colors, cloud.colors);
-  vectorFromJsArray(emCloud.sh, cloud.sh);
+  vectorFromJsArray(emCloud.alphas,    cloud.alphas);
+  vectorFromJsArray(emCloud.colors,    cloud.colors);
+  vectorFromJsArray(emCloud.sh,        cloud.sh);
 
   std::vector<uint8_t> output;
   if (!spz::saveSpz(cloud, options, &output)) {
@@ -183,6 +213,91 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
   }
 
   return jsUint8ArrayFromVector(output);
+}
+
+// Streaming API: invoke JS callbacks per attribute chunk so the caller can
+// route each chunk directly into its final destination (GPU buffer, multiple
+// smaller arrays, OPFS, etc.) without ever allocating a JS-heap buffer that
+// scales with numPoints.
+//
+// Callbacks object:
+//   onHeader?(info: { numPoints, shDegree, antialiased, extensions })
+//   onChunk(attr: SplatAttribute, pointOffset, data: Float32Array)
+//   onDone?()
+//   onError?(message: string)
+//
+// `data` in onChunk is a TypedArray view over WASM linear memory and is valid
+// only for the duration of the call. Consumers must copy or upload it before
+// returning — a later WASM allocation may detach the view.
+void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
+                      const spz::UnpackOptions& options,
+                      const emscripten::val& callbacks) {
+  emscripten::val onHeader = callbacks["onHeader"];
+  emscripten::val onChunk  = callbacks["onChunk"];
+  emscripten::val onDone   = callbacks["onDone"];
+  emscripten::val onError  = callbacks["onError"];
+
+  auto isCallable = [](const emscripten::val& v) {
+    return !v.isUndefined() && !v.isNull();
+  };
+  auto reportError = [&](const std::string& msg) {
+    if (isCallable(onError)) onError(msg);
+  };
+
+  if (!isCallable(onChunk)) {
+    reportError("loadSpzStreaming: callbacks.onChunk is required");
+    return;
+  }
+
+  const uint8_t* data = reinterpret_cast<const uint8_t*>(ptr);
+  spz::PackedGaussians packed = spz::loadSpzPacked(data, byteLength);
+  if (packed.numPoints == 0) {
+    reportError("loadSpzStreaming: parse returned no points");
+    return;
+  }
+
+  if (isCallable(onHeader)) {
+    emscripten::val header = emscripten::val::object();
+    header.set("numPoints", packed.numPoints);
+    header.set("shDegree", packed.shDegree);
+    header.set("antialiased", packed.antialiased);
+#ifdef SPZ_BUILD_EXTENSIONS
+    header.set("extensions", jsArrayFromVector(packed.extensions));
+#else
+    header.set("extensions", emscripten::val::array());
+#endif
+    onHeader(header);
+  }
+
+  const size_t maxFpp = std::max<size_t>(
+      4,
+      spz::floatsPerPoint(spz::SplatAttribute::Sh, packed.shDegree));
+  std::vector<float> scratch(static_cast<size_t>(kStreamingChunkPoints) * maxFpp);
+
+  for (size_t ai = 0; ai < spz::kAllSplatAttributes.size(); ++ai) {
+    const spz::SplatAttribute attr = spz::kAllSplatAttributes[ai];
+    const size_t fpp = spz::floatsPerPoint(attr, packed.shDegree);
+    if (fpp == 0) {
+      spz::releasePacked(packed, attr);
+      continue;
+    }
+    for (int32_t off = 0; off < packed.numPoints; off += kStreamingChunkPoints) {
+      const int32_t cnt = std::min(kStreamingChunkPoints, packed.numPoints - off);
+      const size_t floats = static_cast<size_t>(cnt) * fpp;
+      if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), options.to)) {
+        spz::releasePacked(packed, attr);
+        reportError("loadSpzStreaming: unpackChunk failed");
+        return;
+      }
+      // View over WASM scratch — zero-copy. Detaches on any subsequent WASM
+      // allocation that grows the heap; the JS callback must consume now.
+      onChunk(attr, off,
+              emscripten::typed_memory_view(floats, scratch.data()));
+    }
+    spz::releasePacked(packed, attr);
+  }
+
+  if (isCallable(onDone)) onDone();
 }
 
 }  // namespace
@@ -207,6 +322,20 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .value("RBD", spz::CoordinateSystem::RBD)
       .value("LBU", spz::CoordinateSystem::LBU)
       .value("RBU", spz::CoordinateSystem::RBU);
+
+  // Attribute tag passed to loadSpzStreaming's onChunk callback. Registered as
+  // `number` so JS receives plain integers (0..5), matching the TS enum in the
+  // generated .d.ts. With the default `object` policy, JS would receive enum
+  // wrapper instances, and `attr === SplatAttribute.Sh` numeric comparison
+  // would fail.
+  emscripten::enum_<spz::SplatAttribute>("SplatAttribute",
+                                         emscripten::enum_value_type::number)
+      .value("Positions", spz::SplatAttribute::Positions)
+      .value("Alphas",    spz::SplatAttribute::Alphas)
+      .value("Colors",    spz::SplatAttribute::Colors)
+      .value("Scales",    spz::SplatAttribute::Scales)
+      .value("Rotations", spz::SplatAttribute::Rotations)
+      .value("Sh",        spz::SplatAttribute::Sh);
 
 #ifdef SPZ_BUILD_EXTENSIONS
   spz::emscripten::register_extensions();
@@ -233,7 +362,10 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("sh", &EmGaussianCloud::sh);
 
   emscripten::function("loadSpzFromBuffer", &loadSpzFromBuffer);
+  emscripten::function("loadSpzFromHeapPtr", &loadSpzFromHeapPtr);
+  emscripten::function("loadSpzStreaming", &loadSpzStreaming);
   emscripten::function("saveSpzToBuffer", &saveSpzToBuffer);
   emscripten::function("SpzHasExtensionSupport", &spz::hasExtensionSupport);
   emscripten::constant("LATEST_SPZ_HEADER_VERSION", spz::LATEST_SPZ_HEADER_VERSION);
+  emscripten::constant("STREAM_CHUNK_POINTS", kStreamingChunkPoints);
 }

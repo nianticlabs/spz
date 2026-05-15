@@ -174,7 +174,8 @@ if(SPZ_BUILD_WASM)
     "-sENVIRONMENT=web"
     "-sEXPORT_ES6=1"
     "-sSINGLE_FILE=1"
-    "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
+    "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\",\"HEAPU8\"]"
+    "-sEXPORTED_FUNCTIONS=[\"_malloc\",\"_free\"]"
   )
 
   set_target_properties(spz-wasm PROPERTIES
@@ -200,8 +201,22 @@ if(SPZ_BUILD_WASM)
     @ONLY
   )
 
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-helpers.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz-helpers.js"
+    COPYONLY
+  )
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-helpers.d.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz-helpers.d.ts"
+    COPYONLY
+  )
+
   add_custom_target(copy_spz_dts ALL
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
+    DEPENDS
+      "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
+      "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz-helpers.js"
+      "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz-helpers.d.ts"
   )
 endif()
 

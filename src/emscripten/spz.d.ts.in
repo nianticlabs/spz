@@ -42,6 +42,16 @@ export enum CoordinateSystem {
   RFU,
 }
 
+/** Identifies one of the six per-point attributes in a SPZ splat. */
+export enum SplatAttribute {
+  Positions,
+  Alphas,
+  Colors,
+  Scales,
+  Rotations,
+  Sh,
+}
+
 @SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS@
 
 export interface PackOptions {
@@ -60,6 +70,14 @@ export class GaussianCloud {
   shDegree: number;
   antialiased: boolean;
 @SPZ_EXTENSIONS_GAUSSIAN_CLOUD_FIELD@
+  /**
+   * Per-point attributes as flat `Float32Array`s (interleaved coordinates
+   * within each attribute). For very large splats at SH degree 3+, the single
+   * `sh` buffer can hit browser `TypedArray` size limits — those callers
+   * should use the streaming API (`loadSpzStreaming` /
+   * `loadSpzStreamingAsync`) which routes chunks into caller-managed
+   * destinations instead.
+   */
   positions: Float32Array;
   scales: Float32Array;
   rotations: Float32Array;
@@ -68,19 +86,99 @@ export class GaussianCloud {
   sh: Float32Array;
 }
 
+/** Header info delivered to `SpzStreamCallbacks.onHeader`. */
+export interface SpzStreamHeader {
+  numPoints: number;
+  shDegree: number;
+  antialiased: boolean;
+  extensions: unknown[];
+}
+
+/**
+ * Callbacks for `loadSpzStreaming`. The streaming API never allocates a
+ * JS-heap buffer that scales with `numPoints`; chunks are delivered as views
+ * over a small reusable WASM-side scratch.
+ */
+export interface SpzStreamCallbacks {
+  /** Called once with header info before any chunks. */
+  onHeader?(info: SpzStreamHeader): void;
+
+  /**
+   * Called repeatedly with chunks of unpacked floats for each attribute.
+   *
+   * `data` is a TypedArray VIEW over WASM linear memory and is valid only for
+   * the duration of this call. Either copy it (`new Float32Array(data)`) or
+   * consume it synchronously (e.g. `gl.texSubImage2D(..., data)`). Any
+   * subsequent WASM allocation may detach the view.
+   *
+   * Chunks for a given attribute arrive in order; attributes are streamed
+   * sequentially in the order defined by `SplatAttribute`.
+   */
+  onChunk(attr: SplatAttribute, pointOffset: number, data: Float32Array): void;
+
+  /** Called once after the last chunk on a successful decode. */
+  onDone?(): void;
+
+  /** Called instead of `onDone` if decoding fails at any point. */
+  onError?(message: string): void;
+}
+
 // Wrappers for the module interface
 export interface SpzModule {
-  // Enum
+  // Enums
   CoordinateSystem: typeof CoordinateSystem;
+  SplatAttribute: typeof SplatAttribute;
 @SPZ_EXTENSIONS_MODULE_INTERFACE@
   // Loaders / Savers
   loadSpzFromBuffer(data: Uint8Array, options: UnpackOptions): GaussianCloud;
+
+  /**
+   * Load an SPZ from a buffer the caller has already placed in the WASM heap.
+   *
+   * Avoids the duplicate in-heap copy that `loadSpzFromBuffer` performs, which
+   * matters for large inputs that approach the 4GB WASM heap limit. Typical use:
+   *
+   *   const ptr = module._malloc(bytes.byteLength);
+   *   module.HEAPU8.set(bytes, ptr);
+   *   // The JS-side `bytes` can be released here if it is no longer needed.
+   *   const cloud = module.loadSpzFromHeapPtr(ptr, bytes.byteLength, options);
+   *   module._free(ptr);
+   *
+   * The caller owns `ptr`; this function does not free it.
+   */
+  loadSpzFromHeapPtr(ptr: number, byteLength: number, options: UnpackOptions): GaussianCloud;
+
+  /**
+   * Stream-decode an SPZ from a buffer already placed in the WASM heap, invoking
+   * `callbacks.onChunk` for each ~64K-point slice of each attribute. Never
+   * allocates a JS-heap buffer that scales with `numPoints` — chunks are
+   * delivered as TypedArray views over WASM scratch, valid only for the
+   * duration of the callback.
+   *
+   * Use this for arbitrarily large splats, or when chunks should land directly
+   * in their final destination (GPU buffer, multiple Float32Arrays, OPFS, etc.)
+   * without an intermediate JS-heap copy. The caller owns `ptr`.
+   */
+  loadSpzStreaming(ptr: number, byteLength: number, options: UnpackOptions, callbacks: SpzStreamCallbacks): void;
+
   saveSpzToBuffer(cloud: GaussianCloud, options: PackOptions): Uint8Array;
 
   /** Returns true if the build has extension support enabled, false otherwise. */
   SpzHasExtensionSupport(): boolean;
 
   LATEST_SPZ_HEADER_VERSION: number;
+
+  /** Points per WASM-scratch chunk delivered to `SpzStreamCallbacks.onChunk`. */
+  STREAM_CHUNK_POINTS: number;
+
+  /** Allocates `size` bytes in the WASM heap. Returns the heap offset (pointer). */
+  _malloc(size: number): number;
+
+  /** Frees a pointer previously returned by `_malloc`. */
+  _free(ptr: number): void;
+
+  /** Direct view into WASM linear memory as bytes. Backing buffer changes on heap growth. */
+  HEAPU8: Uint8Array;
 }
 
 export default function createSpzModule(overrides?: any): Promise<SpzModule>;
