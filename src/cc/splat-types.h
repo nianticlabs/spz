@@ -73,6 +73,20 @@ enum class CoordinateSystem : uint32_t {
 
 using AnalyticRotateShFn = void (*)(float*);
 
+enum class SplatAttribute : int32_t {
+  Positions,
+  Alphas,
+  Colors,
+  Scales,
+  Rotations,
+  Sh,
+};
+
+inline constexpr std::array<SplatAttribute, 6> kAllSplatAttributes = {
+  SplatAttribute::Positions, SplatAttribute::Alphas,    SplatAttribute::Colors,
+  SplatAttribute::Scales,    SplatAttribute::Rotations, SplatAttribute::Sh,
+};
+
 struct CoordinateConverter {
   std::array<float, 3> flipP = {1.0f, 1.0f, 1.0f};  // x, y, z flips.
   std::array<float, 3> flipQ = {1.0f, 1.0f, 1.0f};  // x, y, z flips, w is never flipped.
