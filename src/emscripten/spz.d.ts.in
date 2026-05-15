@@ -133,22 +133,6 @@ export interface SpzModule {
   loadSpzFromBuffer(data: Uint8Array, options: UnpackOptions): GaussianCloud;
 
   /**
-   * Load an SPZ from a buffer the caller has already placed in the WASM heap.
-   *
-   * Avoids the duplicate in-heap copy that `loadSpzFromBuffer` performs, which
-   * matters for large inputs that approach the 4GB WASM heap limit. Typical use:
-   *
-   *   const ptr = module._malloc(bytes.byteLength);
-   *   module.HEAPU8.set(bytes, ptr);
-   *   // The JS-side `bytes` can be released here if it is no longer needed.
-   *   const cloud = module.loadSpzFromHeapPtr(ptr, bytes.byteLength, options);
-   *   module._free(ptr);
-   *
-   * The caller owns `ptr`; this function does not free it.
-   */
-  loadSpzFromHeapPtr(ptr: number, byteLength: number, options: UnpackOptions): GaussianCloud;
-
-  /**
    * Stream-decode an SPZ from a buffer already placed in the WASM heap, invoking
    * `callbacks.onChunk` for each ~64K-point slice of each attribute. Never
    * allocates a JS-heap buffer that scales with `numPoints` — chunks are

@@ -46,7 +46,7 @@ export const SplatAttribute: {
 /**
  * Copy `bytes` into a wasm-heap region, run `fn(ptr, byteLength)`, and free
  * the region (even if `fn` throws). Use for direct calls into pointer-taking
- * bindings like `loadSpzFromHeapPtr` when you need finer control than
+ * bindings like `loadSpzStreaming` when you need finer control than
  * `loadSpzStreamingAsync` provides.
  */
 export function withHeapBuffer<T>(

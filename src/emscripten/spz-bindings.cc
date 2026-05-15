@@ -158,26 +158,12 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   return emCloud;
 }
 
-// Load directly from a buffer the caller has already placed in the WASM heap.
-//
-// Ownership: the caller allocates `ptr` (e.g. Module._malloc) and is responsible
-// for freeing it (Module._free) after this function returns. This function does
-// not free `ptr`. Use this entry point when you can release the JS-side source
-// buffer before parsing — that lets peak memory drop below 2x the input size.
-EmGaussianCloud loadSpzFromHeapPtr(uintptr_t ptr, size_t byteLength,
-                                   const spz::UnpackOptions& options) {
-  const uint8_t* data = reinterpret_cast<const uint8_t*>(ptr);
-  spz::PackedGaussians packed = spz::loadSpzPacked(data, byteLength);
-  return buildEmCloud(std::move(packed), options);
-}
-
 EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::UnpackOptions& options) {
   // Allocate one input region in the WASM heap and copy directly from the
-  // JS-side Uint8Array via HEAPU8.set. Same single-allocation path that
-  // loadSpzFromHeapPtr uses; this just hides the malloc/free behind the
-  // convenience API. Peak memory while parsing is still ~2x the input because
-  // the caller's JS Uint8Array remains alive — to avoid that, call
-  // loadSpzFromHeapPtr directly and drop the JS reference before the call.
+  // JS-side Uint8Array via HEAPU8.set. Peak memory while parsing is ~2x the
+  // input because the caller's JS Uint8Array remains alive alongside the heap
+  // copy — to avoid that, use the streaming API and free the JS reference
+  // before driving the decode.
   const size_t byteLength = buffer["byteLength"].as<size_t>();
   uint8_t* data = byteLength > 0 ? static_cast<uint8_t*>(std::malloc(byteLength)) : nullptr;
   if (data != nullptr) {
@@ -362,7 +348,6 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("sh", &EmGaussianCloud::sh);
 
   emscripten::function("loadSpzFromBuffer", &loadSpzFromBuffer);
-  emscripten::function("loadSpzFromHeapPtr", &loadSpzFromHeapPtr);
   emscripten::function("loadSpzStreaming", &loadSpzStreaming);
   emscripten::function("saveSpzToBuffer", &saveSpzToBuffer);
   emscripten::function("SpzHasExtensionSupport", &spz::hasExtensionSupport);
