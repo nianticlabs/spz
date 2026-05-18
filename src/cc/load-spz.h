@@ -37,6 +37,8 @@ SOFTWARE.
 
 namespace spz {
 #ifdef ANDROID
+#include <android/log.h>
+
 static constexpr char LOG_TAG[] = "SPZ";
 template <class... Args>
 static void SpzLog(const char *fmt, Args &&...args) {
