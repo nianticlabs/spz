@@ -60,8 +60,9 @@ inline float invSigmoid(float x) {
 
 // Decode a quaternion stored as its first three components in 8-bit fixed point;
 // w is reconstructed from the constraint that the quaternion is unit-length and
-// non-negative. `c.flipQ` lets callers fold a coordinate-system conversion into
-// the same pass.
+// non-negative. Within-family: `c.flipQ` scales xyz (fused into the decode).
+// Cross-family: coordinateConverter sets `c.flipQ` to identity (so the fused
+// multiply is a no-op) and `c.rotFlipQFunc` rotates the full xyzw afterwards.
 inline void unpackQuaternionFirstThree(
     float rotation[4], const uint8_t r[3],
     const CoordinateConverter &c = CoordinateConverter()) {
@@ -74,6 +75,9 @@ inline void unpackQuaternionFirstThree(
     c.flipQ);
   std::copy(xyz.data(), xyz.data() + 3, &rotation[0]);
   rotation[3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
+  if (c.rotFlipQFunc) {
+    c.rotFlipQFunc(rotation);
+  }
 }
 
 // Decode a quaternion stored in the "smallest three" encoding: 2 bits identify
@@ -103,8 +107,13 @@ inline void unpackQuaternionSmallestThree(
   }
   rotation[i_largest] = std::sqrt(1.0f - sum_squares);
 
+  // Within-family flip via c.flipQ (identity in the cross-family case, where
+  // c.rotFlipQFunc carries the full flip+rotation on the xyzw quaternion).
   for (int i = 0; i < 3; i++) {
     rotation[i] *= c.flipQ[i];
+  }
+  if (c.rotFlipQFunc) {
+    c.rotFlipQFunc(rotation);
   }
 }
 

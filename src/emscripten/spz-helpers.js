@@ -45,6 +45,9 @@ export const SplatAttribute = Object.freeze({
 // when you need to call a heap-ptr binding (e.g. loadSpzStreaming) directly.
 export const withHeapBuffer = (spz, bytes, fn) => {
   const len = bytes.byteLength;
+  if (len === 0) {
+    return fn(0, 0);
+  }
   const ptr = spz._malloc(len);
   if (ptr === 0) {
     throw new Error(`SPZ heap allocation failed (${len} bytes)`);

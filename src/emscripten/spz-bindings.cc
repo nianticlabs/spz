@@ -27,7 +27,9 @@ SOFTWARE.
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -80,10 +82,28 @@ inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer
 // WASM-side unpack chunk size. 64K points keeps the scratch ~18 MB at SH=4.
 constexpr int32_t kStreamingChunkPoints = 1 << 16;
 
+// Resolve the source coordinate system of a packed cloud. Mirrors
+// load-spz.cc::unpackGaussians: consult the coordinate-system extension if
+// extensions were retained at parse time; otherwise default to RUB (and warn
+// if extensions were dropped, since the pack frame is then unknown).
+inline spz::CoordinateSystem resolvePackedFromCoord(const spz::PackedGaussians& packed) {
+#ifdef SPZ_BUILD_EXTENSIONS
+  return spz::getPackedCoordinateSystem(packed.extensions);
+#else
+  if (packed.hadSkippedExtensions) {
+    spz::SpzLog("[SPZ WARNING] WASM unpack: extensions were skipped at load time — "
+                "assuming RUB pack frame; rebuild with SPZ_BUILD_EXTENSIONS for "
+                "correct cross-frame conversions");
+  }
+  return spz::CoordinateSystem::RUB;
+#endif
+}
+
 // Fill a pre-allocated JS Float32Array with one attribute by chunked unpacking
 // through a reusable WASM-side scratch buffer.
 inline void streamAttributeIntoJsArray(spz::PackedGaussians& packed,
                                        spz::SplatAttribute attr,
+                                       spz::CoordinateSystem coordFrom,
                                        spz::CoordinateSystem coordTo,
                                        std::vector<float>& scratch,
                                        emscripten::val& outArray) {
@@ -96,8 +116,11 @@ inline void streamAttributeIntoJsArray(spz::PackedGaussians& packed,
   for (int32_t off = 0; off < numPoints; off += kStreamingChunkPoints) {
     const int32_t cnt = std::min(kStreamingChunkPoints, numPoints - off);
     const size_t floats = static_cast<size_t>(cnt) * fpp;
-    if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), coordTo)) {
-      break;
+    if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), coordFrom, coordTo)) {
+      spz::releasePacked(packed, attr);
+      spz::SpzLog("[SPZ ERROR] loadSpzFromBuffer: unpackChunk failed (attr=%d, offset=%d)",
+                  static_cast<int>(attr), off);
+      throw std::runtime_error("loadSpzFromBuffer: unpackChunk failed");
     }
     outArray.call<void>("set",
                         emscripten::typed_memory_view(floats, scratch.data()),
@@ -144,15 +167,19 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
       spz::floatsPerPoint(spz::SplatAttribute::Sh, packed.shDegree));
   std::vector<float> scratch(static_cast<size_t>(kStreamingChunkPoints) * maxFpp);
 
+  // Order MUST match spz::kAllSplatAttributes (splat-types.h); the loop below
+  // indexes both arrays in lockstep. The static_assert catches a size mismatch
+  // but not a reorder — keep the two lists in sync.
   emscripten::val* slots[] = {
     &emCloud.positions, &emCloud.alphas, &emCloud.colors,
     &emCloud.scales,    &emCloud.rotations, &emCloud.sh,
   };
   static_assert(sizeof(slots) / sizeof(slots[0]) == spz::kAllSplatAttributes.size(),
                 "slot count must match kAllSplatAttributes");
+  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   for (size_t i = 0; i < spz::kAllSplatAttributes.size(); ++i) {
-    streamAttributeIntoJsArray(packed, spz::kAllSplatAttributes[i], options.to,
-                               scratch, *slots[i]);
+    streamAttributeIntoJsArray(packed, spz::kAllSplatAttributes[i],
+                               fromCoord, options.to, scratch, *slots[i]);
   }
 
   return emCloud;
@@ -164,15 +191,19 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
   // input because the caller's JS Uint8Array remains alive alongside the heap
   // copy — to avoid that, use the streaming API and free the JS reference
   // before driving the decode.
+  // unique_ptr ensures the heap region is freed even if HEAPU8.set or
+  // loadSpzPacked throws.
   const size_t byteLength = buffer["byteLength"].as<size_t>();
-  uint8_t* data = byteLength > 0 ? static_cast<uint8_t*>(std::malloc(byteLength)) : nullptr;
-  if (data != nullptr) {
+  std::unique_ptr<uint8_t, decltype(&std::free)> data(
+      byteLength > 0 ? static_cast<uint8_t*>(std::malloc(byteLength)) : nullptr,
+      &std::free);
+  if (data) {
     emscripten::val::module_property("HEAPU8").call<void>(
-        "set", buffer, reinterpret_cast<uintptr_t>(data));
+        "set", buffer, reinterpret_cast<uintptr_t>(data.get()));
   }
 
-  spz::PackedGaussians packed = spz::loadSpzPacked(data, byteLength);
-  std::free(data);
+  spz::PackedGaussians packed = spz::loadSpzPacked(data.get(), byteLength);
+  data.reset();
 
   return buildEmCloud(std::move(packed), options);
 }
@@ -237,8 +268,10 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
 
   const uint8_t* data = reinterpret_cast<const uint8_t*>(ptr);
   spz::PackedGaussians packed = spz::loadSpzPacked(data, byteLength);
+  // loadSpzPacked returns numPoints==0 only on parse failure (the SPZ format
+  // itself rejects 0-point clouds at parse time — see load-spz.cc:965).
   if (packed.numPoints == 0) {
-    reportError("loadSpzStreaming: parse returned no points");
+    reportError("loadSpzStreaming: failed to parse SPZ buffer");
     return;
   }
 
@@ -260,6 +293,7 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
       spz::floatsPerPoint(spz::SplatAttribute::Sh, packed.shDegree));
   std::vector<float> scratch(static_cast<size_t>(kStreamingChunkPoints) * maxFpp);
 
+  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   for (size_t ai = 0; ai < spz::kAllSplatAttributes.size(); ++ai) {
     const spz::SplatAttribute attr = spz::kAllSplatAttributes[ai];
     const size_t fpp = spz::floatsPerPoint(attr, packed.shDegree);
@@ -270,7 +304,7 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
     for (int32_t off = 0; off < packed.numPoints; off += kStreamingChunkPoints) {
       const int32_t cnt = std::min(kStreamingChunkPoints, packed.numPoints - off);
       const size_t floats = static_cast<size_t>(cnt) * fpp;
-      if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), options.to)) {
+      if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), fromCoord, options.to)) {
         spz::releasePacked(packed, attr);
         reportError("loadSpzStreaming: unpackChunk failed");
         return;

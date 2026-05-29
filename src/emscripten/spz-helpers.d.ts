@@ -30,18 +30,12 @@ import type {
 } from './spz';
 
 /**
- * Runtime mirror of the wasm `SplatAttribute` enum. The values match the
- * integer codes delivered to streaming `onChunk` callbacks, so you can do
+ * Runtime mirror of the wasm `SplatAttribute` enum. Re-exported from `./spz`
+ * so consumers have a single source of truth — the integer codes match what
+ * the WASM module delivers to streaming `onChunk` callbacks, so you can do
  * `if (attr === SplatAttribute.Sh) { ... }` against the numeric `attr`.
  */
-export const SplatAttribute: {
-  readonly Positions: 0;
-  readonly Alphas:    1;
-  readonly Colors:    2;
-  readonly Scales:    3;
-  readonly Rotations: 4;
-  readonly Sh:        5;
-};
+export { SplatAttribute } from './spz';
 
 /**
  * Copy `bytes` into a wasm-heap region, run `fn(ptr, byteLength)`, and free

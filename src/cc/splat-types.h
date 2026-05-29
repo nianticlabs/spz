@@ -82,6 +82,9 @@ enum class SplatAttribute : int32_t {
   Sh,
 };
 
+// Iteration order for the six per-point attributes. The emscripten bindings
+// (`slots[]` in spz-bindings.cc) index a parallel array in lockstep — keep the
+// two ordered identically.
 inline constexpr std::array<SplatAttribute, 6> kAllSplatAttributes = {
   SplatAttribute::Positions, SplatAttribute::Alphas,    SplatAttribute::Colors,
   SplatAttribute::Scales,    SplatAttribute::Rotations, SplatAttribute::Sh,

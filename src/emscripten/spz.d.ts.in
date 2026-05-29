@@ -22,6 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+// Order MUST match spz::CoordinateSystem in splat-types.h: the auto-numbered
+// values 0..16 here are the same integer codes the WASM module returns. New
+// entries must be appended at the same position in both lists.
 export enum CoordinateSystem {
   UNSPECIFIED,
   LDB,
@@ -32,25 +35,34 @@ export enum CoordinateSystem {
   RDF,
   LUF,
   RUF,
-  LBD,
-  RBD,
-  LBU,
-  RBU,
   LFD,
   RFD,
   LFU,
   RFU,
+  LBD,
+  RBD,
+  LBU,
+  RBU,
 }
 
-/** Identifies one of the six per-point attributes in a SPZ splat. */
-export enum SplatAttribute {
-  Positions,
-  Alphas,
-  Colors,
-  Scales,
-  Rotations,
-  Sh,
+/**
+ * Identifies one of the six per-point attributes in a SPZ splat.
+ *
+ * Declared as a namespace + union type (rather than `enum`) so the integer
+ * codes match exactly what the WASM module delivers to streaming `onChunk`
+ * callbacks. This lets `attr === SplatAttribute.Sh` numeric comparisons
+ * type-check directly and lets `spz-helpers.d.ts` re-export this single
+ * definition without structural duplication.
+ */
+export declare namespace SplatAttribute {
+  const Positions: 0;
+  const Alphas:    1;
+  const Colors:    2;
+  const Scales:    3;
+  const Rotations: 4;
+  const Sh:        5;
 }
+export type SplatAttribute = 0 | 1 | 2 | 3 | 4 | 5;
 
 @SPZ_EXTENSIONS_TYPESCRIPT_DEFINITIONS@
 
