@@ -36,8 +36,8 @@ if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
     include(FetchContent)
     FetchContent_Declare(
       zlib
-      URL https://zlib.net/zlib-1.3.1.tar.gz
-      URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+      URL https://zlib.net/zlib-1.3.2.tar.gz
+      URL_HASH SHA256=bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
     )
     FetchContent_MakeAvailable(zlib)
     set(zlib_linkage_target zlib)
