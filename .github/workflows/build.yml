@@ -29,8 +29,10 @@ jobs:
             runner: macos-14
           - name: windows-x64
             runner: windows-2022
+            msvc_arch: x64
           - name: windows-arm64
             runner: windows-11-arm
+            msvc_arch: arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -38,13 +40,15 @@ jobs:
       - name: Configure MSVC environment
         if: startsWith(matrix.runner, 'windows-')
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
 
       - name: Configure
         run: >
           cmake -S . -B build
-            -DCMAKE_BUILD_TYPE=Release
-            -DSPZ_BUILD_TOOLS=OFF
-            -DSPZ_BUILD_PYTHON_BINDINGS=OFF
+          -DCMAKE_BUILD_TYPE=Release
+          -DSPZ_BUILD_TOOLS=OFF
+          -DSPZ_BUILD_PYTHON_BINDINGS=OFF
 
       - name: Build library
         run: cmake --build build --config Release --target spz --parallel
@@ -71,9 +75,9 @@ jobs:
       - name: Configure
         run: >
           emcmake cmake -S . -B build-wasm
-            -DCMAKE_BUILD_TYPE=Release
-            -DSPZ_BUILD_TOOLS=OFF
-            -DSPZ_BUILD_EXTENSIONS=ON
+          -DCMAKE_BUILD_TYPE=Release
+          -DSPZ_BUILD_TOOLS=OFF
+          -DSPZ_BUILD_EXTENSIONS=ON
 
       - name: Build wasm target
         run: cmake --build build-wasm --target spz-wasm --parallel
@@ -109,9 +113,11 @@ jobs:
           - name: windows-x64
             runner: windows-2022
             py_arch: x64
+            msvc_arch: x64
           - name: windows-arm64
             runner: windows-11-arm
             py_arch: arm64
+            msvc_arch: arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -119,6 +125,8 @@ jobs:
       - name: Configure MSVC environment
         if: startsWith(matrix.runner, 'windows-')
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
