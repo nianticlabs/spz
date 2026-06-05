@@ -1,0 +1,138 @@
+name: Build Multi-Platform
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-cpp-native:
+    name: C++ ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-24.04
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+          - name: macos-x64
+            runner: macos-13
+          - name: macos-arm64
+            runner: macos-14
+          - name: windows-x64
+            runner: windows-2022
+          - name: windows-arm64
+            runner: windows-11-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure MSVC environment
+        if: startsWith(matrix.runner, 'windows-')
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSPZ_BUILD_TOOLS=OFF \
+            -DSPZ_BUILD_PYTHON_BINDINGS=OFF
+
+      - name: Build library
+        run: cmake --build build --config Release --target spz --parallel
+
+      - name: Upload C++ artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-${{ matrix.name }}
+          path: |
+            build/**/*.a
+            build/**/*.lib
+            build/**/*.so
+            build/**/*.dylib
+            build/**/spz*
+
+  build-wasm:
+    name: C++ wasm
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: emscripten-core/setup-emsdk@v16
+
+      - name: Configure
+        run: |
+          emcmake cmake -S . -B build-wasm \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSPZ_BUILD_TOOLS=OFF \
+            -DSPZ_BUILD_EXTENSIONS=ON
+
+      - name: Build wasm target
+        run: cmake --build build-wasm --target spz-wasm --parallel
+
+      - name: Upload wasm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-wasm
+          path: |
+            dist/spz.js
+            dist/spz.wasm
+            dist/spz.d.ts
+
+  build-python-libs:
+    name: Python lib ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-24.04
+            py_arch: x64
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+            py_arch: arm64
+          - name: macos-x64
+            runner: macos-13
+            py_arch: x64
+          - name: macos-arm64
+            runner: macos-14
+            py_arch: arm64
+          - name: windows-x64
+            runner: windows-2022
+            py_arch: x64
+          - name: windows-arm64
+            runner: windows-11-arm
+            py_arch: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure MSVC environment
+        if: startsWith(matrix.runner, 'windows-')
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.py_arch }}
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip wheel . -w wheelhouse
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-${{ matrix.name }}
+          path: wheelhouse/*.whl
