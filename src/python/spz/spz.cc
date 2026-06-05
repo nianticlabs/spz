@@ -394,19 +394,19 @@ NB_MODULE(spz, m) {
     // Functions
     // -------------------------------------------------------------------------
 
-        const auto load_spz_from_buffer = [](const nb::bytes &data, const spz::UnpackOptions &options) {
-                return spz::loadSpz(bytes_to_vector(data), options);
-        };
+    const auto load_spz_from_buffer = [](const nb::bytes &data, const spz::UnpackOptions &options) {
+        return spz::loadSpz(bytes_to_vector(data), options);
+    };
 
-        const auto save_spz_to_buffer = [](const spz::GaussianCloud &gaussians, const spz::PackOptions &options) {
-                std::vector<uint8_t> output;
-                if (!spz::saveSpz(gaussians, options, &output)) {
-                        throw std::runtime_error("Failed to serialize GaussianCloud to SPZ buffer");
-                }
-                return bytes_from_vector(output);
-        };
+    const auto save_spz_to_buffer = [](const spz::GaussianCloud &gaussians, const spz::PackOptions &options) {
+        std::vector<uint8_t> output;
+        if (!spz::saveSpz(gaussians, options, &output)) {
+            throw std::runtime_error("Failed to serialize GaussianCloud to SPZ buffer");
+        }
+        return bytes_from_vector(output);
+    };
 
-        m.def("load_spz", (spz::GaussianCloud (*)(const std::string &, const spz::UnpackOptions &)) &spz::loadSpz,
+    m.def("load_spz", (spz::GaussianCloud (*)(const std::string &, const spz::UnpackOptions &)) &spz::loadSpz,
           nb::arg("filename"), nb::arg("options") = spz::UnpackOptions(),
           "Load a *.spz* file and return a GaussianCloud.");
 
@@ -421,15 +421,6 @@ NB_MODULE(spz, m) {
     m.def("save_spz_to_buffer", save_spz_to_buffer,
           nb::arg("gaussians"), nb::arg("options"),
           "Serialize a GaussianCloud to SPZ bytes and return a Python bytes object.");
-
-    // Alias names for ergonomics in Python codebases that prefer explicit "bytes" wording.
-    m.def("load_spz_from_bytes", load_spz_from_buffer,
-          nb::arg("data"), nb::arg("options") = spz::UnpackOptions(),
-          "Alias of load_spz_from_buffer().");
-
-    m.def("save_spz_to_bytes", save_spz_to_buffer,
-          nb::arg("gaussians"), nb::arg("options"),
-          "Alias of save_spz_to_buffer().");
 
     m.def("load_splat_from_ply", (spz::GaussianCloud (*)(const std::string &, const spz::UnpackOptions &)) &spz::loadSplatFromPly,
           nb::arg("filename"), nb::arg("options") = spz::UnpackOptions(),
