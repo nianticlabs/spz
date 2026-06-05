@@ -24,6 +24,21 @@ options.from_coord = spz.CoordinateSystem.RUB
 spz.save_spz(cloud, options, "output.spz")
 ```
 
+#### Loading and Saving SPZ In Memory
+
+```python
+import spz
+
+cloud = spz.load_spz("samples/hornedlizard.spz")
+
+# Serialize to bytes instead of writing a file
+data = spz.save_spz_to_buffer(cloud, spz.PackOptions())
+assert isinstance(data, bytes)
+
+# Deserialize from bytes
+roundtrip = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+```
+
 #### Converting PLY to SPZ
 
 ```python
