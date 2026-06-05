@@ -40,6 +40,18 @@ bool readExact(std::istream& is, T& out) {
 
 // Extension stream format: [u32 type][u32 byteLength][payload...] per record, until EOF.
 // Unknown types are skipped by advancing byteLength bytes so multiple vendors can coexist.
+// Returns the number of bytes remaining between the current get position and the end of `is`,
+// or -1 if the stream does not support positioning. Restores the original position on success.
+std::streamoff remainingBytes(std::istream& is) {
+  const std::streampos cur = is.tellg();
+  if (cur == std::streampos(-1)) return -1;
+  is.seekg(0, std::ios::end);
+  const std::streampos end = is.tellg();
+  is.seekg(cur);
+  if (end == std::streampos(-1)) return -1;
+  return end - cur;
+}
+
 bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
   uint32_t type_u32{};
   if (!readExact(is, type_u32))
@@ -47,6 +59,15 @@ bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
   uint32_t byteLength{};
   if (!readExact(is, byteLength))
     return false;
+
+  // Bound byteLength against bytes actually remaining in the stream before any allocation,
+  // so a malformed file cannot drive a multi-GB allocation that the subsequent read would reject.
+  const std::streamoff remaining = remainingBytes(is);
+  if (remaining < 0 || static_cast<uint64_t>(byteLength) > static_cast<uint64_t>(remaining)) {
+    SpzLog("[SPZ ERROR] tryParseExtension: byteLength %u exceeds remaining stream bytes",
+           static_cast<unsigned>(byteLength));
+    return false;
+  }
 
   SpzExtensionType type = static_cast<SpzExtensionType>(type_u32);
 
