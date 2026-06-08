@@ -79,8 +79,8 @@ def test_save_load_packed_format_in_memory_aliases():
     """Test bytes-named aliases for in-memory SPZ round-trip."""
     src = make_test_gaussian_cloud(include_sh=False)
 
-    data = spz.save_spz_to_bytes(src, spz.PackOptions())
-    dst = spz.load_spz_from_bytes(data, spz.UnpackOptions())
+    data = spz.save_spz_to_buffer(src, spz.PackOptions())
+    dst = spz.load_spz_from_buffer(data, spz.UnpackOptions())
 
     assert dst.num_points == src.num_points
     assert dst.sh_degree == src.sh_degree
