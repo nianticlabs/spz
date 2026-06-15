@@ -140,6 +140,22 @@ bool checkSizes(const PackedGaussians &packed, int32_t numPoints, int32_t shDim,
 constexpr uint8_t FlagAntialiased = 0x1;
 constexpr uint8_t FlagHasExtensions = 0x2;
 
+// Generous upper bound on the zstd compression ratio (uncompressed / compressed) used to
+// sanity-check numPoints against the actual file size. Real packed-gaussian streams compress
+// well below this; the bound only exists to reject headers that claim vastly more points than
+// any legitimate file of the given size could contain. Effective ceiling is
+//   maxPoints = (fileSize * kMaxCompressionRatio) / kMinBytesPerPoint
+// Examples (kMaxCompressionRatio=1024, kMinBytesPerPoint=9):
+//   file size      max numPoints accepted
+//      1 KB        ~116 K
+//      1 MB        ~119 M
+//    100 MB        ~11.9 B   (far above any realistic scene)
+//      1 GB        ~119 B    (effectively unlimited)
+// A 32-byte file is capped at ~3.6 K points, so a header claiming billions of points in a
+// tiny file is rejected immediately.
+constexpr size_t kMaxCompressionRatio = 1024;
+constexpr size_t kMinBytesPerPoint = 9;  // positions stream alone: 3 components * 3 bytes
+
 struct NgspFileHeader {
   uint32_t magic          = NGSP_MAGIC;
   uint32_t version        = LATEST_SPZ_HEADER_VERSION;
@@ -738,6 +754,10 @@ bool decompressNgspStreams(const uint8_t *data, size_t size,
     std::memcpy(&infos[i].compressedSize, data + e, sizeof(uint64_t));
     std::memcpy(&infos[i].uncompressedSize, data + e + sizeof(uint64_t), sizeof(uint64_t));
     infos[i].compressedOffset = compressedOffset;
+    if (infos[i].compressedSize > size - compressedOffset) {
+      SpzLog("[SPZ ERROR] decompressNgspStreams: stream extends past end of data");
+      return false;
+    }
     compressedOffset += infos[i].compressedSize;
     if (infos[i].uncompressedSize != dests[i].second) {
       SpzLog("[SPZ ERROR] decompressNgspStreams: stream size mismatch");
@@ -889,8 +909,22 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: version not supported: %d", header.version);
     return {};
   }
-  if (header.numPoints <= 0) {
-    SpzLog("[SPZ ERROR] deserializePackedGaussians: invalid point count: %d", header.numPoints);
+  // Bound numPoints against the bytes actually remaining in the decompressed legacy stream.
+  // Legacy files are already gzip-decompressed at this point, so the ratio of header-claimed
+  // points to remaining bytes can't exceed ~1 point per kMinBytesPerPoint bytes.
+  size_t remaining = 0;
+  {
+    const std::streampos cur = in.tellg();
+    if (cur != std::streampos(-1)) {
+      in.seekg(0, std::ios::end);
+      const std::streampos end = in.tellg();
+      in.seekg(cur);
+      if (end != std::streampos(-1)) remaining = static_cast<size_t>(end - cur);
+    }
+  }
+  if (header.numPoints == 0 || (remaining > 0 &&
+      static_cast<size_t>(header.numPoints) > remaining / kMinBytesPerPoint)) {
+    SpzLog("[SPZ ERROR] deserializePackedGaussians: invalid point count: %u", header.numPoints);
     return {};
   }
   if (header.shDegree > SH_MAX_DEGREE) {
@@ -1045,8 +1079,11 @@ PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
       SpzLog("[SPZ ERROR] loadSpzPacked: unsupported version: %d", header.version);
       return {};
     }
-    if (header.numPoints == 0) {
-      SpzLog("[SPZ ERROR] loadSpzPacked: invalid point count");
+    if (header.numPoints == 0 ||
+        static_cast<size_t>(header.numPoints) >
+          (size * kMaxCompressionRatio) / kMinBytesPerPoint) {
+      SpzLog("[SPZ ERROR] loadSpzPacked: invalid point count: %u (file size %zu)",
+             header.numPoints, size);
       return {};
     }
     SpzLog(
