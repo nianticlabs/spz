@@ -56,6 +56,37 @@ def test_save_load_packed_format():
     np.testing.assert_allclose(dst.sh[45:45 + 9], src.sh[45:45 + 9], atol=sh_epsilon(5))
 
 
+def test_save_load_packed_format_in_memory_buffer():
+    """Test in-memory SPZ round-trip using bytes buffers."""
+    src = make_test_gaussian_cloud(include_sh=True)
+
+    data = spz.save_spz_to_buffer(src, spz.PackOptions())
+    assert isinstance(data, bytes)
+    assert len(data) > 0
+
+    dst = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    assert dst.num_points == src.num_points
+    assert dst.sh_degree == src.sh_degree
+    assert dst.antialiased == src.antialiased
+
+    np.testing.assert_allclose(dst.positions, src.positions, atol=1 / 2048.0)
+    np.testing.assert_allclose(dst.scales, src.scales, atol=1 / 32.0)
+    np.testing.assert_allclose(dst.alphas, src.alphas, atol=0.01)
+    np.testing.assert_allclose(dst.sh, src.sh, atol=sh_epsilon(4))
+
+
+def test_save_load_packed_format_in_memory_aliases():
+    """Test bytes-named aliases for in-memory SPZ round-trip."""
+    src = make_test_gaussian_cloud(include_sh=False)
+
+    data = spz.save_spz_to_buffer(src, spz.PackOptions())
+    dst = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+
+    assert dst.num_points == src.num_points
+    assert dst.sh_degree == src.sh_degree
+    np.testing.assert_allclose(dst.positions, src.positions, atol=1 / 2048.0)
+
+
 def test_save_load_packed_format_large_splat():
     """Test saving and loading large SPZ files with many points."""
     num_points = 50000
