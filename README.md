@@ -50,7 +50,7 @@ Then one can build through
 ```
 cmake --build build-wasm
 ```
-The package will be built and installed into the `dist` folder. Two WASM variants are emitted: `dist/small` (2 GB memory ceiling, the default) and `dist/large` (4 GB ceiling, for very large splats). They share the same API and TypeScript declarations.
+The package will be built and installed into the `dist` folder. Two WASM variants are emitted: the default build in `dist/` (2 GB memory ceiling) and `dist/4gb` (4 GB ceiling, for very large splats). They share the same API and TypeScript declarations.
 
 
 ## API

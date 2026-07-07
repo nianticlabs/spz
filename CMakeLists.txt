@@ -140,9 +140,11 @@ set_target_properties(spz PROPERTIES
 )
 
 if(SPZ_BUILD_WASM)
-  set(spz_wasm_variants "small" "large")
-  set(spz_wasm_small_max_memory "2147483648")  # 2 GB
-  set(spz_wasm_large_max_memory "4294967296")  # 4 GB
+  set(spz_wasm_variants "2gb" "4gb")
+  set(spz_wasm_2gb_max_memory "2147483648")               # 2 GB (default; historical single-variant behavior)
+  set(spz_wasm_4gb_max_memory "4294967296")               # 4 GB (wasm32 address-space ceiling)
+  set(spz_wasm_2gb_dir "${CMAKE_CURRENT_SOURCE_DIR}/dist")  # default build stays at dist/ root
+  set(spz_wasm_4gb_dir "${CMAKE_CURRENT_SOURCE_DIR}/dist/4gb")
 
   set(spz_binding_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-bindings.cc"
@@ -167,7 +169,7 @@ if(SPZ_BUILD_WASM)
   endif()
 
   foreach(variant IN LISTS spz_wasm_variants)
-    set(variant_dir "${CMAKE_CURRENT_SOURCE_DIR}/dist/${variant}")
+    set(variant_dir "${spz_wasm_${variant}_dir}")
     file(MAKE_DIRECTORY "${variant_dir}")
 
     set(variant_target "spz-wasm-${variant}")
