@@ -39,6 +39,7 @@ SOFTWARE.
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -114,8 +115,10 @@ constexpr uint8_t FlagHasExtensions = 0x2;
 //      1 GB        ~119 B    (effectively unlimited)
 // A 32-byte file is capped at ~3.6 K points, so a header claiming billions of points in a
 // tiny file is rejected immediately.
-constexpr size_t kMaxCompressionRatio = 1024;
-constexpr size_t kMinBytesPerPoint = 9;  // positions stream alone: 3 components * 3 bytes
+// 64-bit so the `size * kMaxCompressionRatio` product below can't overflow on 32-bit targets
+// (e.g. wasm32, where size_t is 32-bit and the multiply wraps for files >= 4 MiB).
+constexpr uint64_t kMaxCompressionRatio = 1024;
+constexpr uint64_t kMinBytesPerPoint = 9;  // positions stream alone: 3 components * 3 bytes
 
 struct NgspFileHeader {
   uint32_t magic          = NGSP_MAGIC;
@@ -835,8 +838,13 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
       if (end != std::streampos(-1)) remaining = static_cast<size_t>(end - cur);
     }
   }
-  if (header.numPoints == 0 || (remaining > 0 &&
-      static_cast<size_t>(header.numPoints) > remaining / kMinBytesPerPoint)) {
+  // Same INT32_MAX cap as the NGSP path: numPoints is consumed as int32_t below, so values
+  // above INT32_MAX would wrap negative. This also bounds numPoints when the size probe above
+  // fails (remaining == 0), in which case the ratio check is skipped.
+  if (header.numPoints == 0 ||
+      header.numPoints > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
+      (remaining > 0 &&
+       static_cast<size_t>(header.numPoints) > remaining / kMinBytesPerPoint)) {
     SpzLog("[SPZ ERROR] deserializePackedGaussians: invalid point count: %u", header.numPoints);
     return {};
   }
@@ -992,9 +1000,14 @@ PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
       SpzLog("[SPZ ERROR] loadSpzPacked: unsupported version: %d", header.version);
       return {};
     }
+    // numPoints is stored unsigned but consumed as int32_t downstream (loadPackedGaussiansFromNgsp),
+    // so reject anything above INT32_MAX up front — otherwise the cast wraps negative. The
+    // file-size ratio check below is evaluated in 64-bit to avoid overflowing the multiply on
+    // 32-bit targets.
     if (header.numPoints == 0 ||
-        static_cast<size_t>(header.numPoints) >
-          (size * kMaxCompressionRatio) / kMinBytesPerPoint) {
+        header.numPoints > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
+        static_cast<uint64_t>(header.numPoints) >
+          (static_cast<uint64_t>(size) * kMaxCompressionRatio) / kMinBytesPerPoint) {
       SpzLog("[SPZ ERROR] loadSpzPacked: invalid point count: %u (file size %zu)",
              header.numPoints, size);
       return {};
