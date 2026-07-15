@@ -22,8 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "safe-orbit-camera-adobe.h"
-#include "load-spz.h"
+#include <spz/safe-orbit-camera-adobe.h>
+#include <spz/load-spz.h>
 
 #include <sstream>
 #include <unordered_set>

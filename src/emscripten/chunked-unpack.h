@@ -27,8 +27,8 @@ SOFTWARE.
 
 #include <cstdint>
 
-#include "load-spz.h"
-#include "splat-types.h"
+#include <spz/load-spz.h>
+#include <spz/splat-types.h>
 
 namespace spz {
 

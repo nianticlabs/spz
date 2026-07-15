@@ -81,9 +81,9 @@ set(spz_sources
 )
 
 set(spz_headers
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.h"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.h"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-types.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/spz/load-spz.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/spz/splat-c-types.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/spz/splat-types.h"
 )
 
 if(SPZ_BUILD_EXTENSIONS)
@@ -93,9 +93,9 @@ if(SPZ_BUILD_EXTENSIONS)
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/coordinate-system-adobe.cc"
   )
   list(APPEND spz_headers
-    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/coordinate-system-adobe.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/spz/splat-extensions.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/spz/safe-orbit-camera-adobe.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/spz/coordinate-system-adobe.h"
   )
 endif()
 
@@ -116,14 +116,12 @@ if(ANDROID)
 endif()
 
 target_include_directories(spz
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/cc>
-  INTERFACE $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 if(SPZ_BUILD_EXTENSIONS)
-  target_include_directories(spz
-    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc>
-  )
   target_compile_definitions(spz PUBLIC SPZ_BUILD_EXTENSIONS)
 endif()
 
@@ -155,6 +153,11 @@ if(SPZ_BUILD_WASM)
 
   add_executable(spz-wasm ${spz_binding_sources})
   target_link_libraries(spz-wasm PRIVATE spz)
+
+  # Needed for the private (non-public) splat-utils.h header shared with the spz library.
+  target_include_directories(spz-wasm PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/cc>
+  )
 
   if(SPZ_BUILD_EXTENSIONS)
     target_include_directories(spz-wasm PRIVATE
@@ -258,7 +261,6 @@ if(SPZ_BUILD_TOOLS)
   # CLI Tools
   add_executable(ply_to_spz cli_tools/src/ply_to_spz.cpp)
   target_link_libraries(ply_to_spz PRIVATE spz)
-  target_include_directories(ply_to_spz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(ply_to_spz PROPERTIES
     CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
@@ -266,7 +268,6 @@ if(SPZ_BUILD_TOOLS)
 
   add_executable(spz_to_ply cli_tools/src/spz_to_ply.cpp)
   target_link_libraries(spz_to_ply PRIVATE spz)
-  target_include_directories(spz_to_ply PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(spz_to_ply PROPERTIES
     CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
@@ -274,7 +275,6 @@ if(SPZ_BUILD_TOOLS)
 
   add_executable(spz_info cli_tools/src/spz_info.cpp)
   target_link_libraries(spz_info PRIVATE spz)
-  target_include_directories(spz_info PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(spz_info PROPERTIES
     CXX_STANDARD ${SPZ_CXX}
     CXX_STANDARD_REQUIRED ON
@@ -328,9 +328,8 @@ if(SPZ_BUILD_PYTHON_BINDINGS)
   # Add the project root to the include path for the python module
   target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-  # Add extensions include directory and source file if extensions are enabled
+  # Add extensions source file if extensions are enabled
   if(SPZ_BUILD_EXTENSIONS)
-    target_include_directories(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc)
     target_sources(spz_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/extensions/python/splat-extensions.cc)
   endif()
 

@@ -22,10 +22,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "splat-extensions.h"
-#include "safe-orbit-camera-adobe.h"
-#include "coordinate-system-adobe.h"
-#include "load-spz.h"
+#include <spz/splat-extensions.h>
+#include <spz/safe-orbit-camera-adobe.h>
+#include <spz/coordinate-system-adobe.h>
+#include <spz/load-spz.h>
 
 #include <sstream>
 #include <string>

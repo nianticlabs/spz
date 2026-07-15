@@ -30,9 +30,9 @@ SOFTWARE.
 #include <string>
 #include <vector>
 
-#include "splat-types.h"
+#include <spz/splat-types.h>
 #ifdef SPZ_BUILD_EXTENSIONS
-#include "splat-extensions.h"
+#include <spz/splat-extensions.h>
 #endif
 
 namespace spz {

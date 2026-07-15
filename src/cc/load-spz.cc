@@ -23,11 +23,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "load-spz.h"
+#include <spz/load-spz.h>
 #include "splat-utils.h"
-#include "splat-types.h"
+#include <spz/splat-types.h>
 #ifdef SPZ_BUILD_EXTENSIONS
-#include "splat-extensions.h"
+#include <spz/splat-extensions.h>
 #endif
 
 #include <zlib.h>

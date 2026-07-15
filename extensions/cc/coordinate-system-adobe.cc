@@ -22,8 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "coordinate-system-adobe.h"
-#include "load-spz.h"
+#include <spz/coordinate-system-adobe.h>
+#include <spz/load-spz.h>
 
 namespace spz {
 namespace {

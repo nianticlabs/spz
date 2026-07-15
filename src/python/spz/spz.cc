@@ -11,8 +11,8 @@
 #include <stdexcept>
 #include <string>
 
-#include "src/cc/load-spz.h"
-#include "src/cc/splat-types.h"
+#include <spz/load-spz.h>
+#include <spz/splat-types.h>
 #ifdef SPZ_BUILD_EXTENSIONS
 #include "extensions/python/splat-extensions.h"
 #endif
