@@ -1,5 +1,5 @@
 #include <iostream>
-#include "cc/load-spz.h"
+#include <spz/load-spz.h>
 
 void printCloudInfo(const spz::GaussianCloud& cloud) {
     std::cout << "Number of points: " << cloud.positions.size() / 3 << std::endl;

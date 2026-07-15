@@ -66,8 +66,8 @@ To preserve or use extension data, and to ensure correct data interpretation, bu
    Use `findExtensionByType<T>()`. Include the header for the concrete extension type you use:
 
    ```cpp
-   #include "splat-extensions.h"
-   #include "safe-orbit-camera-adobe.h"
+   #include <spz/splat-extensions.h>
+   #include <spz/safe-orbit-camera-adobe.h>
 
    auto ext = spz::findExtensionByType<spz::SpzExtensionSafeOrbitCameraAdobe>(cloud.extensions);
    if (ext) {
@@ -81,8 +81,8 @@ To preserve or use extension data, and to ensure correct data interpretation, bu
    Push a shared pointer onto the extensions vector. Include the extension’s header:
 
    ```cpp
-   #include "splat-extensions.h"
-   #include "safe-orbit-camera-adobe.h"
+   #include <spz/splat-extensions.h>
+   #include <spz/safe-orbit-camera-adobe.h>
 
    auto ext = std::make_shared<spz::SpzExtensionSafeOrbitCameraAdobe>();
    ext->safeOrbitElevationMin = -0.5f;
@@ -108,7 +108,7 @@ When loading PLY files, the loader treats non-vertex elements as either “known
 To add a new extension type in the C++ codebase:
 
 1. **Define the type ID**  
-   In `extensions/cc/splat-extensions.h`, add a value to `enum class SpzExtensionType` using your vendor prefix, e.g.:
+   In `include/spz/splat-extensions.h`, add a value to `enum class SpzExtensionType` using your vendor prefix, e.g.:
 
    ```cpp
    enum class SpzExtensionType : uint32_t {
@@ -118,7 +118,7 @@ To add a new extension type in the C++ codebase:
    ```
 
 2. **Define the extension struct**  
-   Declare a struct that inherits `SpzExtensionBase`, with your payload fields and the required overrides. You can add it in `extensions/cc/splat-extensions.h` or in a separate header (e.g. `my-extension.h`) that `#include "splat-extensions.h"`; the built-in Adobe safe orbit extension lives in `safe-orbit-camera-adobe.h` / `safe-orbit-camera-adobe.cc` as a reference. The struct must have:
+   Declare a struct that inherits `SpzExtensionBase`, with your payload fields and the required overrides. You can add it in `include/spz/splat-extensions.h` or in a separate header (e.g. `my-extension.h`) that `#include <spz/splat-extensions.h>`; the built-in Adobe safe orbit extension lives in `include/spz/safe-orbit-camera-adobe.h` / `extensions/cc/safe-orbit-camera-adobe.cc` as a reference. The struct must have:
 
    - Constructor.
    - `uint32_t payloadBytes() const override` — return the payload size in bytes.
@@ -162,13 +162,13 @@ To add a new extension type in the C++ codebase:
    - **Register in the PLY registry** — In `extensions/cc/splat-extensions.cc`, inside `getPlyExtensionRegistry()`, add an entry: `{&MyExtension::kRequiredPlyElementNames, std::make_shared<MyExtension>()}`. Order in the registry is the order used when reading/writing PLY. You do **not** edit `readExtensionsFromPly`, `writeExtensionsToPlyHeader`, or `writeExtensionsToPlyData`; they loop over the registry and call your virtual methods.
 
 7. **Bindings**  
-   Expose the new type and struct in Python (`extensions/python/splat-extensions.cc`) and Emscripten (`extensions/emscripten/splat-extensions.cc`, plus `.d.ts.in` if needed) so callers can construct and read your extension from the cloud’s `extensions` list. Each binding file must `#include` your extension’s header (e.g. `#include "safe-orbit-camera-adobe.h"`) to get the full type definition.
+   Expose the new type and struct in Python (`extensions/python/splat-extensions.cc`) and Emscripten (`extensions/emscripten/splat-extensions.cc`, plus `.d.ts.in` if needed) so callers can construct and read your extension from the cloud’s `extensions` list. Each binding file must `#include` your extension’s header (e.g. `#include <spz/safe-orbit-camera-adobe.h>`) to get the full type definition.
 
 ## Built-in extensions
 
-- **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `extensions/cc/safe-orbit-camera-adobe.h` and `safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults.
+- **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `include/spz/safe-orbit-camera-adobe.h` and `extensions/cc/safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults.
 
-- **SPZ_ADOBE_coordinate_system** (`0xADBE0003`) — Records the coordinate system in which the Gaussian data is physically stored in the file. Implemented in `extensions/cc/coordinate-system-adobe.h` and `coordinate-system-adobe.cc`.
+- **SPZ_ADOBE_coordinate_system** (`0xADBE0003`) — Records the coordinate system in which the Gaussian data is physically stored in the file. Implemented in `include/spz/coordinate-system-adobe.h` and `extensions/cc/coordinate-system-adobe.cc`.
 
   **Payload:** one `uint32_t` — the `CoordinateSystem` enum value (4 bytes). Valid range: 1–16 (see `CoordinateSystem` enum). Value 0 (`UNSPECIFIED`) is treated as absent and will produce a warning; it is not a valid way to express "use the default".
 

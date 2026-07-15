@@ -35,7 +35,7 @@ SOFTWARE.
 #include <vector>
 
 #include "chunked-unpack.h"
-#include "load-spz.h"
+#include <spz/load-spz.h>
 #include "splat-utils.h"
 #include "utils.h"
 #ifdef SPZ_BUILD_EXTENSIONS

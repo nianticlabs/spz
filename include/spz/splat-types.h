@@ -33,9 +33,9 @@ SOFTWARE.
 #include <functional>
 #include <vector>
 
-#include "splat-c-types.h"
+#include <spz/splat-c-types.h>
 #ifdef SPZ_BUILD_EXTENSIONS
-#include "splat-extensions.h"
+#include <spz/splat-extensions.h>
 #endif
 
 namespace spz {

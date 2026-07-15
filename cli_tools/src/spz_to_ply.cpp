@@ -1,5 +1,5 @@
 #include <iostream>
-#include "cc/load-spz.h"
+#include <spz/load-spz.h>
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {

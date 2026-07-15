@@ -28,7 +28,7 @@ SOFTWARE.
 #include <array>
 #include <vector>
 
-#include "splat-types.h"
+#include <spz/splat-types.h>
 #include "splat-utils.h"
 
 namespace spz {

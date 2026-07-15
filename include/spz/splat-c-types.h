@@ -40,7 +40,7 @@ typedef struct {
 
 // Forward declaration - full definition is in splat-extensions.h
 #ifdef SPZ_BUILD_EXTENSIONS
-#include "splat-extensions.h"
+#include <spz/splat-extensions.h>
 #else
 typedef struct SpzExtensionNode SpzExtensionNode;
 #endif

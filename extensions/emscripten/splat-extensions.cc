@@ -24,10 +24,10 @@ SOFTWARE.
 
 #include <emscripten/bind.h>
 
-#include "src/cc/load-spz.h"
-#include "extensions/cc/splat-extensions.h"
-#include "extensions/cc/safe-orbit-camera-adobe.h"
-#include "extensions/cc/coordinate-system-adobe.h"
+#include <spz/load-spz.h>
+#include <spz/splat-extensions.h>
+#include <spz/safe-orbit-camera-adobe.h>
+#include <spz/coordinate-system-adobe.h>
 #include "extensions/emscripten/splat-extensions.h"
 #include "src/emscripten/utils.h"
 
