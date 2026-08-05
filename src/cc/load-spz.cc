@@ -1348,21 +1348,21 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 }
 
 bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::string &filename) {
-  const int32_t N = data.numPoints;
+  const int64_t N = data.numPoints;
   CHECK_EQ(data.positions.size(), N * 3);
   CHECK_EQ(data.scales.size(), N * 3);
   CHECK_EQ(data.rotations.size(), N * 4);
   CHECK_EQ(data.alphas.size(), N);
   CHECK_EQ(data.colors.size(), N * 3);
-  const int32_t shDim = static_cast<int>(data.sh.size() / N / 3);
-  const int32_t D = 17 + shDim * 3;
+  const int64_t shDim = (N > 0) ? static_cast<int64_t>(data.sh.size() / N / 3) : 0;
+  const int64_t D = 17 + shDim * 3;
 
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RDF, data.shDegree);
 
   std::vector<float> values(N * D, 0.0f);
   std::array<float, 4> bufQuat = {};
-  int32_t outIdx = 0, i3 = 0, i4 = 0;
-  for (int32_t i = 0; i < N; i++) {
+  int64_t outIdx = 0, i3 = 0, i4 = 0;
+  for (int64_t i = 0; i < N; i++) {
     // Position (x, y, z)
     for (size_t j = 0; j < 3; j++) { values[outIdx + j] = data.positions[i3 + j]; }
     if (c.rotFlipPFunc) {
@@ -1379,8 +1379,8 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
     values[outIdx++] = data.colors[i3 + 2];
     // Spherical harmonics: Interleave so the coefficients are the fastest-changing axis and
     // the channel (r, g, b) is slower-changing axis.
-    for (int32_t k = 0; k < 3; k++) {
-      for (int32_t j = 0; j < shDim; j++) {
+    for (int64_t k = 0; k < 3; k++) {
+      for (int64_t j = 0; j < shDim; j++) {
         values[outIdx + j] = data.sh[(i * shDim + j) * 3 + k];
       }
       for (int32_t band = 0; band < data.shDegree && band < SH_MAX_DEGREE; ++band) {
@@ -1388,7 +1388,7 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
           c.rotFlipShFuncs[static_cast<size_t>(band)](values.data() + outIdx + static_cast<size_t>(band * (band + 2)));
         }
       }
-      for (int32_t j = 0; j < shDim; j++) { values[outIdx + j] *= c.flipSh[j]; }
+      for (int64_t j = 0; j < shDim; j++) { values[outIdx + j] *= c.flipSh[j]; }
       outIdx += shDim;
     }
     // Alpha
