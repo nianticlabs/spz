@@ -1359,6 +1359,41 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
 
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RDF, data.shDegree);
 
+  std::ofstream out(filename, std::ios::binary);
+  if (!out.good()) {
+    SpzLog("[SPZ ERROR] Unable to open for writing: %s", filename.c_str());
+    return false;
+  }
+  out << "ply\n";
+  out << "format binary_little_endian 1.0\n";
+  out << "element vertex " << N << "\n";
+  out << "property float x\n";
+  out << "property float y\n";
+  out << "property float z\n";
+  out << "property float nx\n";
+  out << "property float ny\n";
+  out << "property float nz\n";
+  out << "property float f_dc_0\n";
+  out << "property float f_dc_1\n";
+  out << "property float f_dc_2\n";
+  for (int64_t i = 0; i < shDim * 3; i++) {
+    out << "property float f_rest_" << i << "\n";
+  }
+  out << "property float opacity\n";
+  out << "property float scale_0\n";
+  out << "property float scale_1\n";
+  out << "property float scale_2\n";
+  out << "property float rot_0\n";
+  out << "property float rot_1\n";
+  out << "property float rot_2\n";
+  out << "property float rot_3\n";
+
+#ifdef SPZ_BUILD_EXTENSIONS
+  writeExtensionsToPlyHeader(data.extensions, out);
+#endif
+
+  out << "end_header\n";
+
   std::vector<float> values(N * D, 0.0f);
   std::array<float, 4> bufQuat = {};
   int64_t outIdx = 0, i3 = 0, i4 = 0;
@@ -1413,41 +1448,6 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
     i4 += 4;
   }
   CHECK_EQ(outIdx, values.size());
-
-  std::ofstream out(filename, std::ios::binary);
-  if (!out.good()) {
-    SpzLog("[SPZ ERROR] Unable to open for writing: %s", filename.c_str());
-    return false;
-  }
-  out << "ply\n";
-  out << "format binary_little_endian 1.0\n";
-  out << "element vertex " << N << "\n";
-  out << "property float x\n";
-  out << "property float y\n";
-  out << "property float z\n";
-  out << "property float nx\n";
-  out << "property float ny\n";
-  out << "property float nz\n";
-  out << "property float f_dc_0\n";
-  out << "property float f_dc_1\n";
-  out << "property float f_dc_2\n";
-  for (int32_t i = 0; i < shDim * 3; i++) {
-    out << "property float f_rest_" << i << "\n";
-  }
-  out << "property float opacity\n";
-  out << "property float scale_0\n";
-  out << "property float scale_1\n";
-  out << "property float scale_2\n";
-  out << "property float rot_0\n";
-  out << "property float rot_1\n";
-  out << "property float rot_2\n";
-  out << "property float rot_3\n";
-
-#ifdef SPZ_BUILD_EXTENSIONS
-  writeExtensionsToPlyHeader(data.extensions, out);
-#endif
-
-  out << "end_header\n";
   out.write(reinterpret_cast<char *>(values.data()), values.size() * sizeof(float));
 
 #ifdef SPZ_BUILD_EXTENSIONS
