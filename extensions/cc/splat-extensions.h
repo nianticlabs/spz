@@ -51,6 +51,7 @@ enum class CoordinateSystem : uint32_t;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
   SPZ_ADOBE_coordinate_system = 0xADBE0003u,
+  SPZ_NIANTIC_georeference = 0x4E530001u,
 };
 
 struct SpzExtensionBase {

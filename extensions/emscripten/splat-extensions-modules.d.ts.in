@@ -1,9 +1,11 @@
   SpzExtensionType: typeof SpzExtensionType;
+  CrsEncoding: typeof CrsEncoding;
 
   // Extension classes
   SpzExtensionBase: typeof SpzExtensionBase;
   SpzExtensionSafeOrbitCameraAdobe: typeof SpzExtensionSafeOrbitCameraAdobe;
   SpzExtensionCoordinateSystemAdobe: typeof SpzExtensionCoordinateSystemAdobe;
+  SpzExtensionGeoreferenceNiantic: typeof SpzExtensionGeoreferenceNiantic;
 
   /** Returns true if the PLY extra element name is handled by an extension. */
   isKnownPlyExtensionElement: (elementName: string) => boolean;

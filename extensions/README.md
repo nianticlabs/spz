@@ -34,8 +34,15 @@ The 32-bit extension type is split into two 16-bit fields so multiple vendors ca
 
 - **Layout:** `type_u32 == (VENDOR_ID << 16) | EXTENSION_ID`.  
 - **Reserved:** `0x00000000` is not used as an extension type (no vendor 0).  
-- **Vendor ID:** Choose a 16-bit value that is unique to your organization or product (e.g. Adobe uses `0xADBE`). To avoid collisions, avoid well-known prefixes (e.g. `0xADBE`, `0x4E41` for Niantic) and document or register your vendor ID if you publish extensions.  
+- **Vendor ID:** Choose a 16-bit value that is unique to your organization or product (e.g. Adobe uses `0xADBE`). To avoid collisions, avoid the allocated vendor IDs below and document or register your vendor ID if you publish extensions.  
 - **Extension ID:** Within your vendor space, use the low 16 bits for each extension (e.g. `0x0001`, `0x0002`, …). No global registry; uniqueness per vendor is enough.
+
+Allocated vendor IDs:
+
+| Vendor ID | Vendor |
+|-----------|--------|
+| `0xADBE`  | Adobe |
+| `0x4E53`  | Niantic (`'NS'`) |
 
 Example: Adobe vendor ID `0xADBE`, extension index 2 → `0xADBE0002u` (`SPZ_ADOBE_safe_orbit_camera`).
 
@@ -185,4 +192,70 @@ To add a new extension type in the C++ codebase:
   ext.coordinate_system = spz.RDF
   cloud.extensions = [ext]
   # pack with from_coord=RUB → stored as RDF; load with to_coord=RUB → converted back automatically
+  ```
+
+- **SPZ_NIANTIC_georeference** (`0x4E530001`) — Records a similarity transform that places the asset in a geocentric CRS. Implemented in `extensions/cc/georeference-niantic.h` and `georeference-niantic.cc`.
+
+  **Payload** (little-endian, byte-packed, 76 bytes fixed + variable `crs`):
+
+  | Offset | Size | Field | Description |
+  |--------|------|-------|-------------|
+  | 0 | 1 | `ext_version` | `uint8_t`, must be 1 |
+  | 1 | 1 | `flags` | `uint8_t`, bit 0 `has_epoch`, bits 1-2 `crs_encoding`, bits 3-7 reserved |
+  | 2 | 2 | `crs_length` | `uint16_t`, bytes of the `crs` string |
+  | 4 | 24 | `origin[3]` | `double`, meters |
+  | 28 | 32 | `rotation[4]` | `double`, unit quaternion x, y, z, w |
+  | 60 | 8 | `scale` | `double`, uniform scale |
+  | 68 | 8 | `epoch` | `double`, coordinate epoch as a decimal year; writers write NaN when `has_epoch` = 0 |
+  | 76 | `crs_length` | `crs` | Target CRS, **not** null-terminated; syntax given by `crs_encoding` |
+
+  **Transform:** `p_crs = scale * (q * p_local * q⁻¹) + origin`, where `p_local` is a position in RUB, whatever frame the data is stored in. `q` is `rotation`, a unit Hamilton quaternion (x, y, z, w) applied as an active rotation from RUB axes to the target CRS axes (e.g. ECEF, not a local east-north-up frame). `scale` is uniform and positive; `origin` is in meters. The library never applies the transform to the Gaussian data.
+
+  **Target CRS:** `crs` is the only CRS in the record. The target must be a geocentric CRS: a geodetic CRS with X, Y, Z axes in meters (ECEF on Earth). Heights derived from `p_crs` are ellipsoidal. `crs_encoding` gives the syntax of `crs`:
+
+  - `0` = an `AUTHORITY:CODE` naming a CRS in the PROJ database, e.g. `EPSG:4978` (WGS 84 ECEF) or `EPSG:9988` (ITRF2020). Write it exactly as the database lists it (`EPSG:4978`, not `epsg:4978`), so readers can compare codes as strings.
+  - `1` = an inline PROJJSON `GeodeticCRS` with a Cartesian coordinate system, for a target without a code — e.g. the Moon, using the datum of `IAU_2015:30100`.
+
+  Writers use a code when the target has one. A reader that cannot resolve `crs` may still apply the transform, but must not assume any body or datum. The library performs no registry lookup, so conformance of the CRS type is the writer's responsibility.
+
+  **Epoch:** `epoch` is the coordinate epoch of `p_crs` (OGC 18-010r11 §16): the decimal year at which the coordinates are valid in a dynamic target frame (e.g. ITRF2020 at 2026.7), not the frame's reference epoch. `crs` carries no coordinate epoch: no `@epoch` code suffix and no PROJJSON `CoordinateMetadata`. Writers set `epoch` for dynamic targets and may set it for `EPSG:4978`, whose WGS 84 datum ensemble has only dynamic members; that epoch does not identify a WGS 84 realization, so use a realization-specific CRS when that matters. Readers ignore it for static targets.
+
+  **Validation on load** (a rejected payload is skipped with a warning and the core data still loads). The payload is rejected unless:
+
+  - `ext_version` is 1;
+  - `crs_encoding` is `0` or `1`;
+  - `crs_length` does not exceed the remaining payload bytes;
+  - `crs` is non-empty and, for `crs_encoding` = 0, printable ASCII (no spaces, no `@`) with exactly one `:` and both parts non-empty, or, for `crs_encoding` = 1, well-formed UTF-8 (it is not parsed). Unknown authorities and codes are accepted as written;
+  - every `origin` component is finite;
+  - `rotation` satisfies `abs(sqrt(x² + y² + z² + w²) − 1) <= 1e-6`;
+  - `scale` is finite and greater than zero;
+  - `epoch` is finite when `has_epoch` is set.
+
+  Reserved `flags` bits are ignored on read; writers write them as 0.
+
+  **Validation on write:** a `crs` that fails the rules above or exceeds 65,535 bytes is omitted with a warning, so readers reject the record.
+
+  **For writers:** attach this extension before saving, with the transform defined from RUB positions. The library never creates this extension automatically.
+
+  **For readers:** loaded positions are always local; the library never applies the transform. Load with `to_coord` = RUB and apply the transform yourself in double precision.
+
+  **Compatibility note:** a non-extension build skips this extension with a warning. The Gaussian data is unaffected; only the georeference is lost.
+
+  ```python
+  ext = spz.SpzExtensionGeoreferenceNiantic()
+  ext.crs = "EPSG:4978"                       # WGS 84 ECEF; PROJJSON + crs_encoding for other bodies
+  ext.origin = [4194304.5, -555555.25, 4713930.125]
+  ext.rotation = [0.0, 0.0, 0.0, 1.0]         # x, y, z, w
+  ext.scale = 1.0
+  cloud.extensions = [ext]
+
+  # Reading: load in RUB, then apply the transform to the local positions
+  from scipy.spatial.transform import Rotation  # from_quat expects x, y, z, w
+  opts = spz.UnpackOptions()
+  opts.to_coord = spz.CoordinateSystem.RUB
+  loaded = spz.load_spz("georeferenced.spz", opts)
+  geo = next(e for e in loaded.extensions
+             if e.extension_type == spz.SpzExtensionType.SPZ_NIANTIC_georeference)
+  p_local = loaded.positions.reshape(-1, 3).astype(np.float64)
+  p_ecef = geo.scale * Rotation.from_quat(geo.rotation).apply(p_local) + np.array(geo.origin)
   ```
