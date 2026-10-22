@@ -243,7 +243,8 @@ To add a new extension type in the C++ codebase:
 
   ```python
   ext = spz.SpzExtensionGeoreferenceNiantic()
-  ext.crs = "EPSG:4978"                       # WGS 84 ECEF; PROJJSON + crs_encoding for other bodies
+  ext.crs = "EPSG:9988"                       # ITRF2020 ECEF; EPSG:4978 for WGS 84; PROJJSON + crs_encoding for other bodies
+  ext.epoch = 2026.7                          # coordinate epoch, decimal year
   ext.origin = [4194304.5, -555555.25, 4713930.125]
   ext.rotation = [0.0, 0.0, 0.0, 1.0]         # x, y, z, w
   ext.scale = 1.0
