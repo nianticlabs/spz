@@ -131,6 +131,7 @@ To add a new extension type in the C++ codebase:
    - `uint32_t payloadBytes() const override` — return the payload size in bytes.
    - `void write(std::ostream& os) const override` — emit type (4 bytes), byteLength (4 bytes), then payload; use `payloadBytes()` for the length (see step 3).
    - `SpzExtensionBase* copyAsRawData() const override` — allocate a copy (e.g. `return new MyExtension(*this);`).
+   - Optional: `bool isValid() const override` — return false, logging the reason, if `write()` would emit a payload your `read()` rejects; `saveSpz` then fails. Defaults to true.
    - `static std::optional<SpzExtensionBasePtr> read(std::istream& is)` — read payload from `is` (caller provides a stream of exactly your payload bytes).
    - `static SpzExtensionType type()` — return your enum value.
    - The three PLY methods (required because they are pure virtual on the base): `tryReadFromPly(std::istream& in, const std::unordered_set<std::string>& elementNames) const override`, `writePlyHeader(std::ostream& out) const override`, `writePlyData(std::ostream& out) const override`. If your extension does not support PLY, implement them to return `std::nullopt` / no-op as appropriate; if it does, see step 6.
@@ -233,7 +234,7 @@ To add a new extension type in the C++ codebase:
 
   Reserved `flags` bits are ignored on read; writers write them as 0.
 
-  **Validation on write:** a `crs` that fails the rules above or exceeds 65,535 bytes is omitted with a warning, so readers reject the record.
+  **Validation on save:** a `rotation` within 1e-3 of unit norm is normalized. If the record then breaks any rule above, including a `crs` over 65,535 bytes, `saveSpz` logs the reason and returns false without saving.
 
   **For writers:** attach this extension before saving, with the transform defined from RUB positions. The library never creates this extension automatically.
 
@@ -242,6 +243,8 @@ To add a new extension type in the C++ codebase:
   **Compatibility note:** a non-extension build skips this extension with a warning. The Gaussian data is unaffected; only the georeference is lost.
 
   ```python
+  import numpy as np
+
   ext = spz.SpzExtensionGeoreferenceNiantic()
   ext.crs = "EPSG:9988"                       # ITRF2020 ECEF; EPSG:4978 for WGS 84; PROJJSON + crs_encoding for other bodies
   ext.epoch = 2026.7                          # coordinate epoch, decimal year

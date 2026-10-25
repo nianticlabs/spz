@@ -4,7 +4,7 @@ export enum SpzExtensionType {
   SPZ_NIANTIC_georeference = 0x4E530001,
 }
 
-export enum CrsEncoding {
+export enum GeoreferenceCrsEncoding {
   AUTHORITY_CODE = 0,
   PROJJSON = 1,
 }
@@ -31,11 +31,11 @@ export class SpzExtensionGeoreferenceNiantic extends SpzExtensionBase {
   /** Target geocentric CRS, e.g. `"EPSG:4978"` or inline PROJJSON; required. */
   crs: string;
   /** Serialization of `crs`: AUTHORITY_CODE (default) or PROJJSON (only when no code exists). */
-  crsEncoding: CrsEncoding;
-  /** Translation from the RUB origin to the target CRS, in meters (x, y, z). */
-  origin: [number, number, number];
-  /** Unit Hamilton quaternion (x, y, z, w) rotating RUB positions into the target CRS. */
-  rotation: [number, number, number, number];
+  crsEncoding: GeoreferenceCrsEncoding;
+  /** Translation from the RUB origin to the target CRS, in meters (x, y, z). Returns a copy; assign the whole tuple. */
+  origin: readonly [number, number, number];
+  /** Unit Hamilton quaternion (x, y, z, w) rotating RUB positions into the target CRS; near-unit values are normalized on save. Returns a copy; assign the whole tuple. */
+  rotation: readonly [number, number, number, number];
   /** Dimensionless uniform scale from RUB positions into the target CRS; must be finite and > 0. */
   scale: number;
   /** Coordinate epoch of the transformed coordinates, as a decimal year; NaN when absent. */

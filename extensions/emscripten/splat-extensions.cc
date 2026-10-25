@@ -61,7 +61,7 @@ void register_extensions() {
   // Registered as `number` (as SplatAttribute in spz-bindings.cc) so JS sees plain integers,
   // matching the numeric enum declared in splat-extensions.d.ts.in.
   ::emscripten::enum_<spz::SpzExtensionGeoreferenceNiantic::CrsEncoding>(
-      "CrsEncoding", ::emscripten::enum_value_type::number)
+      "GeoreferenceCrsEncoding", ::emscripten::enum_value_type::number)
       .value("AUTHORITY_CODE", spz::SpzExtensionGeoreferenceNiantic::CrsEncoding::AuthorityCode)
       .value("PROJJSON", spz::SpzExtensionGeoreferenceNiantic::CrsEncoding::Projjson);
 

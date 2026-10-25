@@ -110,6 +110,8 @@ _GEOREF_PAYLOAD_OFFSET = 40
 _GEOREF_FLAGS_OFFSET = 41
 _GEOREF_CRS_LENGTH_OFFSET = 42
 _GEOREF_ORIGIN_OFFSET = 44
+_GEOREF_ROTATION_OFFSET = 68
+_GEOREF_SCALE_OFFSET = 100
 _GEOREF_EPOCH_OFFSET = 108
 _GEOREF_CRS_OFFSET = 116
 _GEOREF_MAX_CRS_BYTES = 0xFFFF
@@ -171,6 +173,15 @@ def _assert_rejected(filename, baseline):
     _assert_gaussians_equal(loaded, baseline)
 
 
+def _assert_save_fails(cloud, name):
+    """An invalid record fails the save and leaves no file behind."""
+    filename = os.path.join(tempfile.gettempdir(), name)
+    if os.path.exists(filename):
+        os.remove(filename)
+    assert spz.save_spz(cloud, spz.PackOptions(), filename) is False
+    assert not os.path.exists(filename)
+
+
 def _baseline(name):
     return spz.load_spz(_save_to_tmp(_make_cloud(), name), spz.UnpackOptions())
 
@@ -192,7 +203,7 @@ def test_georeference_round_trip(epoch):
     e = loaded.extensions[0]
     assert isinstance(e, spz.SpzExtensionGeoreferenceNiantic)
     assert e.crs == ext.crs
-    assert e.crs_encoding == spz.CrsEncoding.AUTHORITY_CODE
+    assert e.crs_encoding == spz.GeoreferenceCrsEncoding.AUTHORITY_CODE
     assert e.origin == ext.origin
     assert e.rotation == ext.rotation
     assert e.scale == ext.scale
@@ -277,7 +288,7 @@ def test_georeference_truncated_fixed_section_skipped():
     cloud = _make_cloud()
     # A long crs leaves room to carve a filler record out of the same zone.
     cloud.extensions = [
-        _make_georef_ext(crs=_MOON_CARTESIAN_PROJJSON, crs_encoding=spz.CrsEncoding.PROJJSON)
+        _make_georef_ext(crs=_MOON_CARTESIAN_PROJJSON, crs_encoding=spz.GeoreferenceCrsEncoding.PROJJSON)
     ]
     filename = _save_to_tmp(cloud, "georef_trunc.spz")
     with open(filename, "rb") as f:
@@ -353,12 +364,11 @@ def test_georeference_reserved_flag_bits_ignored():
         "epoch_suffix",
     ],
 )
-def test_georeference_malformed_crs_code_skipped(crs):
-    """The writer omits a malformed AUTHORITY:CODE, so the record is rejected; core data still loads."""
-    baseline = _baseline("georef_crsid_baseline.spz")
+def test_georeference_malformed_crs_code_fails_save(crs):
+    """A malformed AUTHORITY:CODE fails the save."""
     cloud = _make_cloud()
     cloud.extensions = [_make_georef_ext(crs=crs)]
-    _assert_rejected(_save_to_tmp(cloud, "georef_crsid.spz"), baseline)
+    _assert_save_fails(cloud, "georef_crsid.spz")
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
@@ -398,38 +408,36 @@ def test_georeference_projjson_crs_round_trips():
     """A non-Earth target with no registry code round-trips as inline PROJJSON."""
     cloud = _make_cloud()
     cloud.extensions = [
-        _make_georef_ext(crs=_MOON_CARTESIAN_PROJJSON, crs_encoding=spz.CrsEncoding.PROJJSON)
+        _make_georef_ext(crs=_MOON_CARTESIAN_PROJJSON, crs_encoding=spz.GeoreferenceCrsEncoding.PROJJSON)
     ]
     loaded = spz.load_spz(_save_to_tmp(cloud, "georef_projjson_crs.spz"), spz.UnpackOptions())
     assert len(loaded.extensions) == 1
     assert loaded.extensions[0].crs == _MOON_CARTESIAN_PROJJSON
-    assert loaded.extensions[0].crs_encoding == spz.CrsEncoding.PROJJSON
+    assert loaded.extensions[0].crs_encoding == spz.GeoreferenceCrsEncoding.PROJJSON
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
 def test_georeference_crs_at_size_cap_round_trips():
-    """A crs of exactly 65,535 bytes (u16 crs_length) round-trips; one byte more is omitted."""
+    """A crs of exactly 65,535 bytes (u16 crs_length) round-trips; one byte more fails the save."""
     cloud = _make_cloud()
     at_cap = _MOON_CARTESIAN_PROJJSON + " " * (_GEOREF_MAX_CRS_BYTES - len(_MOON_CARTESIAN_PROJJSON))
     assert len(at_cap) == _GEOREF_MAX_CRS_BYTES
 
-    cloud.extensions = [_make_georef_ext(crs=at_cap, crs_encoding=spz.CrsEncoding.PROJJSON)]
+    cloud.extensions = [_make_georef_ext(crs=at_cap, crs_encoding=spz.GeoreferenceCrsEncoding.PROJJSON)]
     loaded = spz.load_spz(_save_to_tmp(cloud, "georef_crs_cap.spz"), spz.UnpackOptions())
     assert len(loaded.extensions) == 1
     assert loaded.extensions[0].crs == at_cap
 
-    cloud.extensions = [_make_georef_ext(crs=at_cap + " ", crs_encoding=spz.CrsEncoding.PROJJSON)]
-    loaded = spz.load_spz(_save_to_tmp(cloud, "georef_crs_over_cap.spz"), spz.UnpackOptions())
-    assert len(loaded.extensions) == 0
+    cloud.extensions = [_make_georef_ext(crs=at_cap + " ", crs_encoding=spz.GeoreferenceCrsEncoding.PROJJSON)]
+    _assert_save_fails(cloud, "georef_crs_over_cap.spz")
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
-def test_georeference_empty_projjson_crs_skipped():
-    """An empty PROJJSON crs is rejected like an empty code; core data still loads."""
-    baseline = _baseline("georef_empty_projjson_baseline.spz")
+def test_georeference_empty_projjson_crs_fails_save():
+    """An empty PROJJSON crs fails the save, like an empty code."""
     cloud = _make_cloud()
-    cloud.extensions = [_make_georef_ext(crs="", crs_encoding=spz.CrsEncoding.PROJJSON)]
-    _assert_rejected(_save_to_tmp(cloud, "georef_empty_projjson.spz"), baseline)
+    cloud.extensions = [_make_georef_ext(crs="", crs_encoding=spz.GeoreferenceCrsEncoding.PROJJSON)]
+    _assert_save_fails(cloud, "georef_empty_projjson.spz")
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
@@ -441,7 +449,7 @@ def test_georeference_projjson_crs_invalid_utf8_skipped(bad):
     baseline = _baseline("georef_projjson_utf8_baseline.spz")
     cloud = _make_cloud()
     cloud.extensions = [
-        _make_georef_ext(crs=_MOON_CARTESIAN_PROJJSON, crs_encoding=spz.CrsEncoding.PROJJSON)
+        _make_georef_ext(crs=_MOON_CARTESIAN_PROJJSON, crs_encoding=spz.GeoreferenceCrsEncoding.PROJJSON)
     ]
     filename = _save_to_tmp(cloud, "georef_projjson_bad_utf8.spz")
     _patch_file(filename, _GEOREF_CRS_OFFSET + 1, bad)
@@ -463,35 +471,71 @@ def test_georeference_reader_rejects_non_finite_origin(value):
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
 @pytest.mark.parametrize(
     "rotation",
-    [
-        [0.0, 0.0, 0.0, 2.0],
-        [1e-160, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0],
-        [float("nan"), 0.0, 0.0, 1.0],
-        [float("inf"), 0.0, 0.0, 1.0],
-    ],
-    ids=["non_unit", "tiny", "zero", "nan", "inf"],
+    [[0.5, 0.5, 0.5, 0.5 + 1e-5], [0.0, 0.0, 0.0, 1.0 - 9e-4]],
+    ids=["slightly_off", "near_tolerance"],
 )
-def test_georeference_non_unit_rotation_skipped(rotation):
-    """A quaternion whose norm is not within 1e-6 of 1 rejects the record; it is never repaired."""
-    baseline = _baseline("georef_rot_baseline.spz")
+def test_georeference_rotation_normalized_on_write(rotation):
+    """A quaternion within 1e-3 of unit norm is normalized on write instead of being rejected on read."""
     cloud = _make_cloud()
     ext = _make_georef_ext()
     ext.rotation = rotation
     cloud.extensions = [ext]
-    _assert_rejected(_save_to_tmp(cloud, "georef_rot_bad.spz"), baseline)
+    loaded = spz.load_spz(_save_to_tmp(cloud, "georef_rot_normalized.spz"), spz.UnpackOptions())
+    assert len(loaded.extensions) == 1
+    expected = np.asarray(rotation) / np.linalg.norm(rotation)
+    assert np.allclose(loaded.extensions[0].rotation, expected, rtol=0, atol=1e-15)
+
+
+@pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
+def test_georeference_reader_rejects_non_unit_rotation():
+    """A stored quaternion whose norm is not within 1e-6 of 1 rejects the record; it is never repaired."""
+    baseline = _baseline("georef_rot_baseline.spz")
+    cloud = _make_cloud()
+    cloud.extensions = [_make_georef_ext()]
+    filename = _save_to_tmp(cloud, "georef_rot_bad.spz")
+    _patch_file(filename, _GEOREF_ROTATION_OFFSET + 24, struct.pack("<d", 0.5 + 1e-5))  # w
+    _assert_rejected(filename, baseline)
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
 @pytest.mark.parametrize(
-    "scale", [0.0, -1.0, float("nan"), float("inf")], ids=["zero", "negative", "nan", "inf"]
+    "field, value",
+    [
+        ("origin", [0.0, float("nan"), 0.0]),
+        ("origin", [float("inf"), 0.0, 0.0]),
+        ("rotation", [0.0, 0.0, 0.0, 2.0]),
+        ("rotation", [0.0, 0.0, 0.0, 0.0]),
+        ("rotation", [float("nan"), 0.0, 0.0, 1.0]),
+        ("rotation", [float("inf"), 0.0, 0.0, 1.0]),
+        ("scale", 0.0),
+        ("scale", -1.0),
+        ("scale", float("nan")),
+        ("scale", float("inf")),
+        ("epoch", float("inf")),
+        ("epoch", -float("inf")),
+    ],
+    ids=[
+        "origin_nan", "origin_inf", "rotation_non_unit", "rotation_zero", "rotation_nan", "rotation_inf", "scale_zero",
+        "scale_negative", "scale_nan", "scale_inf", "epoch_inf", "epoch_neg_inf",
+    ],
 )
-def test_georeference_invalid_scale_skipped(scale):
-    """A non-finite or non-positive scale is rejected on load; core data still loads."""
-    baseline = _baseline("georef_badscale_baseline.spz")
+def test_georeference_invalid_record_fails_save(field, value):
+    """A record the reader would reject fails the save instead of being written."""
     cloud = _make_cloud()
-    cloud.extensions = [_make_georef_ext(scale=scale)]
-    _assert_rejected(_save_to_tmp(cloud, "georef_badscale.spz"), baseline)
+    ext = _make_georef_ext()
+    setattr(ext, field, value)
+    cloud.extensions = [ext]
+    _assert_save_fails(cloud, "georef_invalid.spz")
+
+
+@pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
+def test_georeference_array_fields_reject_element_assignment():
+    """origin and rotation are tuples, so element assignment raises instead of editing a copy."""
+    ext = _make_georef_ext()
+    with pytest.raises(TypeError):
+        ext.origin[2] = 1.0
+    with pytest.raises(TypeError):
+        ext.rotation[0] = 1.0
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
@@ -525,9 +569,11 @@ def test_georeference_rejected_record_does_not_affect_following_extension():
     cloud = _make_cloud()
     orbit = spz.SpzExtensionSafeOrbitCameraAdobe()
     orbit.safe_orbit_radius_min = 0.3
-    cloud.extensions = [_make_georef_ext(scale=-1.0), orbit]
+    cloud.extensions = [_make_georef_ext(), orbit]
+    filename = _save_to_tmp(cloud, "georef_bad_then_orbit.spz")
+    _patch_file(filename, _GEOREF_SCALE_OFFSET, struct.pack("<d", -1.0))
 
-    loaded = spz.load_spz(_save_to_tmp(cloud, "georef_bad_then_orbit.spz"), spz.UnpackOptions())
+    loaded = spz.load_spz(filename, spz.UnpackOptions())
     assert len(loaded.extensions) == 1
     assert isinstance(loaded.extensions[0], spz.SpzExtensionSafeOrbitCameraAdobe)
     assert abs(loaded.extensions[0].safe_orbit_radius_min - 0.3) < 1e-5

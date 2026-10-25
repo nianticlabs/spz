@@ -4,6 +4,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/tuple.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
 
@@ -61,7 +62,7 @@ void register_extensions(nb::module_& m) {
         .def_static("type", &spz::SpzExtensionCoordinateSystemAdobe::type,
                     "Static method to get the extension type enum value");
     nb::enum_<spz::SpzExtensionGeoreferenceNiantic::CrsEncoding>(
-        m, "CrsEncoding", "Serialization of SpzExtensionGeoreferenceNiantic.crs")
+        m, "GeoreferenceCrsEncoding", "Serialization of SpzExtensionGeoreferenceNiantic.crs")
         .value("AUTHORITY_CODE", spz::SpzExtensionGeoreferenceNiantic::CrsEncoding::AuthorityCode)
         .value("PROJJSON", spz::SpzExtensionGeoreferenceNiantic::CrsEncoding::Projjson);
     nb::class_<spz::SpzExtensionGeoreferenceNiantic, spz::SpzExtensionBase>(m, "SpzExtensionGeoreferenceNiantic")
@@ -70,10 +71,20 @@ void register_extensions(nb::module_& m) {
                 "Target geocentric CRS, e.g. \"EPSG:4978\" or inline PROJJSON; required")
         .def_rw("crs_encoding", &spz::SpzExtensionGeoreferenceNiantic::crsEncoding,
                 "Serialization of crs: AUTHORITY_CODE (default) or PROJJSON (only when no code exists)")
-        .def_rw("origin", &spz::SpzExtensionGeoreferenceNiantic::origin,
-                "Translation from the RUB origin to the target CRS, in meters (x, y, z)")
-        .def_rw("rotation", &spz::SpzExtensionGeoreferenceNiantic::rotation,
-                "Unit Hamilton quaternion (x, y, z, w) rotating RUB positions into the target CRS")
+        // Tuples, so element assignment raises instead of silently editing a copy.
+        .def_prop_rw("origin",
+                     [](const spz::SpzExtensionGeoreferenceNiantic& e) {
+                       return std::make_tuple(e.origin[0], e.origin[1], e.origin[2]);
+                     },
+                     [](spz::SpzExtensionGeoreferenceNiantic& e, const std::array<double, 3>& v) { e.origin = v; },
+                     "Translation from the RUB origin to the target CRS, in meters (x, y, z)")
+        .def_prop_rw("rotation",
+                     [](const spz::SpzExtensionGeoreferenceNiantic& e) {
+                       return std::make_tuple(e.rotation[0], e.rotation[1], e.rotation[2], e.rotation[3]);
+                     },
+                     [](spz::SpzExtensionGeoreferenceNiantic& e, const std::array<double, 4>& v) { e.rotation = v; },
+                     "Unit Hamilton quaternion (x, y, z, w) rotating RUB positions into the target CRS; "
+                     "near-unit values are normalized on save")
         .def_rw("scale", &spz::SpzExtensionGeoreferenceNiantic::scale,
                 "Dimensionless uniform scale from RUB positions into the target CRS; must be finite and > 0")
         .def_rw("epoch", &spz::SpzExtensionGeoreferenceNiantic::epoch,

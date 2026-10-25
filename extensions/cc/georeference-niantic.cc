@@ -29,24 +29,12 @@ SOFTWARE.
 
 namespace spz {
 namespace {
-template <class T>
-bool readExact(std::istream& is, T& out) {
-  return static_cast<bool>(is.read(reinterpret_cast<char*>(&out), sizeof(T)));
-}
-
-// Returns the number of bytes remaining between the current get position and the end of `is`,
-// or -1 if the stream does not support positioning. Restores the original position on success.
-std::streamoff remainingBytes(std::istream& is) {
-  const std::streampos cur = is.tellg();
-  if (cur == std::streampos(-1)) return -1;
-  is.seekg(0, std::ios::end);
-  const std::streampos end = is.tellg();
-  is.seekg(cur);
-  if (end == std::streampos(-1)) return -1;
-  return end - cur;
-}
+using detail::readExact;
+using detail::remainingBytes;
 
 constexpr double kUnitQuaternionTolerance = 1e-6;
+// write() normalizes rotations this close to unit (float math, rounded input); further off is a caller bug.
+constexpr double kNormalizeTolerance = 1e-3;
 
 // Well-formed UTF-8 (RFC 3629): no overlong forms, surrogates, or code points above U+10FFFF.
 bool isValidUtf8(const std::string& s) {
@@ -107,47 +95,77 @@ bool isValidCrs(const std::string& crs, CrsEncoding encoding) {
   return colons == 1 && colon != 0 && colon + 1 != crs.size();
 }
 
+double norm(const std::array<double, 4>& q) {
+  return std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+}
+
+// The rotation as write() stores it.
+std::array<double, 4> normalizedForWrite(std::array<double, 4> q) {
+  const double n = norm(q);
+  if (std::abs(n - 1.0) <= kNormalizeTolerance) {
+    for (double& c : q) c /= n;
+  }
+  return q;
+}
+
+// Returns why `r` is invalid, or nullptr. Shared by read() and isValid() so a record that saves
+// always loads. `rotation` is separate so isValid() can check the copy write() stores.
+const char* invalidReason(const SpzExtensionGeoreferenceNiantic& r, const std::array<double, 4>& rotation) {
+  if (!isValidCrs(r.crs, r.crsEncoding)) return "crs is empty or not valid for its crs_encoding";
+  for (double value : r.origin) {
+    if (!std::isfinite(value)) return "origin is not finite";
+  }
+  if (!(std::abs(norm(rotation) - 1.0) <= kUnitQuaternionTolerance))
+    return "rotation is not a unit quaternion";
+  if (!std::isfinite(r.scale) || r.scale <= 0.0) return "scale is not finite and positive";
+  if (std::isinf(r.epoch)) return "epoch is not finite";
+  return nullptr;
+}
+
 // Fixed section: ext_version(1) + flags(1) + crs_length(2) + origin(24) + rotation(32) +
 // scale(8) + epoch(8), followed by crs.
 constexpr uint32_t kFixedPayloadBytes = 76;
+
+// A crs too long for the u16 length field is written empty so the record stays well-framed.
+uint16_t encodedCrsLength(const std::string& crs) {
+  return crs.size() <= SpzExtensionGeoreferenceNiantic::kMaxCrsBytes ? static_cast<uint16_t>(crs.size()) : 0;
+}
 }  // namespace
 
 SpzExtensionGeoreferenceNiantic::SpzExtensionGeoreferenceNiantic()
     : SpzExtensionBase(SpzExtensionType::SPZ_NIANTIC_georeference) {}
 
 uint32_t SpzExtensionGeoreferenceNiantic::payloadBytes() const {
-  const uint32_t crsBytes = isValidCrs(crs, crsEncoding) ? static_cast<uint32_t>(crs.size()) : 0;
-  return kFixedPayloadBytes + crsBytes;
+  return kFixedPayloadBytes + encodedCrsLength(crs);
+}
+
+bool SpzExtensionGeoreferenceNiantic::isValid() const {
+  const char* reason = invalidReason(*this, normalizedForWrite(rotation));
+  if (reason) SpzLog("[SPZ ERROR] GeoreferenceNiantic: %s", reason);
+  return reason == nullptr;
 }
 
 void SpzExtensionGeoreferenceNiantic::write(std::ostream& os) const {
+  const std::array<double, 4> q = normalizedForWrite(rotation);
   const uint32_t t = static_cast<uint32_t>(extensionType);
   const uint32_t len = payloadBytes();
   const uint8_t extVersion = kExtVersion;
-  // A transform with no target is meaningless: an invalid crs is omitted, so readers reject the record.
-  const bool crsValid = isValidCrs(crs, crsEncoding);
-  const uint16_t crsLength = crsValid ? static_cast<uint16_t>(crs.size()) : 0;
-  if (!crsValid) {
-    SpzLog("[SPZ WARNING] GeoreferenceNiantic: crs (%llu bytes) is not valid for crs_encoding %u — "
-           "omitted on write, readers will reject this record",
-           static_cast<unsigned long long>(crs.size()), static_cast<unsigned>(crsEncoding));
-  }
+  const uint16_t crsLength = encodedCrsLength(crs);
   uint8_t flags = 0;
   if (!std::isnan(epoch)) flags |= kFlagHasEpoch;
   flags |= static_cast<uint8_t>(static_cast<uint8_t>(crsEncoding) << kCrsEncodingShift) & kCrsEncodingMask;
   SpzLog("[SPZ] Writing extension: GeoreferenceNiantic (crs=%s)",
-         !crsValid ? "<invalid>" : crsEncoding == CrsEncoding::Projjson ? "<PROJJSON>" : crs.c_str());
+         crsEncoding == CrsEncoding::Projjson ? "<PROJJSON>" : crs.c_str());
   os.write(reinterpret_cast<const char*>(&t), sizeof(t));
   os.write(reinterpret_cast<const char*>(&len), sizeof(len));
   os.write(reinterpret_cast<const char*>(&extVersion), sizeof(extVersion));
   os.write(reinterpret_cast<const char*>(&flags), sizeof(flags));
   os.write(reinterpret_cast<const char*>(&crsLength), sizeof(crsLength));
   os.write(reinterpret_cast<const char*>(origin.data()), sizeof(origin));
-  os.write(reinterpret_cast<const char*>(rotation.data()), sizeof(rotation));
+  os.write(reinterpret_cast<const char*>(q.data()), sizeof(q));
   os.write(reinterpret_cast<const char*>(&scale), sizeof(scale));
   os.write(reinterpret_cast<const char*>(&epoch), sizeof(epoch));
-  if (crsLength > 0)
-    os.write(crs.data(), static_cast<std::streamsize>(crsLength));
+  os.write(crs.data(), static_cast<std::streamsize>(crsLength));
 }
 
 std::optional<SpzExtensionBasePtr> SpzExtensionGeoreferenceNiantic::read(std::istream& is) {
@@ -187,34 +205,14 @@ std::optional<SpzExtensionBasePtr> SpzExtensionGeoreferenceNiantic::read(std::is
     SpzLog("[SPZ WARNING] GeoreferenceNiantic: failed to read crs — extension skipped");
     return std::nullopt;
   }
-  if (!isValidCrs(rec->crs, rec->crsEncoding)) {
-    SpzLog("[SPZ WARNING] GeoreferenceNiantic: crs is empty or not valid for its crs_encoding — "
-           "extension skipped");
-    return std::nullopt;
-  }
-  for (double value : rec->origin) {
-    if (!std::isfinite(value)) {
-      SpzLog("[SPZ WARNING] GeoreferenceNiantic: non-finite origin — extension skipped");
-      return std::nullopt;
-    }
-  }
-  const auto& q = rec->rotation;
-  const double norm = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-  // Rejected rather than normalized: the library validates the record, it does not repair it.
-  if (!(std::abs(norm - 1.0) <= kUnitQuaternionTolerance)) {
-    SpzLog("[SPZ WARNING] GeoreferenceNiantic: rotation quaternion norm %f is not unit — extension skipped",
-           norm);
-    return std::nullopt;
-  }
-  if (!std::isfinite(rec->scale) || rec->scale <= 0.0) {
-    SpzLog("[SPZ WARNING] GeoreferenceNiantic: scale %f is not finite and positive — extension skipped",
-           rec->scale);
-    return std::nullopt;
-  }
   if (!(flags & kFlagHasEpoch)) {
     rec->epoch = std::numeric_limits<double>::quiet_NaN();
-  } else if (!std::isfinite(rec->epoch)) {
-    SpzLog("[SPZ WARNING] GeoreferenceNiantic: has_epoch is set but epoch is not finite — extension skipped");
+  } else if (std::isnan(rec->epoch)) {
+    SpzLog("[SPZ WARNING] GeoreferenceNiantic: has_epoch is set but epoch is NaN — extension skipped");
+    return std::nullopt;
+  }
+  if (const char* reason = invalidReason(*rec, rec->rotation)) {
+    SpzLog("[SPZ WARNING] GeoreferenceNiantic: %s — extension skipped", reason);
     return std::nullopt;
   }
   return std::optional{std::move(rec)};

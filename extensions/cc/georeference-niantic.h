@@ -43,6 +43,7 @@ namespace spz {
 // otherwise an inline PROJJSON GeodeticCRS. See extensions/README.md for the full rules.
 //
 // This extension is a descriptor: the library never applies the transform to Gaussian data.
+// write() normalizes a near-unit `rotation`; isValid() applies read()'s rules to the record as written.
 struct SpzExtensionGeoreferenceNiantic : public SpzExtensionBase {
   // Serialization of `crs`, stored in flags bits 1-2. Unassigned values reject the payload.
   enum class CrsEncoding : uint8_t { AuthorityCode = 0, Projjson = 1 };
@@ -64,6 +65,7 @@ struct SpzExtensionGeoreferenceNiantic : public SpzExtensionBase {
   SpzExtensionGeoreferenceNiantic();
   uint32_t payloadBytes() const override;
   void write(std::ostream& os) const override;
+  bool isValid() const override;
   SpzExtensionBase* copyAsRawData() const override;
   std::optional<std::shared_ptr<SpzExtensionBase>> tryReadFromPly(
       std::istream& in, const std::unordered_set<std::string>& elementNames) const override;

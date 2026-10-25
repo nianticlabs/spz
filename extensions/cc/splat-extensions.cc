@@ -33,17 +33,7 @@ SOFTWARE.
 #include <unordered_set>
 
 namespace spz {
-namespace {
-template <class T>
-bool readExact(std::istream& is, T& out) {
-  return static_cast<bool>(is.read(reinterpret_cast<char*>(&out), sizeof(T)));
-}
-
-// Extension stream format: [u32 type][u32 byteLength][payload...] per record, until EOF.
-// Unknown types are skipped by advancing byteLength bytes so multiple vendors can coexist.
-// Returns the number of bytes remaining between the current get position and the end of `is`,
-// or -1 if the stream does not support positioning. Restores the original position on success.
-std::streamoff remainingBytes(std::istream& is) {
+std::streamoff detail::remainingBytes(std::istream& is) {
   const std::streampos cur = is.tellg();
   if (cur == std::streampos(-1)) return -1;
   is.seekg(0, std::ios::end);
@@ -53,6 +43,12 @@ std::streamoff remainingBytes(std::istream& is) {
   return end - cur;
 }
 
+namespace {
+using detail::readExact;
+using detail::remainingBytes;
+
+// Extension stream format: [u32 type][u32 byteLength][payload...] per record, until EOF.
+// Unknown types are skipped by advancing byteLength bytes so multiple vendors can coexist.
 bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
   uint32_t type_u32{};
   if (!readExact(is, type_u32))
@@ -140,6 +136,13 @@ CoordinateSystem getPackedCoordinateSystem(
     return coordExt->resolve();
   // Unrecognized extension types are already warned about in tryParseExtension.
   return CoordinateSystem::RUB;  // default: no known extension overrides the packed coordinate system
+}
+
+bool allExtensionsValid(const std::vector<SpzExtensionBasePtr>& extensions) {
+  for (const auto& ext : extensions) {
+    if (!ext->isValid()) return false;
+  }
+  return true;
 }
 
 bool isKnownPlyExtensionElement(const std::string& elementName) {
