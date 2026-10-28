@@ -29,6 +29,7 @@ SOFTWARE.
 #include "extensions/cc/safe-orbit-camera-adobe.h"
 #include "extensions/cc/coordinate-system-adobe.h"
 #include "extensions/cc/custom-attribute-adobe.h"
+#include "extensions/cc/environment-map-adobe.h"
 #include "extensions/emscripten/splat-extensions.h"
 #include "src/emscripten/utils.h"
 
@@ -42,6 +43,14 @@ namespace {
 void setCustomAttributeValues(spz::SpzExtensionCustomAttributeAdobe& attr, ::emscripten::val values) {
   vectorFromJsArray(values, attr.values);
 }
+
+::emscripten::val environmentMapPixels(const spz::SpzExtensionEnvironmentMapAdobe& env) {
+  return jsFloat32ArrayFromVector(env.pixels);
+}
+
+void setEnvironmentMapPixels(spz::SpzExtensionEnvironmentMapAdobe& env, ::emscripten::val pixels) {
+  vectorFromJsArray(pixels, env.pixels);
+}
 }  // namespace
 
 // Register all extension-related Emscripten bindings
@@ -49,7 +58,13 @@ void register_extensions() {
   ::emscripten::enum_<spz::SpzExtensionType>("SpzExtensionType")
       .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera)
       .value("SPZ_ADOBE_coordinate_system", spz::SpzExtensionType::SPZ_ADOBE_coordinate_system)
-      .value("SPZ_ADOBE_custom_attribute", spz::SpzExtensionType::SPZ_ADOBE_custom_attribute);
+      .value("SPZ_ADOBE_custom_attribute", spz::SpzExtensionType::SPZ_ADOBE_custom_attribute)
+      .value("SPZ_ADOBE_environment_map", spz::SpzExtensionType::SPZ_ADOBE_environment_map);
+
+  ::emscripten::value_array<std::array<float, 3>>("Vec3f")
+      .element(::emscripten::index<0>())
+      .element(::emscripten::index<1>())
+      .element(::emscripten::index<2>());
 
   ::emscripten::enum_<spz::SpzCustomAttributeKind>("SpzCustomAttributeKind")
       .value("Scalar", spz::SpzCustomAttributeKind::Scalar)
@@ -81,6 +96,19 @@ void register_extensions() {
       .property("bits", &spz::SpzExtensionCustomAttributeAdobe::bits)
       .property("values", &customAttributeValues, &setCustomAttributeValues)
       .class_function("type", &spz::SpzExtensionCustomAttributeAdobe::type);
+
+  using EnvironmentMap = spz::SpzExtensionEnvironmentMapAdobe;
+  ::emscripten::class_<EnvironmentMap, ::emscripten::base<spz::SpzExtensionBase>>("SpzExtensionEnvironmentMapAdobe")
+      .smart_ptr_constructor("SpzExtensionEnvironmentMapAdobePtr", &std::make_shared<EnvironmentMap>)
+      .property("width", &EnvironmentMap::width)
+      .property("height", &EnvironmentMap::height)
+      .property("origin", &EnvironmentMap::origin)
+      .property("up", &EnvironmentMap::up)
+      .property("e1", &EnvironmentMap::e1)
+      .property("e2", &EnvironmentMap::e2)
+      .property("metadata", &EnvironmentMap::metadata)
+      .property("pixels", &environmentMapPixels, &setEnvironmentMapPixels)
+      .class_function("type", &EnvironmentMap::type);
 
   ::emscripten::function("isKnownPlyExtensionElement", &spz::isKnownPlyExtensionElement);
 }

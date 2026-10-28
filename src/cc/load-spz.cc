@@ -1176,7 +1176,6 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
   std::string currentElementName;
   int32_t currentElementCount = 0;
   size_t currentElementBytes = 0;
-  bool currentElementIsKnown = false;
 
   for (int32_t i = 0;; i++) {
     if (!getNextHeaderLine(in, line)) {
@@ -1186,8 +1185,8 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     }
     if (line == "end_header") {
       // Finalize any pending extra element
-      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount > 0) {
-        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes, currentElementIsKnown});
+      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount >= 0) {
+        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes});
       }
       break;
     }
@@ -1195,8 +1194,8 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
     // Check for new element definitions (non-vertex)
     if (line.find("element ") == 0 && line.find("element vertex ") != 0) {
       // Finalize previous extra element if any
-      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount > 0) {
-        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes, currentElementIsKnown});
+      if (state == ParseState::IN_EXTRA_ELEMENT && currentElementCount >= 0) {
+        extraElements.push_back({currentElementName, currentElementCount, currentElementBytes});
       }
 
       // Parse element name and count
@@ -1205,18 +1204,8 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
         currentElementName = line.substr(8, spacePos - 8);
         currentElementCount = std::stoi(line.substr(spacePos + 1));
         currentElementBytes = 0;
-
-        // Check if this is a known element we handle specially (via extensions)
-#ifdef SPZ_BUILD_EXTENSIONS
-        currentElementIsKnown = isKnownPlyExtensionElement(currentElementName);
-#else
-        currentElementIsKnown = false;
-#endif
-
         state = ParseState::IN_EXTRA_ELEMENT;
-        if (!currentElementIsKnown) {
-          SpzLog("[SPZ] Found extra element: %s (%d items)", currentElementName.c_str(), currentElementCount);
-        }
+        SpzLog("[SPZ] Found extra element: %s (%d items)", currentElementName.c_str(), currentElementCount);
       }
       continue;
     }
@@ -1308,18 +1297,9 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
 
   GaussianCloud result;
 #ifdef SPZ_BUILD_EXTENSIONS
+  // Extra elements follow the vertex data in file order; unknown ones are skipped.
   readExtensionsFromPly(in, extraElements, result.extensions);
 #endif
-
-  // Skip data for extra elements (they appear after vertex and safe orbit data in the file)
-  for (const auto& elem : extraElements) {
-    if (elem.isKnown) continue;  // Already handled above
-    size_t bytesToSkip = elem.count * elem.bytesPerElement;
-    if (bytesToSkip > 0) {
-      in.seekg(bytesToSkip, std::ios::cur);
-      SpzLog("[SPZ] Skipped %zu bytes for element '%s'", bytesToSkip, elem.name.c_str());
-    }
-  }
 
   in.close();
 
@@ -1370,6 +1350,13 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   const int64_t D = 17 + shDim * 3;
 
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RDF, data.shDegree);
+#ifdef SPZ_BUILD_EXTENSIONS
+  if (!validateExtensions(data.extensions, data.numPoints)) {
+    return false;
+  }
+  std::vector<SpzExtensionBasePtr> extensions = data.extensions;
+  convertExtensionCoordinates(extensions, c);
+#endif
 
   std::ofstream out(filename, std::ios::binary);
   if (!out.good()) {
@@ -1401,7 +1388,7 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   out << "property float rot_3\n";
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  writeExtensionsToPlyHeader(data.extensions, out);
+  writeExtensionsToPlyHeader(extensions, out);
 #endif
 
   out << "end_header\n";
@@ -1473,7 +1460,7 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   }
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  writeExtensionsToPlyData(data.extensions, out);
+  writeExtensionsToPlyData(extensions, out);
 #endif
 
   out.close();

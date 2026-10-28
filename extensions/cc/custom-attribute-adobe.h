@@ -53,7 +53,7 @@ struct SpzExtensionCustomAttributeAdobe : public SpzExtensionBase {
   void write(std::ostream& os) const override;
   SpzExtensionBase* copyAsRawData() const override;
   std::optional<std::shared_ptr<SpzExtensionBase>> tryReadFromPly(
-      std::istream& in, const std::unordered_set<std::string>& elementNames) const override;
+      std::istream& in, const std::vector<PlyExtraElement>& elements) const override;
   void writePlyHeader(std::ostream& out) const override;
   void writePlyData(std::ostream& out) const override;
   // numPoints comes from the file header; records that don't cover exactly that many points are rejected.

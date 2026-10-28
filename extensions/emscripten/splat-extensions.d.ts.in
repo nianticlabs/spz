@@ -2,6 +2,7 @@ export enum SpzExtensionType {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002,
   SPZ_ADOBE_coordinate_system = 0xADBE0003,
   SPZ_ADOBE_custom_attribute = 0xADBE0004,
+  SPZ_ADOBE_environment_map = 0xADBE0005,
 }
 
 /** How a custom attribute follows coordinate-system conversions. */
@@ -41,6 +42,28 @@ export class SpzExtensionCustomAttributeAdobe extends SpzExtensionBase {
   bits: number;
   /** numPoints * dim values, point-major. Reading returns a copy; assign to replace. */
   values: Float32Array;
+  constructor();
+  static type(): SpzExtensionType;
+}
+
+/**
+ * Equirectangular RGB environment map with the frame it is looked up in; at most one per cloud.
+ * Pixel column = azimuth about `up` measured from `e1` toward `e2`, -pi..pi -> 0..width; pixel row =
+ * angle from `up`, 0..pi -> 0..height. `origin`, `up`, `e1` and `e2` follow coordinate conversions
+ * like positions. Saving fails unless width, height >= 1, pixels.length == width * height * 3, and
+ * all values are finite (pixels within +-65504).
+ */
+export class SpzExtensionEnvironmentMapAdobe extends SpzExtensionBase {
+  width: number;
+  height: number;
+  /** height * width * 3 values, row-major, RGB interleaved; stored as float16. Reading returns a copy; assign to replace. */
+  pixels: Float32Array;
+  origin: [number, number, number];
+  up: [number, number, number];
+  e1: [number, number, number];
+  e2: [number, number, number];
+  /** Free-form UTF-8 (JSON by convention), never converted. */
+  metadata: string;
   constructor();
   static type(): SpzExtensionType;
 }

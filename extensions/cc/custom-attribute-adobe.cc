@@ -282,7 +282,7 @@ SpzExtensionBase* SpzExtensionCustomAttributeAdobe::copyAsRawData() const {
 
 // No PLY representation: custom attributes would be vertex properties, which PLY extensions can't add.
 std::optional<SpzExtensionBasePtr> SpzExtensionCustomAttributeAdobe::tryReadFromPly(
-    std::istream&, const std::unordered_set<std::string>&) const {
+    std::istream&, const std::vector<PlyExtraElement>&) const {
   return std::nullopt;
 }
 

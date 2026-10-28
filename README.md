@@ -256,6 +256,10 @@ This extension has the following attributes and default values:
 
 With extension `SPZ_ADOBE_custom_attribute`, SPZ files can carry any number of named per-point attributes beyond the core set (e.g. normals or material parameters). Each is stored as float32 or quantized to 1–8 bits, zstd-compressed, and direction attributes follow coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
 
+### Environment Map
+
+With extension `SPZ_ADOBE_environment_map`, an SPZ or PLY file can carry one equirectangular RGB environment map (e.g. a baked reflection environment) together with its lookup frame and free-form JSON settings, so the file is a complete asset. Pixels are stored as zstd-compressed float16 in SPZ and float32 in PLY; the frame follows coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
+
 
 ## Python Bindings
 
