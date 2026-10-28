@@ -25,6 +25,7 @@ SOFTWARE.
 #include "safe-orbit-camera-adobe.h"
 #include "load-spz.h"
 
+#include <algorithm>
 #include <sstream>
 #include <unordered_set>
 
@@ -79,9 +80,9 @@ SpzExtensionBase* SpzExtensionSafeOrbitCameraAdobe::copyAsRawData() const {
 }
 
 std::optional<SpzExtensionBasePtr> SpzExtensionSafeOrbitCameraAdobe::tryReadFromPly(
-    std::istream& in, const std::unordered_set<std::string>& elementNames) const {
+    std::istream& in, const std::vector<PlyExtraElement>& elements) const {
   for (const auto& name : kRequiredPlyElementNames) {
-    if (elementNames.count(name) == 0)
+    if (std::none_of(elements.begin(), elements.end(), [&](const auto& e) { return e.name == name; }))
       return std::nullopt;
   }
   float safeOrbitData[3];

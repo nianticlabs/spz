@@ -101,7 +101,7 @@ The WASM build exposes extension types and the cloud’s `extensions` array. Use
 
 ### PLY extension element names
 
-When loading PLY files, the loader treats non-vertex elements as either “known” (handled by an extension) or unknown. Known elements are consumed by `readExtensionsFromPly`; unknown ones are reported and skipped. The set of known names is derived from the **PLY extension registry** in `extensions/cc/splat-extensions.cc`: each extension that supports PLY declares a static member (e.g. `SpzExtensionSafeOrbitCameraAdobe::kRequiredPlyElementNames`) and is registered with an exemplar in `getPlyExtensionRegistry()`. The union of all registered extension element names is used to answer **`isKnownPlyExtensionElement(const std::string& elementName)`**. To add PLY support for a new extension, implement the three abstract PLY methods on your extension struct and register it in the registry (see “Adding a new extension” below).
+When loading PLY files, the loader walks the non-vertex elements in file order. Each extension that supports PLY declares the element names it uses in a static member (e.g. `SpzExtensionSafeOrbitCameraAdobe::kRequiredPlyElementNames`) and is registered with an exemplar in `getPlyExtensionRegistry()` in `extensions/cc/splat-extensions.cc`. When an element belongs to a registered extension, `readExtensionsFromPly` hands that extension the run of consecutive elements it declares; any other element is skipped by its size (element count times the summed property sizes: `char`/`uchar` 1, `short`/`ushort` 2, `int`/`uint`/`float` 4, `double` 8). After each run the reader moves to the end of it, so an extension that rejects its data never shifts what follows, and unknown elements (e.g. `up_axis`, `chirality`) may sit before, between or after known ones. The union of all registered element names answers **`isKnownPlyExtensionElement(const std::string& elementName)`**. To add PLY support for a new extension, implement the three abstract PLY methods on your extension struct and register it (see step 6 under "Adding a new extension").
 
 ## Adding a new extension
 
@@ -126,7 +126,7 @@ To add a new extension type in the C++ codebase:
    - `SpzExtensionBase* copyAsRawData() const override` — allocate a copy (e.g. `return new MyExtension(*this);`).
    - `static std::optional<SpzExtensionBasePtr> read(std::istream& is)` — read payload from `is` (caller provides a stream of exactly your payload bytes).
    - `static SpzExtensionType type()` — return your enum value.
-   - The three PLY methods (required because they are pure virtual on the base): `tryReadFromPly(std::istream& in, const std::unordered_set<std::string>& elementNames) const override`, `writePlyHeader(std::ostream& out) const override`, `writePlyData(std::ostream& out) const override`. If your extension does not support PLY, implement them to return `std::nullopt` / no-op as appropriate; if it does, see step 6.
+   - The three PLY methods (required because they are pure virtual on the base): `tryReadFromPly(std::istream& in, const std::vector<PlyExtraElement>& elements) const override`, `writePlyHeader(std::ostream& out) const override`, `writePlyData(std::ostream& out) const override`. If your extension does not support PLY, implement them to return `std::nullopt` / no-op as appropriate; if it does, see step 6.
 
 3. **Implement write() and payloadBytes()**  
    Implement `payloadBytes()` to return your payload size. Implement `write()` to emit type, byteLength (use `payloadBytes()`), then payload. Example:
@@ -150,7 +150,7 @@ To add a new extension type in the C++ codebase:
    Your `read(std::istream& is)` receives a stream positioned at the **start of your payload** (the caller has already read type and byteLength and verified the length). Read exactly your payload and return an `std::optional<SpzExtensionBasePtr>`. On parse failure, return `std::nullopt` (if the stream is a temporary buffer, e.g. from an extension payload, no rollback is needed).
 
 5. **Register in the parser**  
-   In `extensions/cc/splat-extensions.cc`, ensure your extension’s header is included (e.g. `#include "my-extension.h"`). In `tryParseExtension`, add a `case` for your `SpzExtensionType`: read `byteLength` bytes into a buffer, open an `std::istringstream` on it, and call `MyExtension::read(iss)`. Push the result into `out` if valid. Return `true` to continue. Unknown types are already handled: the common code skips `byteLength` bytes and logs a warning.
+   In `extensions/cc/splat-extensions.cc`, ensure your extension’s header is included (e.g. `#include "my-extension.h"`). In `tryParseExtension`, add a `case` for your `SpzExtensionType`: read `byteLength` bytes into a buffer, open an `std::istringstream` on it, and call `MyExtension::read(iss)`. Push the result into `out` if valid. Return `true` to continue. Unknown types are already handled: the common code skips `byteLength` bytes and logs a warning. `tryParseExtension` also gets the cloud's point count (`numPoints`, from the file header); pass it to your `read` if your payload holds per-point data, and reject records that don't match it.
 
    If your extension affects the packed coordinate system, also add a case in `getPackedCoordinateSystem` (in the same file) that calls your extension’s resolve logic. This ensures `packGaussians` and `unpackGaussians` apply the correct coordinate conversion.
 
@@ -158,8 +158,8 @@ To add a new extension type in the C++ codebase:
    If you want your extension to load/save from PLY as well:
 
    - **Required PLY element names** — In your extension struct, add a static member, e.g. `static const std::unordered_set<std::string> kRequiredPlyElementNames;`, and define it in the .cc with the PLY extra element names your extension uses.
-   - **Implement the three PLY methods** — `tryReadFromPly(in, elementNames)`: if `elementNames` contains all of `kRequiredPlyElementNames`, read your bytes from `in` and return a new instance (or `std::nullopt` on failure). `writePlyHeader(out)`: write the PLY `element` / `property` lines for your data. `writePlyData(out)`: write the binary data for your extension.
-   - **Register in the PLY registry** — In `extensions/cc/splat-extensions.cc`, inside `getPlyExtensionRegistry()`, add an entry: `{&MyExtension::kRequiredPlyElementNames, std::make_shared<MyExtension>()}`. Order in the registry is the order used when reading/writing PLY. You do **not** edit `readExtensionsFromPly`, `writeExtensionsToPlyHeader`, or `writeExtensionsToPlyData`; they loop over the registry and call your virtual methods.
+   - **Implement the three PLY methods** — `tryReadFromPly(in, elements)`: `elements` is the run of consecutive elements (name, count, bytes per element) from your `kRequiredPlyElementNames`, in file order, and `in` is at the start of their data; check the layout, read, and return a new instance (or `std::nullopt` on failure; the caller then skips the rest of the run). `writePlyHeader(out)`: write the PLY `element` / `property` lines for your data. `writePlyData(out)`: write the binary data for your extension, in the same order. `saveSplatToPly` validates extensions first and converts them from `PackOptions::from` to RDF like the vertex data.
+   - **Register in the PLY registry** — In `extensions/cc/splat-extensions.cc`, inside `getPlyExtensionRegistry()`, add an entry: `{&MyExtension::kRequiredPlyElementNames, std::make_shared<MyExtension>()}`. You do **not** edit `readExtensionsFromPly`, `writeExtensionsToPlyHeader`, or `writeExtensionsToPlyData`; they dispatch to your virtual methods.
 
 7. **Bindings**  
    Expose the new type and struct in Python (`extensions/python/splat-extensions.cc`) and Emscripten (`extensions/emscripten/splat-extensions.cc`, plus `.d.ts.in` if needed) so callers can construct and read your extension from the cloud’s `extensions` list. Each binding file must `#include` your extension’s header (e.g. `#include "safe-orbit-camera-adobe.h"`) to get the full type definition.
@@ -185,4 +185,91 @@ To add a new extension type in the C++ codebase:
   ext.coordinate_system = spz.RDF
   cloud.extensions = [ext]
   # pack with from_coord=RUB → stored as RDF; load with to_coord=RUB → converted back automatically
+  ```
+
+- **SPZ_ADOBE_custom_attribute** (`0xADBE0004`) — One named per-point attribute outside the core set (normals, material parameters, feature vectors, ...). A file carries one record per attribute, any number of them. Implemented in `extensions/cc/custom-attribute-adobe.h` and `custom-attribute-adobe.cc`.
+
+  | Field | Meaning |
+  |---|---|
+  | `name` | 1–65535 bytes, unique within the cloud |
+  | `dim` | Values per point, 1–65535 |
+  | `kind` | `Scalar`: never converted. `Vector3`: (x, y, z) directions (`dim` a multiple of 3), converted exactly like positions by `PackOptions::from`, `UnpackOptions::to` and `convertCoordinates` |
+  | `bits` | `32` stores float32 exactly. `1`–`8` quantizes each component to 2^bits levels between its min and max over all points (error at most half a level) |
+  | `values` | `numPoints * dim` floats, point-major |
+
+  **Payload** (little-endian):
+
+  ```
+  u16 nameLength, u8 name[nameLength]
+  u16 dim
+  u8  kind                      // 0 = Scalar, 1 = Vector3
+  u8  bits                      // 32 = float32, 1-8 = quantized
+  f32 min[dim], f32 max[dim]    // only when quantized
+  zstd frame, to the end of the payload: numPoints * dim values, component by component (every
+      point's component 0, then every point's component 1, ...), either float32 or one uint8 level
+      per value, decoded as min[c] + level * (max[c] - min[c]) / (2^bits - 1)
+  ```
+
+  The point count comes from the file header. Saving fails if an attribute is invalid (wrong number of values, empty or duplicate name, unknown `kind` or `bits`, non-finite values when quantized, more than 4 GiB of data). On load, a malformed record is dropped with an error and the core splat data still loads. PLY has no place for these attributes, so `saveSplatToPly` drops them.
+
+  ```python
+  K = spz.SpzCustomAttributeKind
+  cloud.extensions = [
+      spz.SpzExtensionCustomAttributeAdobe("normal", normals.ravel(), dim=3, kind=K.VECTOR3, bits=8),
+      spz.SpzExtensionCustomAttributeAdobe("roughness", roughness, bits=6),
+  ]
+  spz.save_spz(cloud, spz.PackOptions(), "out.spz")
+
+  loaded = spz.load_spz("out.spz")
+  attrs = {e.name: e for e in loaded.extensions if isinstance(e, spz.SpzExtensionCustomAttributeAdobe)}
+  normals = attrs["normal"].values.reshape(-1, 3)
+  ```
+
+- **SPZ_ADOBE_environment_map** (`0xADBE0005`) — An equirectangular RGB environment map with the frame it is looked up in, e.g. a baked reflection environment. At most one per cloud. Implemented in `extensions/cc/environment-map-adobe.h` and `environment-map-adobe.cc`.
+
+  | Field | Meaning |
+  |---|---|
+  | `width`, `height` | Map size in pixels, both at least 1 |
+  | `origin` | Lookup origin; converted like positions by `PackOptions::from`, `UnpackOptions::to` and `convertCoordinates` |
+  | `up`, `e1`, `e2` | Unit directions, converted the same way. Pixel column = azimuth about `up` measured from `e1` toward `e2`, -pi..pi → 0..width; pixel row = angle from `up`, 0..pi → 0..height. Because the frame follows the splats, lookups stay correct in any coordinate system |
+  | `metadata` | Free-form UTF-8 (JSON by convention, e.g. renderer settings), never converted |
+  | `pixels` | `height * width * 3` floats, row-major, RGB interleaved, linear-in-file values in the model's color space |
+
+  **Payload** (little-endian):
+
+  ```
+  u32 width, u32 height
+  f32 origin[3], f32 up[3], f32 e1[3], f32 e2[3]
+  u32 metadataLength, u8 metadata[metadataLength]
+  zstd frame, to the end of the payload: height * width * 3 float16 (IEEE half bits), row-major, RGB interleaved
+  ```
+
+  Pixels are float32 in memory and float16 in the SPZ record, so float16 inputs round-trip exactly. Saving fails on a zero width or height, a pixel count other than `width * height * 3`, non-finite pixels or vectors, pixels beyond ±65504, or a second environment map. On load, a malformed record (or a second one) is dropped with an error and the core splat data still loads.
+
+  **PLY form** (after `vertex`, these three elements in this order; binary little-endian; pixels stay float32):
+
+  ```
+  element environment 1
+  property uint environment_width
+  property uint environment_height
+  property float environment_origin_x      // then _y, _z; likewise environment_up_*, environment_e1_*, environment_e2_*
+  ...
+  element environment_map <width*height>
+  property float environment_map_r
+  property float environment_map_g
+  property float environment_map_b
+  element environment_metadata <metadataLength>   // count 0 allowed
+  property uchar environment_metadata
+  ```
+
+  ```python
+  env = np.load("reflection_env.npy")  # (H, W, 3) float16
+  cloud.extensions = [spz.SpzExtensionEnvironmentMapAdobe(
+      env.shape[1], env.shape[0], env.astype(np.float32).ravel(),
+      origin=(0, 0, 0), up=(0, 1, 0), e1=(1, 0, 0), e2=(0, 0, 1), metadata='{"mip_levels": 6}')]
+  spz.save_spz(cloud, spz.PackOptions(), "out.spz")  # or spz.save_splat_to_ply(...)
+
+  loaded = spz.load_spz("out.spz")
+  (env_map,) = [e for e in loaded.extensions if isinstance(e, spz.SpzExtensionEnvironmentMapAdobe)]
+  image = env_map.pixels.reshape(env_map.height, env_map.width, 3)
   ```

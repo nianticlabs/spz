@@ -85,7 +85,7 @@ SpzExtensionBase* SpzExtensionCoordinateSystemAdobe::copyAsRawData() const {
 
 // No PLY representation for this extension.
 std::optional<SpzExtensionBasePtr> SpzExtensionCoordinateSystemAdobe::tryReadFromPly(
-    std::istream&, const std::unordered_set<std::string>&) const {
+    std::istream&, const std::vector<PlyExtraElement>&) const {
   return std::nullopt;
 }
 
