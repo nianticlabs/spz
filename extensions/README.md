@@ -219,7 +219,7 @@ To add a new extension type in the C++ codebase:
 
   Writers use a code when the target has one. A reader that cannot resolve `crs` may still apply the transform, but must not assume any body or datum. The library performs no registry lookup, so conformance of the CRS type is the writer's responsibility.
 
-  **Epoch:** `epoch` is the coordinate epoch of `p_crs` (OGC 18-010r11 §16): the decimal year at which the coordinates are valid in a dynamic target frame (e.g. ITRF2020 at 2026.7), not the frame's reference epoch. `crs` carries no coordinate epoch: no `@epoch` code suffix and no PROJJSON `CoordinateMetadata`. Writers set `epoch` for dynamic targets and may set it for `EPSG:4978`, whose WGS 84 datum ensemble has only dynamic members; that epoch does not identify a WGS 84 realization, so use a realization-specific CRS when that matters. Readers ignore it for static targets.
+  **Epoch:** `epoch` is the coordinate epoch of `p_crs` (OGC 18-010r11 §16): the decimal year at which the coordinates are valid in a dynamic target frame (e.g. ITRF2020 at 2026.7), not the frame's reference epoch. `crs` carries no coordinate epoch: no `@epoch` code suffix and no PROJJSON `CoordinateMetadata`. Writers set `epoch` for dynamic targets and should not set it for `EPSG:4978`: an epoch does not identify a realization of the WGS 84 datum ensemble, so use a realization-specific CRS (e.g. `EPSG:9988`) when the epoch matters. Readers ignore it for static targets.
 
   **Validation on load** (a rejected payload is skipped with a warning and the core data still loads). The payload is rejected unless:
 
