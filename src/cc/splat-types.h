@@ -466,6 +466,9 @@ struct GaussianCloud {
         }
       }
     }
+#ifdef SPZ_BUILD_EXTENSIONS
+    convertExtensionCoordinates(extensions, c);
+#endif
   }
 
   // Rotates the GaussianCloud by 180 degrees about the x axis (converts from RUB to RDF coordinates

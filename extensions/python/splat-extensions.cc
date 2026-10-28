@@ -2,6 +2,8 @@
 // This file contains all Python bindings related to SPZ extensions.
 
 #include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
+#include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
 
@@ -10,9 +12,12 @@
 #include "extensions/cc/splat-extensions.h"
 #include "extensions/cc/safe-orbit-camera-adobe.h"
 #include "extensions/cc/coordinate-system-adobe.h"
+#include "extensions/cc/custom-attribute-adobe.h"
 #include "extensions/python/splat-extensions.h"
 
 namespace nb = nanobind;
+
+using FloatArray = nb::ndarray<nb::numpy, float, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 
 namespace spz {
 namespace python {
@@ -33,6 +38,8 @@ void register_extensions(nb::module_& m) {
                "Adobe safe orbit camera extension")
         .value("SPZ_ADOBE_coordinate_system", spz::SpzExtensionType::SPZ_ADOBE_coordinate_system,
                "Adobe coordinate system extension — records the native coordinate system of the asset")
+        .value("SPZ_ADOBE_custom_attribute", spz::SpzExtensionType::SPZ_ADOBE_custom_attribute,
+               "Adobe custom attribute extension — one named per-point attribute")
         .export_values();
 
     nb::class_<spz::SpzExtensionBase>(m, "SpzExtensionBase")
@@ -55,6 +62,46 @@ void register_extensions(nb::module_& m) {
                 "Native coordinate system of the asset's Gaussian data")
         .def_static("type", &spz::SpzExtensionCoordinateSystemAdobe::type,
                     "Static method to get the extension type enum value");
+
+    using Attribute = spz::SpzExtensionCustomAttributeAdobe;
+    nb::enum_<spz::SpzCustomAttributeKind>(m, "SpzCustomAttributeKind",
+                                           "How a custom attribute follows coordinate-system conversions.")
+        .value("SCALAR", spz::SpzCustomAttributeKind::Scalar, "Never converted")
+        .value("VECTOR3", spz::SpzCustomAttributeKind::Vector3,
+               "Each (x, y, z) triple is a direction, converted like positions");
+    nb::class_<Attribute, spz::SpzExtensionBase>(m, "SpzExtensionCustomAttributeAdobe")
+        .def(nb::init<>())
+        .def("__init__",
+             [](Attribute* self, std::string name, const FloatArray& values, uint16_t dim,
+                spz::SpzCustomAttributeKind kind, uint8_t bits) {
+                 new (self) Attribute();
+                 self->name = std::move(name);
+                 self->values.assign(values.data(), values.data() + values.shape(0));
+                 self->dim = dim;
+                 self->kind = kind;
+                 self->bits = bits;
+             },
+             nb::arg("name"), nb::arg("values"), nb::arg("dim") = 1,
+             nb::arg("kind") = spz::SpzCustomAttributeKind::Scalar, nb::arg("bits") = 32)
+        .def_rw("name", &Attribute::name, "Attribute name, unique within a cloud")
+        .def_rw("dim", &Attribute::dim, "Values per point")
+        .def_rw("kind", &Attribute::kind, "How the values follow coordinate-system conversions")
+        .def_rw("bits", &Attribute::bits,
+                "32 stores float32 exactly; 1-8 quantizes each component to 2^bits levels")
+        .def_prop_rw("values",
+                     [](const Attribute& self) {
+                         auto* copy = new std::vector<float>(self.values);
+                         nb::capsule owner(copy, [](void* p) noexcept {
+                             delete static_cast<std::vector<float>*>(p);
+                         });
+                         return FloatArray(copy->data(), {copy->size()}, owner);
+                     },
+                     [](Attribute& self, const FloatArray& values) {
+                         self.values.assign(values.data(), values.data() + values.shape(0));
+                     },
+                     nb::rv_policy::move,
+                     "Flat float32 array of num_points * dim values, point-major")
+        .def_static("type", &Attribute::type, "Static method to get the extension type enum value");
     m.def("is_known_ply_extension_element", &spz::isKnownPlyExtensionElement, nb::arg("element_name"),
           "Returns True if the PLY extra element name is handled by an extension.");
 }

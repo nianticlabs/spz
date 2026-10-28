@@ -164,6 +164,32 @@ cloud.convert_coordinates(spz.CoordinateSystem.RUB, spz.CoordinateSystem.RDF)
 cloud.convert_coordinates(spz.CoordinateSystem.RDF, spz.CoordinateSystem.RUB)
 ```
 
+#### Custom Per-Point Attributes
+
+Needs a build with extensions (`SKBUILD_CMAKE_DEFINE=SPZ_BUILD_EXTENSIONS=ON pip install .`). Each attribute is one extension record; see [extensions/README.md](../../extensions/README.md#built-in-extensions) for the options.
+
+```python
+import spz
+import numpy as np
+
+cloud = spz.load_spz("samples/hornedlizard.spz")
+n = cloud.num_points
+normals = np.random.randn(n, 3).astype(np.float32)
+
+cloud.extensions = [
+    # Directions follow coordinate conversions like positions; 8 bits per component.
+    spz.SpzExtensionCustomAttributeAdobe("normal", normals.ravel(), dim=3,
+                                         kind=spz.SpzCustomAttributeKind.VECTOR3, bits=8),
+    # Stored exactly as float32 (the default).
+    spz.SpzExtensionCustomAttributeAdobe("id", np.arange(n, dtype=np.float32)),
+]
+spz.save_spz(cloud, spz.PackOptions(), "with_attributes.spz")
+
+loaded = spz.load_spz("with_attributes.spz")
+attrs = {e.name: e for e in loaded.extensions if isinstance(e, spz.SpzExtensionCustomAttributeAdobe)}
+print(attrs["normal"].values.reshape(-1, 3)[:2], attrs["id"].values[:2])
+```
+
 #### Advanced Usage with NumPy Integration
 
 ```python

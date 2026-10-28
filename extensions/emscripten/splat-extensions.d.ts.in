@@ -1,6 +1,15 @@
 export enum SpzExtensionType {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002,
   SPZ_ADOBE_coordinate_system = 0xADBE0003,
+  SPZ_ADOBE_custom_attribute = 0xADBE0004,
+}
+
+/** How a custom attribute follows coordinate-system conversions. */
+export enum SpzCustomAttributeKind {
+  /** Never converted. */
+  Scalar = 0,
+  /** Each (x, y, z) triple is a direction, converted like positions. */
+  Vector3 = 1,
 }
 
 export class SpzExtensionBase {
@@ -17,6 +26,21 @@ export class SpzExtensionSafeOrbitCameraAdobe extends SpzExtensionBase {
 
 export class SpzExtensionCoordinateSystemAdobe extends SpzExtensionBase {
   coordinateSystem: CoordinateSystem;
+  constructor();
+  static type(): SpzExtensionType;
+}
+
+/** One named per-point attribute outside the core set; a file carries one record per attribute. */
+export class SpzExtensionCustomAttributeAdobe extends SpzExtensionBase {
+  /** Unique within a cloud. */
+  name: string;
+  /** Values per point. */
+  dim: number;
+  kind: SpzCustomAttributeKind;
+  /** 32 stores float32 exactly; 1-8 quantizes each component to 2^bits levels. */
+  bits: number;
+  /** numPoints * dim values, point-major. Reading returns a copy; assign to replace. */
+  values: Float32Array;
   constructor();
   static type(): SpzExtensionType;
 }

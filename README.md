@@ -252,6 +252,10 @@ This extension has the following attributes and default values:
   float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
 ```
 
+### Custom Attributes
+
+With extension `SPZ_ADOBE_custom_attribute`, SPZ files can carry any number of named per-point attributes beyond the core set (e.g. normals or material parameters). Each is stored as float32 or quantized to 1–8 bits, zstd-compressed, and direction attributes follow coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
+
 
 ## Python Bindings
 

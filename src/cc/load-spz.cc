@@ -300,6 +300,11 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   if (!checkSizes(g)) {
     return {};
   }
+#ifdef SPZ_BUILD_EXTENSIONS
+  if (!validateExtensions(g.extensions, g.numPoints)) {
+    return {};
+  }
+#endif
 
   // Validate SH quantization bit parameters
   if (o.sh1Bits > 8 || o.shRestBits > 8 || o.sh1Bits < 1 || o.shRestBits < 1) {
@@ -344,6 +349,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
 
 #ifdef SPZ_BUILD_EXTENSIONS
   packed.extensions = g.extensions;
+  convertExtensionCoordinates(packed.extensions, c);
 #endif
 
   // Store coordinates as 24-bit fixed point values.
@@ -801,7 +807,7 @@ PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
 #ifdef SPZ_BUILD_EXTENSIONS
       std::string extStr(reinterpret_cast<const char *>(data + extStart), extEnd - extStart);
       std::istringstream extStream(std::move(extStr));
-      readAllExtensions(extStream, result.extensions);
+      readAllExtensions(extStream, result.extensions, numPoints);
 #else
       SpzLog("[SPZ WARNING] loadSpzPacked: file has extensions but extension support is disabled — "
              "skipped extensions may affect how data was packed or will be unpacked; "
@@ -891,7 +897,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   // Read extensions at the end
   if (hasExtensions) {
 #ifdef SPZ_BUILD_EXTENSIONS
-    readAllExtensions(in, result.extensions);
+    readAllExtensions(in, result.extensions, numPoints);
 #else
     SpzLog("[SPZ WARNING] deserializePackedGaussians: stream has extensions but extension support is disabled — "
            "skipped extensions may affect how data was packed or will be unpacked; "
@@ -930,6 +936,11 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
     writeAllExtensions(packed.extensions, extStream);
     const std::string &s = extStream.str();
     extensionData.assign(s.begin(), s.end());
+    // tocByteOffset is 32-bit, so the header zone must stay under 4 GiB.
+    if (extensionData.size() > std::numeric_limits<uint32_t>::max() - sizeof(NgspFileHeader)) {
+      SpzLog("[SPZ ERROR] saveSpz: extensions exceed the 4 GiB header zone");
+      return false;
+    }
   }
 #endif
 

@@ -25,6 +25,7 @@ SOFTWARE.
 #include "splat-extensions.h"
 #include "safe-orbit-camera-adobe.h"
 #include "coordinate-system-adobe.h"
+#include "custom-attribute-adobe.h"
 #include "load-spz.h"
 
 #include <sstream>
@@ -52,7 +53,7 @@ std::streamoff remainingBytes(std::istream& is) {
   return end - cur;
 }
 
-bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
+bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out, int32_t numPoints) {
   uint32_t type_u32{};
   if (!readExact(is, type_u32))
     return false;  // EOF or short read -> stop
@@ -88,6 +89,16 @@ bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
         return false;
       std::istringstream iss(std::string(payload.data(), payload.size()));
       auto rec = SpzExtensionCoordinateSystemAdobe::read(iss);
+      if (rec)
+        out.push_back(std::move(*rec));
+      return true;
+    }
+    case SpzExtensionType::SPZ_ADOBE_custom_attribute: {
+      std::string payload(byteLength, '\0');
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      std::istringstream iss(payload);
+      auto rec = SpzExtensionCustomAttributeAdobe::read(iss, numPoints);
       if (rec)
         out.push_back(std::move(*rec));
       return true;
@@ -131,12 +142,50 @@ CoordinateSystem getPackedCoordinateSystem(
   return CoordinateSystem::RUB;  // default: no known extension overrides the packed coordinate system
 }
 
+bool validateExtensions(const std::vector<SpzExtensionBasePtr>& extensions, int32_t numPoints) {
+  std::unordered_set<std::string> names;
+  for (const auto& ext : extensions) {
+    const auto* attr = dynamic_cast<const SpzExtensionCustomAttributeAdobe*>(ext.get());
+    if (!attr)
+      continue;
+    if (!attr->validate(numPoints))
+      return false;
+    if (!names.insert(attr->name).second) {
+      SpzLog("[SPZ ERROR] Custom attribute name '%s' is used more than once", attr->name.c_str());
+      return false;
+    }
+  }
+  return true;
+}
+
+void convertExtensionCoordinates(std::vector<SpzExtensionBasePtr>& extensions, const CoordinateConverter& c) {
+  if (!c.rotFlipPFunc && c.flipP == std::array<float, 3>{1.0f, 1.0f, 1.0f})
+    return;
+  for (auto& ext : extensions) {
+    const auto* attr = dynamic_cast<const SpzExtensionCustomAttributeAdobe*>(ext.get());
+    if (!attr || attr->kind != SpzCustomAttributeKind::Vector3 || attr->dim % 3 != 0)
+      continue;
+    auto converted = std::make_shared<SpzExtensionCustomAttributeAdobe>(*attr);
+    for (size_t i = 0; i + 3 <= converted->values.size(); i += 3) {
+      float* v = &converted->values[i];
+      if (c.rotFlipPFunc) {
+        c.rotFlipPFunc(v);
+      } else {
+        v[0] *= c.flipP[0];
+        v[1] *= c.flipP[1];
+        v[2] *= c.flipP[2];
+      }
+    }
+    ext = std::move(converted);
+  }
+}
+
 bool isKnownPlyExtensionElement(const std::string& elementName) {
   return getKnownPlyExtensionElementNames().count(elementName) != 0;
 }
 
-void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
-  while (tryParseExtension(is, out));
+void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out, int32_t numPoints) {
+  while (tryParseExtension(is, out, numPoints));
 
   // Stopped because there are no more extension records (EOF). Clear stream state
   // so the caller does not treat expected end-of-extensions as a read error.

@@ -150,7 +150,7 @@ To add a new extension type in the C++ codebase:
    Your `read(std::istream& is)` receives a stream positioned at the **start of your payload** (the caller has already read type and byteLength and verified the length). Read exactly your payload and return an `std::optional<SpzExtensionBasePtr>`. On parse failure, return `std::nullopt` (if the stream is a temporary buffer, e.g. from an extension payload, no rollback is needed).
 
 5. **Register in the parser**  
-   In `extensions/cc/splat-extensions.cc`, ensure your extension’s header is included (e.g. `#include "my-extension.h"`). In `tryParseExtension`, add a `case` for your `SpzExtensionType`: read `byteLength` bytes into a buffer, open an `std::istringstream` on it, and call `MyExtension::read(iss)`. Push the result into `out` if valid. Return `true` to continue. Unknown types are already handled: the common code skips `byteLength` bytes and logs a warning.
+   In `extensions/cc/splat-extensions.cc`, ensure your extension’s header is included (e.g. `#include "my-extension.h"`). In `tryParseExtension`, add a `case` for your `SpzExtensionType`: read `byteLength` bytes into a buffer, open an `std::istringstream` on it, and call `MyExtension::read(iss)`. Push the result into `out` if valid. Return `true` to continue. Unknown types are already handled: the common code skips `byteLength` bytes and logs a warning. `tryParseExtension` also gets the cloud's point count (`numPoints`, from the file header); pass it to your `read` if your payload holds per-point data, and reject records that don't match it.
 
    If your extension affects the packed coordinate system, also add a case in `getPackedCoordinateSystem` (in the same file) that calls your extension’s resolve logic. This ensures `packGaussians` and `unpackGaussians` apply the correct coordinate conversion.
 
@@ -185,4 +185,42 @@ To add a new extension type in the C++ codebase:
   ext.coordinate_system = spz.RDF
   cloud.extensions = [ext]
   # pack with from_coord=RUB → stored as RDF; load with to_coord=RUB → converted back automatically
+  ```
+
+- **SPZ_ADOBE_custom_attribute** (`0xADBE0004`) — One named per-point attribute outside the core set (normals, material parameters, feature vectors, ...). A file carries one record per attribute, any number of them. Implemented in `extensions/cc/custom-attribute-adobe.h` and `custom-attribute-adobe.cc`.
+
+  | Field | Meaning |
+  |---|---|
+  | `name` | 1–65535 bytes, unique within the cloud |
+  | `dim` | Values per point, 1–65535 |
+  | `kind` | `Scalar`: never converted. `Vector3`: (x, y, z) directions (`dim` a multiple of 3), converted exactly like positions by `PackOptions::from`, `UnpackOptions::to` and `convertCoordinates` |
+  | `bits` | `32` stores float32 exactly. `1`–`8` quantizes each component to 2^bits levels between its min and max over all points (error at most half a level) |
+  | `values` | `numPoints * dim` floats, point-major |
+
+  **Payload** (little-endian):
+
+  ```
+  u16 nameLength, u8 name[nameLength]
+  u16 dim
+  u8  kind                      // 0 = Scalar, 1 = Vector3
+  u8  bits                      // 32 = float32, 1-8 = quantized
+  f32 min[dim], f32 max[dim]    // only when quantized
+  zstd frame, to the end of the payload: numPoints * dim values, component by component (every
+      point's component 0, then every point's component 1, ...), either float32 or one uint8 level
+      per value, decoded as min[c] + level * (max[c] - min[c]) / (2^bits - 1)
+  ```
+
+  The point count comes from the file header. Saving fails if an attribute is invalid (wrong number of values, empty or duplicate name, unknown `kind` or `bits`, non-finite values when quantized, more than 4 GiB of data). On load, a malformed record is dropped with an error and the core splat data still loads. PLY has no place for these attributes, so `saveSplatToPly` drops them.
+
+  ```python
+  K = spz.SpzCustomAttributeKind
+  cloud.extensions = [
+      spz.SpzExtensionCustomAttributeAdobe("normal", normals.ravel(), dim=3, kind=K.VECTOR3, bits=8),
+      spz.SpzExtensionCustomAttributeAdobe("roughness", roughness, bits=6),
+  ]
+  spz.save_spz(cloud, spz.PackOptions(), "out.spz")
+
+  loaded = spz.load_spz("out.spz")
+  attrs = {e.name: e for e in loaded.extensions if isinstance(e, spz.SpzExtensionCustomAttributeAdobe)}
+  normals = attrs["normal"].values.reshape(-1, 3)
   ```
