@@ -186,6 +186,9 @@ bool saveSplatToPly(
 // Loads Gaussian splat data in .ply format
 GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions &options);
 
+// Writes packed in the legacy (version 1-3) uncompressed layout. Extensions whose data needs
+// extension frames (e.g. custom attributes) can't be stored there and are skipped, with an error
+// logged; use saveSpz with version 4 to keep them.
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out);
 
 bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out);

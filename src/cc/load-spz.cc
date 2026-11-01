@@ -26,20 +26,22 @@ SOFTWARE.
 #include "load-spz.h"
 #include "splat-utils.h"
 #include "splat-types.h"
+#include "zstd-batch.h"
 #ifdef SPZ_BUILD_EXTENSIONS
+#include "extension-frames.h"
 #include "splat-extensions.h"
 #endif
 
 #include <zlib.h>
-#include <zstd.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
-#include <future>
 #include <iostream>
+#include <iterator>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -119,6 +121,7 @@ constexpr uint8_t FlagHasExtensions = 0x2;
 // (e.g. wasm32, where size_t is 32-bit and the multiply wraps for files >= 4 MiB).
 constexpr uint64_t kMaxCompressionRatio = 1024;
 constexpr uint64_t kMinBytesPerPoint = 9;  // positions stream alone: 3 components * 3 bytes
+constexpr size_t kTocEntryBytes = 2 * sizeof(uint64_t);  // compressedSize, uncompressedSize
 
 struct NgspFileHeader {
   uint32_t magic          = NGSP_MAGIC;
@@ -217,23 +220,6 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   }
   deflateEnd(&stream);
   return success;
-}
-
-bool compressZstd(const uint8_t *data, size_t size, std::vector<uint8_t> *out,
-                  int compressionLevel = 12) {
-  size_t const bound = ZSTD_compressBound(size);
-  out->resize(bound);
-
-  ZSTD_CCtx *cctx = ZSTD_createCCtx();
-  if (!cctx) return false;
-  ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, compressionLevel);
-
-  size_t const compressedSize = ZSTD_compress2(cctx, out->data(), bound, data, size);
-  ZSTD_freeCCtx(cctx);
-
-  if (ZSTD_isError(compressedSize)) return false;
-  out->resize(compressedSize);
-  return true;
 }
 
 // Backward compatibility function for version 2. In version 2, rotations are represented as the
@@ -343,7 +329,7 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.sh.resize(numPoints * shDim * 3);
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  packed.extensions = g.extensions;
+  packed.extensions = convertExtensionCoordinates(g.extensions, c);
 #endif
 
   // Store coordinates as 24-bit fixed point values.
@@ -612,16 +598,21 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
 }
 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) {
+  // Serialized first so the flag reflects what was written: framed records are skipped.
+  std::string extensionData;
+#ifdef SPZ_BUILD_EXTENSIONS
+  std::ostringstream extStream;
+  writeAllExtensions(packed.extensions, extStream);
+  extensionData = extStream.str();
+#endif
+
   LegacyPackedGaussiansHeader header;
   header.version = packed.version;
   header.numPoints = static_cast<uint32_t>(packed.numPoints);
   header.shDegree = static_cast<uint8_t>(packed.shDegree);
   header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
-  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0)
-#ifdef SPZ_BUILD_EXTENSIONS
-    | static_cast<uint8_t>(packed.extensions.empty() ? 0 : FlagHasExtensions)
-#endif
-    ;
+  header.flags = static_cast<uint8_t>((packed.antialiased ? FlagAntialiased : 0) |
+                                      (extensionData.empty() ? 0 : FlagHasExtensions));
   out->write(reinterpret_cast<const char *>(&header), sizeof(header));
 
   out->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
@@ -632,132 +623,57 @@ void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out) 
   out->write(reinterpret_cast<const char *>(packed.sh.data()), countBytes(packed.sh));
 
   // Write extensions at the end
-#ifdef SPZ_BUILD_EXTENSIONS
-  writeAllExtensions(packed.extensions, *out);
-#endif
+  out->write(extensionData.data(), static_cast<std::streamsize>(extensionData.size()));
 }
 
-// Decompresses the NGSP attribute streams directly into the caller-provided destination buffers,
-// avoiding any intermediate combined-buffer allocation.  dests must have exactly header.numStreams
-// entries, each pre-sized to the expected uncompressed byte count for that stream.
-bool decompressNgspStreams(const uint8_t *data, size_t size,
-                           const NgspFileHeader &header,
-                           const std::vector<std::pair<uint8_t *, size_t>> &dests) {
-  if (header.tocByteOffset < sizeof(NgspFileHeader)) {
-    SpzLog("[SPZ ERROR] decompressNgspStreams: TOC byte offset is less than the size of the header");
-    return false;
-  }
-  const size_t tocSize = header.numStreams * 2 * sizeof(uint64_t);
-  const size_t tocEnd = header.tocByteOffset + tocSize;
-  if (tocEnd > size) {
-    SpzLog("[SPZ ERROR] decompressNgspStreams: TOC end is greater than the size of the data");
-    return false;
-  }
-  if (dests.size() != header.numStreams) {
-    SpzLog("[SPZ ERROR] decompressNgspStreams: stream count mismatch");
-    return false;
-  }
+struct NgspStreamInfo {
+  uint64_t compressedSize;
+  uint64_t uncompressedSize;
+  size_t compressedOffset;
+};
 
-  struct StreamInfo {
-    uint64_t compressedSize;
-    uint64_t uncompressedSize;
-    size_t compressedOffset;
-  };
-  std::vector<StreamInfo> infos(header.numStreams);
+// Parses the TOC and checks that the streams exactly fill the rest of the file.
+bool readNgspToc(const uint8_t *data, size_t size, const NgspFileHeader &header,
+                 std::vector<NgspStreamInfo> *infos) {
+  if (header.tocByteOffset < sizeof(NgspFileHeader)) {
+    SpzLog("[SPZ ERROR] readNgspToc: TOC byte offset is less than the size of the header");
+    return false;
+  }
+  // 64-bit so the sum can't wrap where size_t is 32 bits (wasm32) and tocByteOffset is near 4 GiB.
+  const uint64_t tocEnd64 =
+    uint64_t{header.tocByteOffset} + uint64_t{header.numStreams} * kTocEntryBytes;
+  if (tocEnd64 > size) {
+    SpzLog("[SPZ ERROR] readNgspToc: TOC end is greater than the size of the data");
+    return false;
+  }
+  const size_t tocEnd = static_cast<size_t>(tocEnd64);
+  infos->resize(header.numStreams);
   size_t compressedOffset = tocEnd;
   for (uint8_t i = 0; i < header.numStreams; i++) {
-    const size_t e = header.tocByteOffset + i * 16;
-    std::memcpy(&infos[i].compressedSize, data + e, sizeof(uint64_t));
-    std::memcpy(&infos[i].uncompressedSize, data + e + sizeof(uint64_t), sizeof(uint64_t));
-    infos[i].compressedOffset = compressedOffset;
-    if (infos[i].compressedSize > size - compressedOffset) {
-      SpzLog("[SPZ ERROR] decompressNgspStreams: stream extends past end of data");
+    NgspStreamInfo &info = (*infos)[i];
+    const size_t e = header.tocByteOffset + i * kTocEntryBytes;
+    std::memcpy(&info.compressedSize, data + e, sizeof(uint64_t));
+    std::memcpy(&info.uncompressedSize, data + e + sizeof(uint64_t), sizeof(uint64_t));
+    info.compressedOffset = compressedOffset;
+    if (info.compressedSize > size - compressedOffset) {
+      SpzLog("[SPZ ERROR] readNgspToc: stream extends past end of data");
       return false;
     }
-    compressedOffset += infos[i].compressedSize;
-    if (infos[i].uncompressedSize != dests[i].second) {
-      SpzLog("[SPZ ERROR] decompressNgspStreams: stream size mismatch");
-      return false;
-    }
+    compressedOffset += info.compressedSize;
   }
   if (compressedOffset != size) {
-    SpzLog("[SPZ ERROR] decompressNgspStreams: compressed data size mismatch");
+    SpzLog("[SPZ ERROR] readNgspToc: compressed data size mismatch");
     return false;
   }
-
-#if defined(__EMSCRIPTEN__)
-  // TODO: Add support for parallel decompression on WASM.
-  for (size_t i = 0; i < infos.size(); i++) {
-    const size_t ret = ZSTD_decompress(
-      dests[i].first, dests[i].second,
-      data + infos[i].compressedOffset, infos[i].compressedSize);
-    if (ZSTD_isError(ret) || ret != dests[i].second) {
-      SpzLog("[SPZ ERROR] decompressNgspStreams: ZSTD decompression failed");
-      return false;
-    }
-  }
-#else
-  std::vector<std::future<bool>> futures;
-  for (size_t i = 0; i < infos.size(); i++) {
-    const auto info = infos[i];
-    const auto dest = dests[i];
-    futures.push_back(std::async(std::launch::async, [data, info, dest]() -> bool {
-      const size_t ret = ZSTD_decompress(
-        dest.first, dest.second,
-        data + info.compressedOffset, info.compressedSize);
-      if (ZSTD_isError(ret) || ret != dest.second) {
-        SpzLog("[SPZ ERROR] decompressNgspStreams: ZSTD decompression failed");
-        return false;
-      }
-      return true;
-    }));
-  }
-  for (auto &f : futures) {
-    if (!f.get()) return false;
-  }
-#endif
   return true;
 }
 
-bool compressNgspStreams(const std::vector<std::pair<const uint8_t *, size_t>> &srcs,
-                         std::vector<std::vector<uint8_t>> *chunks,
-                         std::vector<uint64_t> *uncompressedSizes) {
-#if defined(__EMSCRIPTEN__)
-  // TODO: Add support for parallel compression on WASM.
-  for (const auto &s : srcs) {
-    if (s.second == 0) continue;
-    uncompressedSizes->push_back(s.second);
-    std::vector<uint8_t> chunk;
-    if (!compressZstd(s.first, s.second, &chunk)) {
-      SpzLog("[SPZ ERROR] compressNgspStreams: ZSTD compression failed");
-      return false;
-    }
-    chunks->push_back(std::move(chunk));
-  }
-#else
-  std::vector<std::future<std::vector<uint8_t>>> futures;
-  for (const auto &s : srcs) {
-    if (s.second == 0) continue;
-    uncompressedSizes->push_back(s.second);
-    futures.push_back(std::async(std::launch::async, [s]() -> std::vector<uint8_t> {
-      std::vector<uint8_t> chunk;
-      if (!compressZstd(s.first, s.second, &chunk)) {
-        SpzLog("[SPZ ERROR] compressNgspStreams: ZSTD compression failed");
-        return {};
-      }
-      return chunk;
-    }));
-  }
-  for (auto &f : futures) {
-    chunks->push_back(f.get());
-    if (chunks->back().empty()) {
-      SpzLog("[SPZ ERROR] compressNgspStreams: compression failed");
-      return false;
-    }
-  }
-#endif
-  return true;
+// Whether the header announces a non-empty extension zone that lies within the file.
+bool hasExtensionZone(const NgspFileHeader &header, size_t size) {
+  return (header.flags & FlagHasExtensions) != 0 && sizeof(NgspFileHeader) < header.tocByteOffset &&
+         header.tocByteOffset <= size;
 }
+
 
 PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
                                             const NgspFileHeader &header) {
@@ -773,7 +689,7 @@ PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
   result.antialiased = (header.flags & FlagAntialiased) != 0;
   result.usesQuaternionSmallestThree = usesQuaternionSmallestThree;
 
-  // Pre-size attribute vectors so decompressNgspStreams can write directly into them,
+  // Pre-size attribute vectors so the streams decompress directly into them,
   // avoiding both the intermediate combined buffer and the readChunk copies.
   result.positions.resize(static_cast<size_t>(numPoints) * 9);
   result.alphas.resize(static_cast<size_t>(numPoints));
@@ -789,27 +705,62 @@ PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
     if (!v.empty()) dests.push_back({v.data(), v.size()});
   }
 
-  if (!decompressNgspStreams(data, size, header, dests)) {
-    SpzLog("[SPZ ERROR] loadSpzPacked: NGSP stream decompression failed");
+  std::vector<NgspStreamInfo> toc;
+  if (!readNgspToc(data, size, header, &toc)) {
+    SpzLog("[SPZ ERROR] loadSpzPacked: invalid NGSP table of contents");
     return {};
   }
+  if (toc.size() != dests.size() || toc.empty()) {
+    SpzLog("[SPZ ERROR] loadSpzPacked: stream count mismatch");
+    return {};
+  }
+  // Any extension frames follow the last core stream's zstd frame; decompressing the stream whole,
+  // as readers that predate extension frames do, skips them.
+  std::vector<DecompressTask> tasks;
+  for (size_t i = 0; i < dests.size(); i++) {
+    if (toc[i].uncompressedSize != dests[i].second) {
+      SpzLog("[SPZ ERROR] loadSpzPacked: stream size mismatch");
+      return {};
+    }
+    tasks.push_back({data + toc[i].compressedOffset, static_cast<size_t>(toc[i].compressedSize),
+                     dests[i].first, dests[i].second});
+  }
 
-  if ((header.flags & FlagHasExtensions) != 0) {
-    const size_t extStart = sizeof(NgspFileHeader);
-    const size_t extEnd = header.tocByteOffset;
-    if (extStart < extEnd && extEnd <= size) {
 #ifdef SPZ_BUILD_EXTENSIONS
-      std::string extStr(reinterpret_cast<const char *>(data + extStart), extEnd - extStart);
-      std::istringstream extStream(std::move(extStr));
-      readAllExtensions(extStream, result.extensions);
+  // Framed extension data decompresses in the same parallel batch as the core streams.
+  std::optional<ExtensionFrameDecoder> extensions;
+  if (hasExtensionZone(header, size)) {
+    const NgspStreamInfo &host = toc.back();
+    // The same bound numPoints gets: no legitimate file decodes to more than this.
+    extensions = ExtensionFrameDecoder::fromZone(
+      data + sizeof(NgspFileHeader), header.tocByteOffset - sizeof(NgspFileHeader), numPoints,
+      data + host.compressedOffset, static_cast<size_t>(host.compressedSize),
+      static_cast<uint64_t>(size) * kMaxCompressionRatio);
+    tasks.insert(tasks.end(), extensions->tasks().begin(), extensions->tasks().end());
+  }
 #else
-      SpzLog("[SPZ WARNING] loadSpzPacked: file has extensions but extension support is disabled — "
-             "skipped extensions may affect how data was packed or will be unpacked; "
-             "build with SPZ_BUILD_EXTENSIONS to ensure correct results");
-      result.hadSkippedExtensions = true;
+  if (hasExtensionZone(header, size)) {
+    SpzLog("[SPZ WARNING] loadSpzPacked: file has extensions but extension support is disabled — "
+           "skipped extensions may affect how data was packed or will be unpacked; "
+           "build with SPZ_BUILD_EXTENSIONS to ensure correct results");
+    result.hadSkippedExtensions = true;
+  }
 #endif
+
+  const std::vector<uint8_t> succeeded = decompressAll(tasks);
+  for (size_t i = 0; i < dests.size(); i++) {
+    if (!succeeded[i]) {
+      SpzLog("[SPZ ERROR] loadSpzPacked: ZSTD decompression failed");
+      return {};
     }
   }
+
+#ifdef SPZ_BUILD_EXTENSIONS
+  if (extensions) {
+    result.extensions = std::move(*extensions).finish(
+      std::vector<uint8_t>(succeeded.begin() + static_cast<std::ptrdiff_t>(dests.size()), succeeded.end()));
+  }
+#endif
 
   return result;
 }
@@ -892,6 +843,7 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   if (hasExtensions) {
 #ifdef SPZ_BUILD_EXTENSIONS
     readAllExtensions(in, result.extensions);
+    dropRecordsWithDuplicateKeys(result.extensions);
 #else
     SpzLog("[SPZ WARNING] deserializePackedGaussians: stream has extensions but extension support is disabled — "
            "skipped extensions may affect how data was packed or will be unpacked; "
@@ -908,6 +860,60 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
   return result;
 }
 
+// The non-empty core streams, in the order loaders expect (SH is empty at degree 0).
+std::vector<ByteSpan> coreStreams(PackedGaussians &packed) {
+  std::vector<ByteSpan> streams;
+  for (auto attr : kAllSplatAttributes) {
+    const auto &v = packedBuffer(packed, attr);
+    if (!v.empty()) streams.push_back({v.data(), v.size()});
+  }
+  return streams;
+}
+
+// Writes [header][extension zone][TOC][core streams]. The last core stream's TOC entry also counts
+// the hostExtraBytes of extension frames the caller appends right after it. Returns false if the
+// extension zone doesn't fit the header's 32-bit TOC offset. Precondition: uncompressed[i] is the
+// source of compressed[i] for every core stream (it may hold more entries after them).
+bool writeNgsp(const PackedGaussians &packed, uint32_t version, const std::string &extensionZone,
+               const std::vector<std::vector<uint8_t>> &compressed,
+               const std::vector<ByteSpan> &uncompressed,
+               uint64_t hostExtraBytes, std::vector<uint8_t> *out) {
+  const uint64_t tocByteOffset = sizeof(NgspFileHeader) + extensionZone.size();
+  if (tocByteOffset > std::numeric_limits<uint32_t>::max()) {
+    SpzLog("[SPZ ERROR] saveSpz: extension records exceed the 4 GiB extension zone");
+    return false;
+  }
+  const size_t numStreams = compressed.size();
+  NgspFileHeader header;
+  header.version        = version;
+  header.numPoints      = packed.numPoints;
+  header.shDegree       = packed.shDegree;
+  header.fractionalBits = packed.fractionalBits;
+  header.flags          = static_cast<uint8_t>((packed.antialiased ? FlagAntialiased : 0) |
+                                               (extensionZone.empty() ? 0 : FlagHasExtensions));
+  header.numStreams     = static_cast<uint8_t>(numStreams);
+  header.tocByteOffset  = static_cast<uint32_t>(tocByteOffset);
+
+  size_t total = tocByteOffset + numStreams * kTocEntryBytes + hostExtraBytes;
+  for (const auto &chunk : compressed) total += chunk.size();
+  out->reserve(total);
+  out->resize(tocByteOffset + numStreams * kTocEntryBytes);
+  uint8_t *buf = out->data();
+  std::memcpy(buf, &header, sizeof(header));
+  std::memcpy(buf + sizeof(NgspFileHeader), extensionZone.data(), extensionZone.size());
+  for (size_t i = 0; i < numStreams; i++) {
+    const uint64_t cs = compressed[i].size() + (i + 1 == numStreams ? hostExtraBytes : 0);
+    const uint64_t us = uncompressed[i].size;
+    const size_t e = tocByteOffset + i * kTocEntryBytes;
+    std::memcpy(buf + e, &cs, sizeof(cs));
+    std::memcpy(buf + e + sizeof(cs), &us, sizeof(us));
+  }
+  for (const auto &chunk : compressed) {
+    out->insert(out->end(), chunk.begin(), chunk.end());
+  }
+  return true;
+}
+
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out) {
 #ifdef SPZ_BUILD_EXTENSIONS
   if (!allExtensionsValid(g.extensions)) {
@@ -921,7 +927,22 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
     return false;
   }
 
+#ifdef SPZ_BUILD_EXTENSIONS
+  std::optional<ExtensionFrameEncoder> extensions =
+    ExtensionFrameEncoder::plan(packed.extensions, packed.numPoints);
+  if (!extensions) {
+    return false;
+  }
+#endif
+
   if (o.version < MIN_ZSTD_SPZ_HEADER_VERSION) {
+#ifdef SPZ_BUILD_EXTENSIONS
+    if (extensions->hasFrames()) {
+      SpzLog("[SPZ ERROR] saveSpz: extension frame data requires SPZ version %d or later",
+             MIN_ZSTD_SPZ_HEADER_VERSION);
+      return false;
+    }
+#endif
     // Legacy gzip path for versions 1–3.
     std::stringstream ss;
     serializePackedGaussians(packed, &ss);
@@ -929,63 +950,40 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
     return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
   }
 
-  std::vector<uint8_t> extensionData;
+  std::vector<ByteSpan> srcs = coreStreams(packed);
 #ifdef SPZ_BUILD_EXTENSIONS
-  if (!packed.extensions.empty()) {
-    std::ostringstream extStream;
-    writeAllExtensions(packed.extensions, extStream);
-    const std::string &s = extStream.str();
-    extensionData.assign(s.begin(), s.end());
+  const size_t numCoreStreams = srcs.size();
+  if (extensions->hasFrames() && numCoreStreams == 0) {
+    SpzLog("[SPZ ERROR] saveSpz: extension frame data requires at least one point");
+    return false;
   }
+  // Extension frames compress in the same parallel batch as the core streams.
+  srcs.insert(srcs.end(), extensions->frameData().begin(), extensions->frameData().end());
 #endif
 
-  const std::vector<std::pair<const uint8_t *, size_t>> srcs = {
-    {packed.positions.data(), packed.positions.size()},
-    {packed.alphas.data(),    packed.alphas.size()},
-    {packed.colors.data(),    packed.colors.size()},
-    {packed.scales.data(),    packed.scales.size()},
-    {packed.rotations.data(), packed.rotations.size()},
-    {packed.sh.data(),        packed.sh.size()},
-  };
-
-  std::vector<std::vector<uint8_t>> chunks;
-  std::vector<uint64_t> uncompressedSizes;
-  if (!compressNgspStreams(srcs, &chunks, &uncompressedSizes)) {
+  std::vector<std::vector<uint8_t>> compressed;
+  if (!compressAll(srcs, &compressed)) {
     return false;
   }
 
-  const uint8_t numStreams = static_cast<uint8_t>(chunks.size());
-  const uint32_t tocByteOffset = static_cast<uint32_t>(sizeof(NgspFileHeader) + extensionData.size());
-  NgspFileHeader header;
-  header.version        = o.version;
-  header.numPoints      = packed.numPoints;
-  header.shDegree       = packed.shDegree;
-  header.fractionalBits = packed.fractionalBits;
-  header.flags          = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0)
+  std::string extensionZone;
+  uint64_t hostExtraBytes = 0;
 #ifdef SPZ_BUILD_EXTENSIONS
-      | static_cast<uint8_t>(extensionData.empty() ? 0 : FlagHasExtensions)
+  const auto firstFrame = compressed.begin() + static_cast<std::ptrdiff_t>(numCoreStreams);
+  const std::vector<std::vector<uint8_t>> frames(std::make_move_iterator(firstFrame),
+                                                 std::make_move_iterator(compressed.end()));
+  compressed.erase(firstFrame, compressed.end());
+  const uint64_t hostCoreBytes = numCoreStreams > 0 ? compressed.back().size() : 0;
+  extensionZone = extensions->writeRecords(frames, hostCoreBytes);
+  hostExtraBytes = skippableFramesBytes(frames);
 #endif
-      ;
-  header.numStreams     = numStreams;
-  header.tocByteOffset  = tocByteOffset;
 
-  // Write plaintext zone: [header][extensions][TOC]
-  out->resize(tocByteOffset + numStreams * 2 * sizeof(uint64_t));
-  uint8_t *buf = out->data();
-  std::memcpy(buf, &header, sizeof(header));
-  if (!extensionData.empty()) {
-    std::memcpy(buf + sizeof(NgspFileHeader), extensionData.data(), extensionData.size());
+  if (!writeNgsp(packed, o.version, extensionZone, compressed, srcs, hostExtraBytes, out)) {
+    return false;
   }
-  for (uint8_t i = 0; i < numStreams; i++) {
-    const uint64_t cs = static_cast<uint64_t>(chunks[i].size());
-    const uint64_t us = uncompressedSizes[i];
-    const size_t e = tocByteOffset + i * 2 * sizeof(uint64_t);
-    std::memcpy(buf + e,     &cs, sizeof(cs));
-    std::memcpy(buf + e + 8, &us, sizeof(us));
-  }
-  for (const auto &chunk : chunks) {
-    out->insert(out->end(), chunk.begin(), chunk.end());
-  }
+#ifdef SPZ_BUILD_EXTENSIONS
+  appendSkippableFrames(frames, out);
+#endif
   return true;
 }
 

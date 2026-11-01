@@ -72,13 +72,6 @@ inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer
   return array;
 }
 
-inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer) {
-  emscripten::val Float32Array = emscripten::val::global("Float32Array");
-  emscripten::val array = Float32Array.new_(buffer.size());
-  array.call<void>("set", emscripten::typed_memory_view(buffer.size(), buffer.data()));
-  return array;
-}
-
 // WASM-side unpack chunk size. 64K points keeps the scratch ~18 MB at SH=4.
 constexpr int32_t kStreamingChunkPoints = 1 << 16;
 

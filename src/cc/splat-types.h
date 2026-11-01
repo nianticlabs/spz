@@ -340,6 +340,38 @@ inline CoordinateConverter coordinateConverter(CoordinateSystem from, Coordinate
   return result;
 }
 
+// Whether c leaves positions (and directions) unchanged.
+inline bool isIdentityPositionTransform(const CoordinateConverter &c) {
+  return !c.rotFlipPFunc && c.flipP[0] == 1.0f && c.flipP[1] == 1.0f && c.flipP[2] == 1.0f;
+}
+
+// Applies c to a position or direction, in place. Precondition: xyz points to 3 floats.
+inline void convertDirection(const CoordinateConverter &c, float *xyz) {
+  if (c.rotFlipPFunc) {
+    c.rotFlipPFunc(xyz);
+  } else {
+    xyz[0] *= c.flipP[0];
+    xyz[1] *= c.flipP[1];
+    xyz[2] *= c.flipP[2];
+  }
+}
+
+#ifdef SPZ_BUILD_EXTENSIONS
+// Returns the records with their directional data converted by c. Records unaffected by coordinate
+// conversion are shared with the input rather than copied, and input records are never modified.
+inline std::vector<SpzExtensionBasePtr> convertExtensionCoordinates(
+  const std::vector<SpzExtensionBasePtr> &extensions, const CoordinateConverter &c) {
+  std::vector<SpzExtensionBasePtr> result;
+  result.reserve(extensions.size());
+  for (const auto &ext : extensions) {
+    const auto *dependent = dynamic_cast<const SpzCoordinateDependentExtension *>(ext.get());
+    SpzExtensionBasePtr converted = dependent ? dependent->withConvertedCoordinates(c) : nullptr;
+    result.push_back(converted ? std::move(converted) : ext);
+  }
+  return result;
+}
+#endif
+
 // A point cloud composed of Gaussians. Each gaussian is represented by:
 //   - xyz position
 //   - xyz scales (on log scale, compute exp(x) to get scale factor)
@@ -407,17 +439,8 @@ struct GaussianCloud {
       return;
     }
     CoordinateConverter c = coordinateConverter(from, to, shDegree);
-    // Positions: call transform (which includes flip for cross-family), else apply flipP.
-    if (c.rotFlipPFunc) {
-      for (size_t i = 0; i < positions.size(); i += 3) {
-        c.rotFlipPFunc(positions.data() + i);
-      }
-    } else {
-      for (size_t i = 0; i < positions.size(); i += 3) {
-        positions[i + 0] *= c.flipP[0];
-        positions[i + 1] *= c.flipP[1];
-        positions[i + 2] *= c.flipP[2];
-      }
+    for (size_t i = 0; i + 3 <= positions.size(); i += 3) {
+      convertDirection(c, positions.data() + i);
     }
     // Rotations: same pattern. Within-family only flips x,y,z; w is untouched. Cross-family rotates all four.
     if (c.rotFlipQFunc) {
@@ -466,6 +489,9 @@ struct GaussianCloud {
         }
       }
     }
+#ifdef SPZ_BUILD_EXTENSIONS
+    extensions = convertExtensionCoordinates(extensions, c);
+#endif
   }
 
   // Rotates the GaussianCloud by 180 degrees about the x axis (converts from RUB to RDF coordinates

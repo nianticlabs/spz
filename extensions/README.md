@@ -67,7 +67,7 @@ To preserve or use extension data, and to ensure correct data interpretation, bu
    CMake: `-DSPZ_BUILD_EXTENSIONS=ON`.
 
 2. **Load/Save**  
-   Extensions are part of `PackedGaussians` and `GaussianCloud`. When you call `loadSpz` / `loadSpzPacked` or `saveSpz`, the extension list is read/written automatically. For version 4 and above, `saveSpz` writes extensions into the plaintext header zone.
+   Extensions are part of `PackedGaussians` and `GaussianCloud`. When you call `loadSpz` / `loadSpzPacked` or `saveSpz`, the extension list is read/written automatically. For version 4 and above, `saveSpz` writes extension records into the plaintext header zone, and any bulk data they carry into extension frames (see [Storing bulk data in extension frames](#storing-bulk-data-in-extension-frames)).
 
 3. **Access a known extension**  
    Use `findExtensionByType<T>()`. Include the header for the concrete extension type you use:
@@ -172,7 +172,88 @@ To add a new extension type in the C++ codebase:
 7. **Bindings**  
    Expose the new type and struct in Python (`extensions/python/splat-extensions.cc`) and Emscripten (`extensions/emscripten/splat-extensions.cc`, plus `.d.ts.in` if needed) so callers can construct and read your extension from the cloud’s `extensions` list. Each binding file must `#include` your extension’s header (e.g. `#include "safe-orbit-camera-adobe.h"`) to get the full type definition.
 
+### Storing bulk data in extension frames
+
+Records live in the plaintext zone before the TOC, which is capped at 4 GiB and must be read before any stream. Extensions that carry per-point or other bulk data should store it in extension frames instead: zstd skippable frames, each wrapping one zstd frame, appended to the last core stream (see [Extension frames](../README.md#extension-frames)). The record keeps only a small descriptor and the list of its extension frames.
+
+Optional capabilities are separate interfaces, declared in `splat-extensions.h`, that an extension inherits alongside `SpzExtensionBase`. The library detects them with `dynamic_cast`, so `SpzExtensionBase`, and every extension built against it, is unchanged.
+
+| Interface | What the extension provides | What the library does |
+| --- | --- | --- |
+| `SpzFramedExtension` | `planFrameWrites(numPoints)`: an `SpzFrameWritePlan` holding the bulk data and a `writeRecord(os, frames)` that writes the record once its extension frames are placed (`std::nullopt` fails the save) | Splits the data into extension frames of at most 16 MiB uncompressed, compresses them in parallel with the core streams, and passes one `SpzFrameLocation` per extension frame to `writeRecord`. `writeAllExtensions` skips framed records, since they can't be written without extension frames. |
+| `SpzFrameReadPlan` (a struct returned by the record's parser) | `type`, the extension `frames`, an optional uniqueness `key`, and two functions: `dataBytes(numPoints)` and `resolve(numPoints, data)` | Drops records sharing a key, validates the extension frames against the file and the decoded size before allocating, decompresses them in parallel with the core streams, and calls `resolve` with the concatenated data. A record that fails any step is dropped; the core data still loads. |
+| `SpzKeyedExtension` | `uniquenessKey()` | `saveSpz` fails if two records of the same type share a key; loading drops every record that does. |
+| `SpzCoordinateDependentExtension` | `withConvertedCoordinates(c)`: a converted copy, or `nullptr` if unaffected | Called whenever the cloud is converted between coordinate systems. Records are shared between clouds, so never modify `*this`. |
+
+Extension frames exist only in version 4 files: `saveSpz` refuses older versions when a record has frame data.
+
+**Why extension frames are listed by their record, not the TOC.** Released readers require `numStreams` to equal the number of core streams, and the TOC sizes to add up to the end of the file, so an extra TOC entry would make them reject the file. A record's frame table is invisible to them, because unknown records are skipped by length, and the extension frames still count toward the file length through the last core stream's `compressedSize`. zstd would skip them in any stream; the last one is used because the core streams then stay contiguous at the front of the file, with all extension data at its end. If a future v5 bumps the format version anyway, moving extension frames into real TOC entries would be the cleaner end state.
+
 ## Built-in extensions
+
+- **SPZ_NIANTIC_custom_attribute** (`0x4E530002`) — A named per-point attribute (normals, material parameters, embeddings, ...); a cloud may carry any number of them. Implemented in `extensions/cc/custom-attribute-niantic.h` and `custom-attribute-niantic.cc`. The values are stored in [extension frames](#storing-bulk-data-in-extension-frames), so attribute-bearing files load in every SPZ v4 reader; readers without this extension get the core cloud and skip the attribute.
+
+  `dim` is the number of floats per point (1–65535, so embeddings of any width fit). `semantic` says whether coordinate conversions apply:
+
+  | `semantic` | Value | `dim` | Coordinate conversion | Typical use |
+  | --- | --- | --- | --- | --- |
+  | `CUSTOM` | 0 | Any | Never converted (like glTF's `_`-prefixed attributes) | Material parameters, embeddings, IDs |
+  | `SPATIAL` | 1 | Multiple of 3 | Each xyz triple rotated and flipped like positions | Normals, directions, velocities |
+
+  The `name` is a free-form label used to look the attribute up (`"roughness"`, a PLY property name, …); it has no effect on behavior. Names are unique within a cloud: `saveSpz` fails on a duplicate, and loading drops every attribute that shares a name. Readers drop attributes whose `semantic` they don't know, since they can't know how those convert.
+
+  **Payload:**
+
+  ```
+  u16 nameLength, u8 name[nameLength]   // printable ASCII (0x20-0x7E), 1-65535 bytes
+  u16 dim                               // floats per point, >= 1
+  u8  semantic                          // 0 CUSTOM, 1 SPATIAL (dim % 3 == 0)
+  u8  bits                              // 32 = float32; 1-8 = quantized
+  f32 min[dim], f32 max[dim]            // only when quantized
+  u32 frameCount
+  frameCount x { u64 frameOffset; u64 compressedSize; u64 uncompressedSize; }   // the frame table: one
+                                                                                 // entry per extension frame
+  ```
+
+  Joining the extension frames' decompressed payloads in order gives the values component-major: every point's first component, then every point's second, and so on. float32 components are 4 bytes, little-endian. Quantized components are one byte each: level `round((v - min) / (max - min) * (2^bits - 1))`, rounding halves away from zero, or 0 when `min == max`; decoded in double precision as `min + level * ((max - min) / (2^bits - 1))`.
+
+  Readers MUST drop the attribute (the core cloud still loads) when:
+  - `nameLength` is 0, or the name has a byte outside printable ASCII (0x20-0x7E);
+  - `semantic` is unknown, or `SPATIAL` with `dim` not a multiple of 3, or `dim` is 0;
+  - `bits` is not 32 or 1–8, a quantized range isn't finite with `min <= max`, or a decoded level exceeds `2^bits - 1`;
+  - the extension frames' decompressed sizes don't add up to `numPoints * dim * (bits == 32 ? 4 : 1)`;
+  - another custom attribute in the file with a well-formed descriptor (valid name, `dim`, `semantic` and `bits`) has the same name, compared byte for byte without Unicode normalization. This applies even when that attribute's extension frames or values are invalid; an attribute whose descriptor is malformed is dropped on its own and doesn't count.
+
+  Readers MUST ignore bytes after the frame table: later versions may append fields there.
+
+  An attribute of any size is supported; large ones simply have more extension frames. Readers that can't hold the decoded attribute in memory (e.g. over 4 GiB on wasm32) drop it and still load the core cloud.
+
+  `SPATIAL` values are stored in the same coordinate system as the file's positions (RUB, or the system named by `SPZ_ADOBE_coordinate_system`) and are converted with them on load. The conversion treats each triple as an ordinary (polar) vector, which suits normals, directions and velocities; it would give pseudovectors such as angular velocity the wrong sign under mirroring conversions.
+
+  Readers that predate this extension, and builds without extension support, load the core cloud and log a warning that an unknown extension was skipped and "data may be incorrect". For custom attributes that warning is harmless: they never change how the core data is packed. PLY can't carry custom attributes yet; saving to PLY drops them with a warning.
+
+  ```python
+  normal = spz.SpzExtensionCustomAttributeNiantic()
+  normal.name = "normal"
+  normal.dim = 3
+  normal.semantic = spz.SpzAttributeSemantic.SPATIAL  # converted with coordinates
+  normal.bits = 32
+  normal.values = normals                             # (num_points, 3) floats
+
+  embedding = spz.SpzExtensionCustomAttributeNiantic()
+  embedding.name = "clip_embedding"                   # semantic defaults to CUSTOM: never converted
+  embedding.dim = 512
+  embedding.bits = 8
+  embedding.values = clip_features                    # num_points * 512 floats
+
+  cloud.extensions = [normal, embedding]
+
+  loaded = spz.load_spz("scene.spz")
+  normals = spz.find_custom_attribute(loaded, "normal").values.reshape(-1, 3)
+  ```
+
+  In C++, `spz::findCustomAttribute(cloud.extensions, "normal")` does the same; in JavaScript, attributes expose `getValues()` and `setValues()`.
+
 
 - **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `extensions/cc/safe-orbit-camera-adobe.h` and `safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults.
 

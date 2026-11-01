@@ -78,6 +78,7 @@ set(spz_sources
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/load-spz.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-c-types.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/splat-types.cc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/cc/zstd-batch.cc"
 )
 
 set(spz_headers
@@ -92,12 +93,15 @@ if(SPZ_BUILD_EXTENSIONS)
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/coordinate-system-adobe.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/georeference-niantic.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/custom-attribute-niantic.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/extension-frames.cc"
   )
   list(APPEND spz_headers
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/coordinate-system-adobe.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/georeference-niantic.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/custom-attribute-niantic.h"
   )
 endif()
 

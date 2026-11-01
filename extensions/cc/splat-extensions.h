@@ -27,6 +27,7 @@ SOFTWARE.
 #define SPZ_SPLAT_EXTENSIONS_H_
 
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <istream>
 #include <memory>
@@ -47,11 +48,13 @@ namespace spz {
 // Forward declaration to avoid circular dependency
 // The full definition is in load-spz.h, which is included in splat-extensions.cc
 struct PlyExtraElement;
+struct CoordinateConverter;
 enum class CoordinateSystem : uint32_t;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
   SPZ_ADOBE_coordinate_system = 0xADBE0003u,
   SPZ_NIANTIC_georeference = 0x4E530001u,
+  SPZ_NIANTIC_custom_attribute = 0x4E530002u,
 };
 
 struct SpzExtensionBase {
@@ -86,9 +89,69 @@ bool readExact(std::istream& is, T& out) {
 std::streamoff remainingBytes(std::istream& is);
 }  // namespace detail
 
+// ---- Optional capabilities ----
+// An extension opts into a capability by also inheriting its interface; the library detects it
+// with dynamic_cast. Capabilities are separate from SpzExtensionBase so extensions built against an
+// older SpzExtensionBase keep working unchanged.
+
+// ---- Extension frames: storing bulk data outside the extension zone ----
+// An extension frame is a zstd skippable frame (magic 0x184D2A53) whose payload is exactly one zstd
+// frame holding part of an extension's data, appended after the last core stream's own zstd frame
+// in an NGSP (v4) file (see "Extension frames" in README.md).
+
+// Location of one extension frame. frameOffset is relative to the start of the last core stream's
+// data and points at the magic number. compressedSize is the payload size (excluding the 8-byte
+// skippable header); uncompressedSize is the payload's decompressed size.
+struct SpzFrameLocation {
+  uint64_t frameOffset = 0;
+  uint64_t compressedSize = 0;
+  uint64_t uncompressedSize = 0;
+};
+
+// How to save a framed record: its bulk data, and how to write the record once the library has
+// placed that data in extension frames. Returned by SpzFramedExtension::planFrameWrites.
+struct SpzFrameWritePlan {
+  // The record's bulk data. The library splits it across extension frames and compresses them.
+  std::vector<uint8_t> data;
+  // Writes the whole record (type, byteLength, payload). Precondition: frames holds one location
+  // per extension frame of data, in order.
+  std::function<void(std::ostream& os, const std::vector<SpzFrameLocation>& frames)> writeRecord;
+};
+
+// Capability: the record keeps its bulk data in extension frames instead of in the plaintext
+// extension zone. Readers that don't know the extension skip the extension frames without
+// decompressing them, so files stay loadable by every v4 reader.
+struct SpzFramedExtension {
+  virtual ~SpzFramedExtension() = default;
+  // Returns the save plan for a cloud of numPoints points, or std::nullopt (after logging why) if
+  // the record is invalid and the save must fail.
+  virtual std::optional<SpzFrameWritePlan> planFrameWrites(int32_t numPoints) const = 0;
+};
+
+
+// Capability: no two records of the same type may share a key (e.g. an attribute's name). saveSpz
+// fails if two do, and loading drops every record that shares a key, since none can be told apart.
+struct SpzKeyedExtension {
+  virtual ~SpzKeyedExtension() = default;
+  virtual std::string uniquenessKey() const = 0;
+};
+
+// Capability: the record holds values expressed in the cloud's coordinate system, which must
+// change along with the cloud's coordinates.
+struct SpzCoordinateDependentExtension {
+  virtual ~SpzCoordinateDependentExtension() = default;
+  // Returns a converted copy, or nullptr if c leaves the record unchanged. Records are shared
+  // between clouds, so implementations must never modify *this.
+  virtual SpzExtensionBasePtr withConvertedCoordinates(const CoordinateConverter& c) const = 0;
+};
+
 // Built-in extension types are declared in their own headers, e.g. safe-orbit-camera-adobe.h
+// Reads the records that need no frame data; framed records are dropped with an error, since only
+// NGSP (v4) files can carry their data.
 void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out);
 
+// Writes every record that needs no frame data. Framed records (SpzFramedExtension) are skipped
+// with an error; saveSpz writes them through their SpzFrameWritePlan.
 void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostream& os);
 
 void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions);
