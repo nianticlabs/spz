@@ -909,6 +909,12 @@ PackedGaussians deserializePackedGaussians(std::istream &in) {
 }
 
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> *out) {
+#ifdef SPZ_BUILD_EXTENSIONS
+  if (!allExtensionsValid(g.extensions)) {
+    SpzLog("[SPZ ERROR] saveSpz: invalid extension, nothing saved");
+    return false;
+  }
+#endif
   PackedGaussians packed = packGaussians(g, o);
 
   if (g.numPoints > 0 && packed.numPoints == 0) {

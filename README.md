@@ -252,6 +252,9 @@ This extension has the following attributes and default values:
   float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
 ```
 
+### Georeferencing
+
+With extension `SPZ_NIANTIC_georeference`, SPZ can store a similarity transform (`origin`, unit quaternion `rotation`, uniform `scale`) that maps the asset's RUB positions into a geocentric CRS, named by an `AUTHORITY:CODE` such as `EPSG:4978` (WGS 84 ECEF) or by inline PROJJSON, with an optional coordinate epoch. The library never applies the transform. See [extensions/README.md](extensions/README.md) for the payload layout and validation rules.
 
 ## Python Bindings
 

@@ -91,11 +91,13 @@ if(SPZ_BUILD_EXTENSIONS)
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/coordinate-system-adobe.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/georeference-niantic.cc"
   )
   list(APPEND spz_headers
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/safe-orbit-camera-adobe.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/coordinate-system-adobe.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/georeference-niantic.h"
   )
 endif()
 

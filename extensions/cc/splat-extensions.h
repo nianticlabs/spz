@@ -51,6 +51,7 @@ enum class CoordinateSystem : uint32_t;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
   SPZ_ADOBE_coordinate_system = 0xADBE0003u,
+  SPZ_NIANTIC_georeference = 0x4E530001u,
 };
 
 struct SpzExtensionBase {
@@ -60,6 +61,8 @@ struct SpzExtensionBase {
   virtual ~SpzExtensionBase() = default;
   virtual uint32_t payloadBytes() const = 0;
   virtual void write(std::ostream& os) const = 0;
+  // False when write() would emit a record that read() rejects; saveSpz then refuses to save.
+  virtual bool isValid() const { return true; }
   virtual SpzExtensionBase* copyAsRawData() const = 0;
 
   // PLY extension I/O: check-and-read from PLY, write header lines, write data.
@@ -70,6 +73,18 @@ struct SpzExtensionBase {
 };
 
 using SpzExtensionBasePtr = std::shared_ptr<SpzExtensionBase>;
+
+// Stream helpers shared by extension readers.
+namespace detail {
+template <class T>
+bool readExact(std::istream& is, T& out) {
+  return static_cast<bool>(is.read(reinterpret_cast<char*>(&out), sizeof(T)));
+}
+
+// Returns the number of bytes remaining between the current get position and the end of `is`,
+// or -1 if the stream does not support positioning. Restores the original position on success.
+std::streamoff remainingBytes(std::istream& is);
+}  // namespace detail
 
 // Built-in extension types are declared in their own headers, e.g. safe-orbit-camera-adobe.h
 void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out);
@@ -87,6 +102,9 @@ bool isKnownPlyExtensionElement(const std::string& elementName);
 // Returns the coordinate system in which the Gaussian data is stored, as recorded by any
 // behavior-modifying extension. Falls back to RUB if no such extension is present.
 CoordinateSystem getPackedCoordinateSystem(const std::vector<SpzExtensionBasePtr>& extensions);
+
+// False if any extension reports isValid() == false; the extension logs the reason.
+bool allExtensionsValid(const std::vector<SpzExtensionBasePtr>& extensions);
 
 inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
   SpzExtensionNode* head = nullptr;
