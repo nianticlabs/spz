@@ -92,6 +92,21 @@ inline spz::CoordinateSystem resolvePackedFromCoord(const spz::PackedGaussians& 
 #endif
 }
 
+// The packed cloud's extensions as a JS array, with directional data (e.g. SPATIAL custom
+// attributes) converted from coordFrom to coordTo. Mirrors the extension step of
+// GaussianCloud::convertCoordinates, which the chunked unpack path never runs.
+inline emscripten::val jsExtensionsInCoordinates(const spz::PackedGaussians& packed,
+                                                 spz::CoordinateSystem coordFrom,
+                                                 spz::CoordinateSystem coordTo) {
+#ifdef SPZ_BUILD_EXTENSIONS
+  const spz::CoordinateConverter c =
+    spz::coordinateConverter(coordFrom, coordTo, packed.shDegree);
+  return jsArrayFromVector(spz::convertExtensionCoordinates(packed.extensions, c));
+#else
+  return emscripten::val::array();
+#endif
+}
+
 // Fill a pre-allocated JS Float32Array with one attribute by chunked unpacking
 // through a reusable WASM-side scratch buffer.
 inline void streamAttributeIntoJsArray(spz::PackedGaussians& packed,
@@ -130,11 +145,8 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   emCloud.numPoints = packed.numPoints;
   emCloud.shDegree = packed.shDegree;
   emCloud.antialiased = packed.antialiased;
-#ifdef SPZ_BUILD_EXTENSIONS
-  emCloud.extensions = jsArrayFromVector(packed.extensions);
-#else
-  emCloud.extensions = emscripten::val::array();
-#endif
+  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
+  emCloud.extensions = jsExtensionsInCoordinates(packed, fromCoord, options.to);
 
   // Pre-allocate the six output Float32Arrays in JS heap (outside WASM linear
   // memory) so they don't count against the WASM heap budget. For very large
@@ -169,7 +181,6 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   };
   static_assert(sizeof(slots) / sizeof(slots[0]) == spz::kAllSplatAttributes.size(),
                 "slot count must match kAllSplatAttributes");
-  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   for (size_t i = 0; i < spz::kAllSplatAttributes.size(); ++i) {
     streamAttributeIntoJsArray(packed, spz::kAllSplatAttributes[i],
                                fromCoord, options.to, scratch, *slots[i]);
@@ -268,16 +279,13 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
     return;
   }
 
+  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   if (isCallable(onHeader)) {
     emscripten::val header = emscripten::val::object();
     header.set("numPoints", packed.numPoints);
     header.set("shDegree", packed.shDegree);
     header.set("antialiased", packed.antialiased);
-#ifdef SPZ_BUILD_EXTENSIONS
-    header.set("extensions", jsArrayFromVector(packed.extensions));
-#else
-    header.set("extensions", emscripten::val::array());
-#endif
+    header.set("extensions", jsExtensionsInCoordinates(packed, fromCoord, options.to));
     onHeader(header);
   }
 
@@ -286,7 +294,6 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
       spz::floatsPerPoint(spz::SplatAttribute::Sh, packed.shDegree));
   std::vector<float> scratch(static_cast<size_t>(kStreamingChunkPoints) * maxFpp);
 
-  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   for (size_t ai = 0; ai < spz::kAllSplatAttributes.size(); ++ai) {
     const spz::SplatAttribute attr = spz::kAllSplatAttributes[ai];
     const size_t fpp = spz::floatsPerPoint(attr, packed.shDegree);
