@@ -76,6 +76,11 @@ Half floatToHalf(float f) {
     return (sign << 15) | ((centeredExp + 15) << 10) | (mantissa >> 13);
   }
 
+  // Too small even for a subnormal half (also avoids shifting by 32 or more below).
+  if (centeredExp < -25) {
+    return sign << 15;
+  }
+
   // Subnormal numbers.
   int32_t fullMantissa = 0x800000 | mantissa;
   int32_t shift = -(centeredExp + 14);  // Shift is in [-1 to -113]

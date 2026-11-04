@@ -48,9 +48,11 @@ namespace spz {
 // The full definition is in load-spz.h, which is included in splat-extensions.cc
 struct PlyExtraElement;
 enum class CoordinateSystem : uint32_t;
+struct CoordinateConverter;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
   SPZ_ADOBE_coordinate_system = 0xADBE0003u,
+  SPZ_ADOBE_environment_map = 0xADBE0005u,
 };
 
 struct SpzExtensionBase {
@@ -62,9 +64,11 @@ struct SpzExtensionBase {
   virtual void write(std::ostream& os) const = 0;
   virtual SpzExtensionBase* copyAsRawData() const = 0;
 
-  // PLY extension I/O: check-and-read from PLY, write header lines, write data.
+  // PLY extension I/O: read from PLY, write header lines, write data. `elements` is the run of
+  // consecutive PLY elements named in the extension's kRequiredPlyElementNames, in file order;
+  // `in` is at the start of their data.
   virtual std::optional<std::shared_ptr<SpzExtensionBase>> tryReadFromPly(
-      std::istream& in, const std::unordered_set<std::string>& elementNames) const = 0;
+      std::istream& in, const std::vector<PlyExtraElement>& elements) const = 0;
   virtual void writePlyHeader(std::ostream& out) const = 0;
   virtual void writePlyData(std::ostream& out) const = 0;
 };
@@ -87,6 +91,13 @@ bool isKnownPlyExtensionElement(const std::string& elementName);
 // Returns the coordinate system in which the Gaussian data is stored, as recorded by any
 // behavior-modifying extension. Falls back to RUB if no such extension is present.
 CoordinateSystem getPackedCoordinateSystem(const std::vector<SpzExtensionBasePtr>& extensions);
+
+// Returns false (and logs why) if the extensions can't be saved.
+bool validateExtensions(const std::vector<SpzExtensionBasePtr>& extensions);
+
+// Applies a coordinate conversion to vectors carried by extensions (environment map frames).
+// Converted records are replaced by copies, so clouds sharing them are unaffected.
+void convertExtensionCoordinates(std::vector<SpzExtensionBasePtr>& extensions, const CoordinateConverter& c);
 
 inline SpzExtensionNode* copyExtensions(const std::vector<SpzExtensionBasePtr> &extensions) {
   SpzExtensionNode* head = nullptr;

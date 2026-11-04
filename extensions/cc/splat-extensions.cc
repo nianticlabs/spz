@@ -25,8 +25,11 @@ SOFTWARE.
 #include "splat-extensions.h"
 #include "safe-orbit-camera-adobe.h"
 #include "coordinate-system-adobe.h"
+#include "environment-map-adobe.h"
 #include "load-spz.h"
 
+#include <algorithm>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -92,6 +95,20 @@ bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
         out.push_back(std::move(*rec));
       return true;
     }
+    case SpzExtensionType::SPZ_ADOBE_environment_map: {
+      std::string payload(byteLength, '\0');
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      if (findExtensionByType<SpzExtensionEnvironmentMapAdobe>(out)) {
+        SpzLog("[SPZ ERROR] EnvironmentMapAdobe: more than one record, keeping the first");
+        return true;
+      }
+      std::istringstream iss(payload);
+      auto rec = SpzExtensionEnvironmentMapAdobe::read(iss);
+      if (rec)
+        out.push_back(std::move(*rec));
+      return true;
+    }
     default:
       // Unknown type: skip payload and continue
       SpzLog("[SPZ WARNING] Unknown extension type 0x%08x (%u bytes) was skipped — loaded data may be incorrect",
@@ -107,6 +124,7 @@ using PlyExemplarEntry = std::pair<const std::unordered_set<std::string>*, SpzEx
 static const std::vector<PlyExemplarEntry>& getPlyExtensionRegistry() {
   static const std::vector<PlyExemplarEntry> registry = {
     {&SpzExtensionSafeOrbitCameraAdobe::kRequiredPlyElementNames, std::make_shared<SpzExtensionSafeOrbitCameraAdobe>()},
+    {&SpzExtensionEnvironmentMapAdobe::kRequiredPlyElementNames, std::make_shared<SpzExtensionEnvironmentMapAdobe>()},
   };
   return registry;
 }
@@ -131,6 +149,44 @@ CoordinateSystem getPackedCoordinateSystem(
   return CoordinateSystem::RUB;  // default: no known extension overrides the packed coordinate system
 }
 
+bool validateExtensions(const std::vector<SpzExtensionBasePtr>& extensions) {
+  bool hasEnvironmentMap = false;
+  for (const auto& ext : extensions) {
+    if (const auto* env = dynamic_cast<const SpzExtensionEnvironmentMapAdobe*>(ext.get())) {
+      if (!env->validate())
+        return false;
+      if (hasEnvironmentMap) {
+        SpzLog("[SPZ ERROR] A cloud can carry at most one environment map");
+        return false;
+      }
+      hasEnvironmentMap = true;
+    }
+  }
+  return true;
+}
+
+void convertExtensionCoordinates(std::vector<SpzExtensionBasePtr>& extensions, const CoordinateConverter& c) {
+  if (!c.rotFlipPFunc && c.flipP == std::array<float, 3>{1.0f, 1.0f, 1.0f})
+    return;
+  const auto convert = [&c](float* v) {
+    if (c.rotFlipPFunc) {
+      c.rotFlipPFunc(v);
+    } else {
+      v[0] *= c.flipP[0];
+      v[1] *= c.flipP[1];
+      v[2] *= c.flipP[2];
+    }
+  };
+  for (auto& ext : extensions) {
+    if (const auto* env = dynamic_cast<const SpzExtensionEnvironmentMapAdobe*>(ext.get())) {
+      auto converted = std::make_shared<SpzExtensionEnvironmentMapAdobe>(*env);
+      for (auto* v : {&converted->origin, &converted->up, &converted->e1, &converted->e2})
+        convert(v->data());
+      ext = std::move(converted);
+    }
+  }
+}
+
 bool isKnownPlyExtensionElement(const std::string& elementName) {
   return getKnownPlyExtensionElementNames().count(elementName) != 0;
 }
@@ -151,14 +207,29 @@ void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostre
 }
 
 void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions) {
-  std::unordered_set<std::string> elementNames;
-  for (const auto& elem : extraElements)
-    elementNames.insert(elem.name);
-
-  for (const auto& entry : getPlyExtensionRegistry()) {
-    auto rec = entry.second->tryReadFromPly(in, elementNames);
-    if (rec)
-      extensions.push_back(std::move(*rec));
+  const auto& registry = getPlyExtensionRegistry();
+  for (auto it = extraElements.begin(); it != extraElements.end();) {
+    const auto entry = std::find_if(registry.begin(), registry.end(),
+                                    [&](const auto& e) { return e.first->count(it->name) != 0; });
+    // A known element starts the run of consecutive elements its extension declares.
+    const auto end = entry == registry.end()
+        ? std::next(it)
+        : std::find_if(it, extraElements.end(), [&](const auto& e) { return entry->first->count(e.name) == 0; });
+    uint64_t bytes = 0;
+    for (auto e = it; e != end; ++e)
+      bytes += static_cast<uint64_t>(e->count) * e->bytesPerElement;
+    const std::streampos start = in.tellg();
+    if (entry != registry.end()) {
+      auto rec = entry->second->tryReadFromPly(in, std::vector<PlyExtraElement>(it, end));
+      if (rec)
+        extensions.push_back(std::move(*rec));
+    } else {
+      SpzLog("[SPZ] Skipped %llu bytes for element '%s'", static_cast<unsigned long long>(bytes), it->name.c_str());
+    }
+    // Continue after the run whether or not the extension consumed all of it.
+    in.clear();
+    in.seekg(start + static_cast<std::streamoff>(bytes));
+    it = end;
   }
 }
 

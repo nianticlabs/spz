@@ -2,6 +2,9 @@
 // This file contains all Python bindings related to SPZ extensions.
 
 #include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
+#include <nanobind/stl/array.h>
+#include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
 
@@ -10,12 +13,22 @@
 #include "extensions/cc/splat-extensions.h"
 #include "extensions/cc/safe-orbit-camera-adobe.h"
 #include "extensions/cc/coordinate-system-adobe.h"
+#include "extensions/cc/environment-map-adobe.h"
 #include "extensions/python/splat-extensions.h"
 
 namespace nb = nanobind;
 
+using FloatArray = nb::ndarray<nb::numpy, float, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+
 namespace spz {
 namespace python {
+namespace {
+FloatArray toNumpy(const std::vector<float>& values) {
+    auto* copy = new std::vector<float>(values);
+    nb::capsule owner(copy, [](void* p) noexcept { delete static_cast<std::vector<float>*>(p); });
+    return FloatArray(copy->data(), {copy->size()}, owner);
+}
+}  // namespace
 
 // Register all extension-related Python bindings
 void register_extensions(nb::module_& m) {
@@ -33,6 +46,8 @@ void register_extensions(nb::module_& m) {
                "Adobe safe orbit camera extension")
         .value("SPZ_ADOBE_coordinate_system", spz::SpzExtensionType::SPZ_ADOBE_coordinate_system,
                "Adobe coordinate system extension — records the native coordinate system of the asset")
+        .value("SPZ_ADOBE_environment_map", spz::SpzExtensionType::SPZ_ADOBE_environment_map,
+               "Adobe environment map extension — an equirectangular RGB map with its frame")
         .export_values();
 
     nb::class_<spz::SpzExtensionBase>(m, "SpzExtensionBase")
@@ -55,6 +70,43 @@ void register_extensions(nb::module_& m) {
                 "Native coordinate system of the asset's Gaussian data")
         .def_static("type", &spz::SpzExtensionCoordinateSystemAdobe::type,
                     "Static method to get the extension type enum value");
+
+    using EnvironmentMap = spz::SpzExtensionEnvironmentMapAdobe;
+    using Vec3 = std::array<float, 3>;
+    nb::class_<EnvironmentMap, spz::SpzExtensionBase>(m, "SpzExtensionEnvironmentMapAdobe",
+        "Equirectangular RGB environment map with its frame; at most one per cloud.")
+        .def(nb::init<>())
+        .def("__init__",
+             [](EnvironmentMap* self, uint32_t width, uint32_t height, const FloatArray& pixels, Vec3 origin,
+                Vec3 up, Vec3 e1, Vec3 e2, std::string metadata) {
+                 new (self) EnvironmentMap();
+                 self->width = width;
+                 self->height = height;
+                 self->pixels.assign(pixels.data(), pixels.data() + pixels.shape(0));
+                 self->origin = origin;
+                 self->up = up;
+                 self->e1 = e1;
+                 self->e2 = e2;
+                 self->metadata = std::move(metadata);
+             },
+             nb::arg("width"), nb::arg("height"), nb::arg("pixels"), nb::arg("origin") = Vec3{0, 0, 0},
+             nb::arg("up") = Vec3{0, 1, 0}, nb::arg("e1") = Vec3{1, 0, 0}, nb::arg("e2") = Vec3{0, 0, 1},
+             nb::arg("metadata") = "")
+        .def_rw("width", &EnvironmentMap::width)
+        .def_rw("height", &EnvironmentMap::height)
+        .def_prop_rw("pixels",
+                     [](const EnvironmentMap& self) { return toNumpy(self.pixels); },
+                     [](EnvironmentMap& self, const FloatArray& pixels) {
+                         self.pixels.assign(pixels.data(), pixels.data() + pixels.shape(0));
+                     },
+                     nb::rv_policy::move,
+                     "Flat float32 array of height * width * 3 values, row-major, RGB interleaved")
+        .def_rw("origin", &EnvironmentMap::origin, "Lookup origin, converted like positions")
+        .def_rw("up", &EnvironmentMap::up, "Pole direction; pixel row = angle from up")
+        .def_rw("e1", &EnvironmentMap::e1, "Azimuth zero direction")
+        .def_rw("e2", &EnvironmentMap::e2, "Azimuth +90 degree direction")
+        .def_rw("metadata", &EnvironmentMap::metadata, "Free-form UTF-8 (JSON by convention), never converted")
+        .def_static("type", &EnvironmentMap::type, "Static method to get the extension type enum value");
     m.def("is_known_ply_extension_element", &spz::isKnownPlyExtensionElement, nb::arg("element_name"),
           "Returns True if the PLY extra element name is handled by an extension.");
 }

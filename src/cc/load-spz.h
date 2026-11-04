@@ -154,7 +154,6 @@ struct PlyExtraElement {
   std::string name;
   int32_t count;
   size_t bytesPerElement;
-  bool isKnown;  // true for elements we explicitly handle (like safe_orbit)
 };
 
 // Saves Gaussian splat in packed format, returning a vector of bytes.
