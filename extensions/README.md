@@ -248,11 +248,20 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
 
   cloud.extensions = [normal, embedding]
 
-  loaded = spz.load_spz("scene.spz")
+  options = spz.UnpackOptions()
+  options.custom_attributes = ["normal"]              # attributes load only when asked for
+  loaded = spz.load_spz("scene.spz", options)
   normals = spz.find_custom_attribute(loaded, "normal").values.reshape(-1, 3)
   ```
 
   In C++, `spz::findCustomAttribute(cloud.extensions, "normal")` does the same; in JavaScript, attributes expose `getValues()` and `setValues()`.
+
+  Custom attributes are opt-in on load: `UnpackOptions::customAttributes` (`custom_attributes` in Python, `customAttributes` in JavaScript) names the ones to decode, and its default, an empty list, decodes none, just like a build without extension support. Attributes cost memory in proportion to the point count, and most loaders (viewers) only render the core cloud. Unlisted attributes are skipped before their extension frames are decompressed, so they cost nothing. `std::nullopt` / `None` / `null` decodes them all; **tools that load and re-save a file must set it, or the attributes are lost**.
+
+  ```js
+  const viewer = spz.loadSpzFromBuffer(bytes, { to: spz.CoordinateSystem.RUB });  // no attributes
+  const all = spz.loadSpzFromBuffer(bytes, { to: spz.CoordinateSystem.RUB, customAttributes: null });
+  ```
 
 
 - **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `extensions/cc/safe-orbit-camera-adobe.h` and `safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults.

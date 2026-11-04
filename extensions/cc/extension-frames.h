@@ -34,6 +34,7 @@ SOFTWARE.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -60,6 +61,9 @@ struct SpzFrameReadPlan {
   // data.size() == dataBytes(numPoints).
   std::function<SpzExtensionBasePtr(int32_t numPoints, std::vector<uint8_t>&& data)> resolve;
 };
+
+// Whether the caller wants a framed record decoded.
+using SpzFrameReadFilter = std::function<bool(const SpzFrameReadPlan& readPlan)>;
 
 // One record read from an extension zone: a finished record, or a framed record still waiting for
 // its extension frames. Exactly one of the two is set.
@@ -146,13 +150,17 @@ class ExtensionFrameDecoder {
   // outlive the decoder.
   static ExtensionFrameDecoder fromZone(const uint8_t* zone, size_t zoneSize, int32_t numPoints,
                                         const uint8_t* host, size_t hostSize,
-                                        uint64_t maxDataBytes);
+                                        uint64_t maxDataBytes,
+                                        const SpzFrameReadFilter& shouldDecode);
 
   // host is the last core stream (hostSize bytes, inside the loaded file). maxDataBytes caps the
   // total decoded size of all framed records. Records sharing a uniqueness key, and framed records
   // whose extension frames are invalid, are dropped (logged) here, before anything is allocated.
+  // Framed records shouldDecode rejects are skipped unread. Precondition: shouldDecode is
+  // callable.
   ExtensionFrameDecoder(std::vector<SpzParsedExtension> parsed, int32_t numPoints,
-                        const uint8_t* host, size_t hostSize, uint64_t maxDataBytes);
+                        const uint8_t* host, size_t hostSize, uint64_t maxDataBytes,
+                        const SpzFrameReadFilter& shouldDecode);
 
   // Decompression work for the remaining framed records. The destinations are owned by the
   // decoder, which must outlive the tasks.

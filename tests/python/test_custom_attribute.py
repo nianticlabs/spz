@@ -45,9 +45,15 @@ def _attribute(name, dim, values, bits=32, semantic=S.CUSTOM):
     return attr
 
 
+def _decode_all():
+    options = spz.UnpackOptions()
+    options.custom_attributes = None
+    return options
+
+
 def _round_trip(cloud, pack=None, unpack=None):
     data = spz.save_spz_to_buffer(cloud, pack or spz.PackOptions())
-    return data, spz.load_spz_from_buffer(data, unpack or spz.UnpackOptions())
+    return data, spz.load_spz_from_buffer(data, unpack or _decode_all())
 
 
 def _attributes(cloud):
@@ -295,7 +301,7 @@ def test_spatial_converts_like_positions_and_custom_never_converts():
                         _attribute("raw", 3, directions)]
     pack = spz.PackOptions()
     pack.from_coord = spz.RDF
-    unpack = spz.UnpackOptions()
+    unpack = _decode_all()
     unpack.to_coord = spz.RUB
     _, loaded = _round_trip(cloud, pack, unpack)
 
@@ -392,7 +398,7 @@ def test_reads_attribute_split_across_frames(plain_file, pieces):
     cloud, plain = plain_file
     values = np.random.default_rng(3).normal(size=cloud.num_points * 3).astype(np.float32)
     data = _inject_attribute(plain, "_SPLIT", 3, _float_chunks(values, 3, cloud.num_points, pieces))
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     np.testing.assert_array_equal(_attributes(loaded)[0].values, values)
 
 
@@ -400,7 +406,7 @@ def test_reads_quantized_attribute_with_stored_ranges(plain_file):
     cloud, plain = plain_file
     levels = (np.arange(cloud.num_points) % 16).astype(np.uint8)
     data = _inject_attribute(plain, "_Q", 1, [levels.tobytes()], bits=4, ranges=([-1.0], [2.0]))
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     np.testing.assert_allclose(_attributes(loaded)[0].values, -1.0 + levels * (3.0 / 15), atol=1e-6)
 
 
@@ -420,9 +426,9 @@ def test_malformed_attribute_is_dropped_and_core_still_loads(plain_file, corrupt
     values = np.arange(cloud.num_points, dtype=np.float32)
     data = _inject_attribute(plain, "_BAD", 1, _float_chunks(values, 1, cloud.num_points, 1),
                              **corruption)
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     assert _attributes(loaded) == []
-    _assert_same_core(loaded, spz.load_spz_from_buffer(plain, spz.UnpackOptions()))
+    _assert_same_core(loaded, spz.load_spz_from_buffer(plain, _decode_all()))
 
 
 @pytest.mark.parametrize(
@@ -437,7 +443,7 @@ def test_attribute_with_invalid_descriptor_is_dropped(plain_file, semantic, dim)
     cloud, plain = plain_file
     chunk = np.zeros(cloud.num_points * max(dim, 1), np.float32).tobytes()
     data = _inject_attribute(plain, "x", dim, [chunk], semantic=semantic)
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     assert _attributes(loaded) == []
     assert loaded.num_points == cloud.num_points
 
@@ -446,7 +452,7 @@ def test_out_of_range_quantized_level_drops_attribute(plain_file):
     cloud, plain = plain_file
     levels = np.full(cloud.num_points, 200, np.uint8)  # 4-bit attribute allows at most 15
     data = _inject_attribute(plain, "_Q", 1, [levels.tobytes()], bits=4, ranges=([0.0], [1.0]))
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     assert _attributes(loaded) == []
     assert loaded.num_points == cloud.num_points
 
@@ -463,7 +469,7 @@ def test_duplicate_names_in_file_drop_both_attributes(plain_file):
     cloud, _ = plain_file
     data, _, start_b = _two_attribute_file(cloud)
     data[start_b + 2:start_b + 4] = b"_A"  # rename _B to _A (same length)
-    loaded = spz.load_spz_from_buffer(bytes(data), spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(bytes(data), _decode_all())
     assert _attributes(loaded) == []
     assert loaded.num_points == cloud.num_points
 
@@ -472,7 +478,7 @@ def test_non_ascii_name_in_file_drops_attribute(plain_file):
     cloud, plain = plain_file
     chunk = np.zeros(cloud.num_points, np.float32).tobytes()
     data = _inject_attribute(plain, b"\xff\xfe", 1, [chunk])
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     assert _attributes(loaded) == []
     assert loaded.num_points == cloud.num_points
 
@@ -481,7 +487,7 @@ def test_bytes_after_frame_table_are_ignored(plain_file):
     cloud, plain = plain_file
     values = np.arange(cloud.num_points, dtype=np.float32)
     data = _inject_attribute(plain, "x", 1, [values.tobytes()], trailing=b"future fields")
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     np.testing.assert_array_equal(_attributes(loaded)[0].values, values)
 
 
@@ -490,7 +496,7 @@ def test_highly_compressed_frame_within_size_cap_loads(plain_file):
     dim = 1000  # 200 KB of zeros in a few hundred bytes
     size = cloud.num_points * dim * 4
     data = _inject_attribute(plain, "zeros", dim, [b"\0" * size], zframes=[_rle_zstd_frame(0, size)])
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     np.testing.assert_array_equal(_attributes(loaded)[0].values, np.zeros(cloud.num_points * dim))
 
 
@@ -501,7 +507,7 @@ def test_decoded_size_far_beyond_file_size_is_dropped_before_allocating(plain_fi
     data = _inject_attribute(plain, "huge", dim, [b""], zframes=[_rle_zstd_frame(0, size)],
                              uncompressed_delta=size)
     assert size > 1024 * len(data)
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     assert _attributes(loaded) == []
     assert loaded.num_points == cloud.num_points
 
@@ -530,7 +536,7 @@ def test_duplicate_name_drops_both_even_when_one_is_invalid(plain_file):
     table_b = _frame_table_offset(data, start_b)
     offset = struct.unpack_from("<Q", data, table_b + 4)[0]
     struct.pack_into("<Q", data, table_b + 4, offset + 1)  # and break its frame
-    loaded = spz.load_spz_from_buffer(bytes(data), spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(bytes(data), _decode_all())
     assert _attributes(loaded) == []
     assert loaded.num_points == cloud.num_points
 
@@ -540,7 +546,7 @@ def test_payload_must_be_exactly_one_zstd_frame(plain_file):
     values = np.arange(cloud.num_points, dtype=np.float32).tobytes()
     padded = _raw_zstd_frame(values) + struct.pack("<II", SKIPPABLE_MAGIC, 0)
     data = _inject_attribute(plain, "x", 1, [values], zframes=[padded])
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     assert _attributes(loaded) == []
     assert loaded.num_points == cloud.num_points
 
@@ -550,7 +556,7 @@ def test_duplicate_with_malformed_descriptor_does_not_count(plain_file):
     data, _, start_b = _two_attribute_file(cloud)
     data[start_b + 2:start_b + 4] = b"_A"  # rename _B to _A
     struct.pack_into("<H", data, start_b + 4, 0)  # and give it dim 0, a malformed descriptor
-    loaded = spz.load_spz_from_buffer(bytes(data), spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(bytes(data), _decode_all())
     assert [attr.name for attr in _attributes(loaded)] == ["_A"]
 
 
@@ -577,6 +583,79 @@ def test_reads_extension_frame_larger_than_this_writer_produces():
     data = _inject_attribute(plain, "big", dim, [b""], zframes=[_rle_zstd_frame(0, size)],
                              uncompressed_delta=size)
     assert size > 16 << 20
-    loaded = spz.load_spz_from_buffer(data, spz.UnpackOptions())
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
     (attr,) = _attributes(loaded)
     np.testing.assert_array_equal(attr.values, np.zeros(cloud.num_points * dim, np.float32))
+
+
+# ---- Choosing which attributes to decode ----
+
+
+def _unpack_only(names):
+    options = spz.UnpackOptions()
+    options.custom_attributes = names
+    return options
+
+
+def _cloud_with_attributes_and_orbit():
+    cloud = _make_cloud()
+    orbit = spz.SpzExtensionSafeOrbitCameraAdobe()
+    orbit.safe_orbit_radius_min = 2.5
+    a = np.arange(cloud.num_points, dtype=np.float32)
+    b = np.linspace(0, 1, cloud.num_points * 3, dtype=np.float32)
+    cloud.extensions = [_attribute("_A", 1, a), orbit, _attribute("_B", 3, b)]
+    return cloud, a, b
+
+
+def test_none_decodes_every_attribute():
+    cloud, _, _ = _cloud_with_attributes_and_orbit()
+    _, loaded = _round_trip(cloud, unpack=_unpack_only(None))
+    assert sorted(attr.name for attr in _attributes(loaded)) == ["_A", "_B"]
+
+
+@pytest.mark.parametrize("unpack", [spz.UnpackOptions, lambda: _unpack_only([])])
+def test_decodes_no_attributes_by_default_and_keeps_everything_else(unpack):
+    assert spz.UnpackOptions().custom_attributes == []
+    cloud, _, _ = _cloud_with_attributes_and_orbit()
+    data, loaded = _round_trip(cloud, unpack=unpack())
+    assert _attributes(loaded) == []
+    orbits = [e for e in loaded.extensions if isinstance(e, spz.SpzExtensionSafeOrbitCameraAdobe)]
+    assert len(orbits) == 1 and orbits[0].safe_orbit_radius_min == pytest.approx(2.5)
+    _assert_same_core(loaded, spz.load_spz_from_buffer(data, _decode_all()))
+
+
+def test_decodes_only_the_listed_attributes():
+    cloud, _, b = _cloud_with_attributes_and_orbit()
+    _, loaded = _round_trip(cloud, unpack=_unpack_only(["_B", "_MISSING"]))
+    (attr,) = _attributes(loaded)
+    assert attr.name == "_B"
+    np.testing.assert_array_equal(attr.values, b)
+
+
+def test_selection_applies_to_load_spz_from_file(tmp_path):
+    cloud, a, _ = _cloud_with_attributes_and_orbit()
+    path = str(tmp_path / "attributes.spz")
+    assert spz.save_spz(cloud, spz.PackOptions(), path)
+    (attr,) = _attributes(spz.load_spz(path, _unpack_only(["_A"])))
+    np.testing.assert_array_equal(attr.values, a)
+
+
+def test_unlisted_attribute_frames_are_never_checked_or_decompressed(plain_file, capfd):
+    cloud, plain = plain_file
+    values = np.arange(cloud.num_points, dtype=np.float32)
+    data = _inject_attribute(plain, "_BAD", 1, _float_chunks(values, 1, cloud.num_points, 1),
+                             offset_delta=1 << 40)
+    capfd.readouterr()
+    spz.load_spz_from_buffer(data, _decode_all())
+    assert "Dropped extension" in capfd.readouterr().out
+    loaded = spz.load_spz_from_buffer(data, _unpack_only([]))
+    assert "Dropped extension" not in capfd.readouterr().out
+    _assert_same_core(loaded, spz.load_spz_from_buffer(plain, _decode_all()))
+
+
+def test_requested_duplicate_names_are_still_dropped(plain_file):
+    cloud, _ = plain_file
+    data, _, start_b = _two_attribute_file(cloud)
+    data[start_b + 2:start_b + 4] = b"_A"  # rename _B to _A (same length)
+    loaded = spz.load_spz_from_buffer(bytes(data), _unpack_only(["_A"]))
+    assert _attributes(loaded) == []

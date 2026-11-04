@@ -675,8 +675,22 @@ bool hasExtensionZone(const NgspFileHeader &header, size_t size) {
 }
 
 
+#ifdef SPZ_BUILD_EXTENSIONS
+// Keeps every framed record except unlisted custom attributes.
+SpzFrameReadFilter framedRecordFilter(const UnpackOptions &options) {
+  if (!options.customAttributes) {
+    return [](const SpzFrameReadPlan &) { return true; };
+  }
+  return [names = *options.customAttributes](const SpzFrameReadPlan &readPlan) {
+    if (readPlan.type != SpzExtensionType::SPZ_NIANTIC_custom_attribute) return true;
+    return readPlan.key && std::find(names.begin(), names.end(), *readPlan.key) != names.end();
+  };
+}
+#endif
+
 PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
-                                            const NgspFileHeader &header) {
+                                            const NgspFileHeader &header,
+                                            [[maybe_unused]] const UnpackOptions &options) {
   const int32_t numPoints = header.numPoints;
   const int32_t shDim = dimForDegree(header.shDegree);
   const bool usesQuaternionSmallestThree = header.version >= MIN_SMALLEST_THREE_QUATERNIONS_VERSION;
@@ -735,7 +749,7 @@ PackedGaussians loadPackedGaussiansFromNgsp(const uint8_t *data, size_t size,
     extensions = ExtensionFrameDecoder::fromZone(
       data + sizeof(NgspFileHeader), header.tocByteOffset - sizeof(NgspFileHeader), numPoints,
       data + host.compressedOffset, static_cast<size_t>(host.compressedSize),
-      static_cast<uint64_t>(size) * kMaxCompressionRatio);
+      static_cast<uint64_t>(size) * kMaxCompressionRatio, framedRecordFilter(options));
     tasks.insert(tasks.end(), extensions->tasks().begin(), extensions->tasks().end());
   }
 #else
@@ -987,7 +1001,7 @@ bool saveSpz(const GaussianCloud &g, const PackOptions &o, std::vector<uint8_t> 
   return true;
 }
 
-PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
+PackedGaussians loadSpzPacked(const uint8_t *data, size_t size, const UnpackOptions &options) {
   uint32_t magic = 0;
   if (size >= sizeof(magic)) std::memcpy(&magic, data, sizeof(magic));
 
@@ -1020,7 +1034,7 @@ PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
       "[SPZ] loadSpzPacked (NGSP): version=%d, numPoints=%d, shDegree=%d, numStreams=%d, tocByteOffset=%d",
       header.version, header.numPoints, header.shDegree, header.numStreams, header.tocByteOffset);
 
-    return loadPackedGaussiansFromNgsp(data, size, header);
+    return loadPackedGaussiansFromNgsp(data, size, header, options);
 
   } else if (size >= 2 && data[0] == 0x1f && data[1] == 0x8b) {
     // Legacy single-stream GZip format (pre-v4).
@@ -1034,6 +1048,10 @@ PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
     SpzLog("[SPZ ERROR] loadSpzPacked: unrecognized format");
     return {};
   }
+}
+
+PackedGaussians loadSpzPacked(const uint8_t *data, size_t size) {
+  return loadSpzPacked(data, size, UnpackOptions{});
 }
 
 PackedGaussians loadSpzPacked(const std::vector<uint8_t> &data) {
@@ -1054,11 +1072,11 @@ PackedGaussians loadSpzPacked(const std::string &filename) {
 }
 
 GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &o) {
-  return unpackGaussians(loadSpzPacked(data), o);
+  return unpackGaussians(loadSpzPacked(data.data(), data.size(), o), o);
 }
 
 GaussianCloud loadSpz(const uint8_t *data, size_t size, const UnpackOptions &o) {
-  return unpackGaussians(loadSpzPacked(data, size), o);
+  return unpackGaussians(loadSpzPacked(data, size, o), o);
 }
 
 bool saveSpz(const GaussianCloud &g, const PackOptions &o, const std::string &filename) {

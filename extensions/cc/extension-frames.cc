@@ -246,16 +246,19 @@ void appendSkippableFrames(const std::vector<std::vector<uint8_t>>& compressed,
 
 ExtensionFrameDecoder ExtensionFrameDecoder::fromZone(const uint8_t* zone, size_t zoneSize,
                                                       int32_t numPoints, const uint8_t* host,
-                                                      size_t hostSize, uint64_t maxDataBytes) {
+                                                      size_t hostSize, uint64_t maxDataBytes,
+                                                      const SpzFrameReadFilter& shouldDecode) {
   std::istringstream stream(std::string(reinterpret_cast<const char*>(zone), zoneSize));
   std::vector<SpzParsedExtension> parsed;
   readExtensionRecords(stream, parsed);
-  return ExtensionFrameDecoder(std::move(parsed), numPoints, host, hostSize, maxDataBytes);
+  return ExtensionFrameDecoder(std::move(parsed), numPoints, host, hostSize, maxDataBytes,
+                               shouldDecode);
 }
 
 ExtensionFrameDecoder::ExtensionFrameDecoder(std::vector<SpzParsedExtension> parsed,
                                              int32_t numPoints, const uint8_t* host,
-                                             size_t hostSize, uint64_t maxDataBytes)
+                                             size_t hostSize, uint64_t maxDataBytes,
+                                             const SpzFrameReadFilter& shouldDecode)
     : numPoints_(numPoints) {
   // Duplicates are dropped before any extension frame is checked, so every reader agrees on which
   // records survive whatever state their extension frames are in.
@@ -281,6 +284,13 @@ ExtensionFrameDecoder::ExtensionFrameDecoder(std::vector<SpzParsedExtension> par
       continue;
     }
     if (!p.readPlan) continue;
+    // After the duplicate check, so filtering never changes which records survive.
+    if (!shouldDecode(*p.readPlan)) {
+      SpzLog("[SPZ] Skipped extension 0x%08x%s%s: not requested",
+             static_cast<unsigned>(p.readPlan->type), p.readPlan->key ? " " : "",
+             p.readPlan->key ? p.readPlan->key->c_str() : "");
+      continue;
+    }
     if (!coreFrameSize) coreFrameSize = ZSTD_findFrameCompressedSize(host, hostSize);
     uint64_t dataBytes = 0;
     if (const char* problem =
