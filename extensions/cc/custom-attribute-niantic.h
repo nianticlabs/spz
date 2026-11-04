@@ -73,7 +73,7 @@ struct SpzExtensionCustomAttributeNiantic : public SpzExtensionBase,
   // PLY has no representation for custom attributes yet: they aren't read from PLY, and saving to
   // PLY drops them with a warning.
   std::optional<std::shared_ptr<SpzExtensionBase>> tryReadFromPly(
-      std::istream& in, const std::unordered_set<std::string>& elementNames) const override;
+      std::istream& in, const std::vector<PlyExtraElement>& elements) const override;
   void writePlyHeader(std::ostream& out) const override;
   void writePlyData(std::ostream& out) const override;
 

@@ -354,4 +354,18 @@ void dropRecordsWithDuplicateKeys(std::vector<SpzExtensionBasePtr>& extensions) 
   extensions = std::move(kept);
 }
 
+bool keysAreUnique(const std::vector<SpzExtensionBasePtr>& extensions) {
+  std::vector<std::optional<RecordKey>> keys;
+  for (const auto& ext : extensions) keys.push_back(ext ? keyOf(ext) : std::nullopt);
+  const std::vector<uint8_t> duplicate = findDuplicates(keys);
+  for (size_t i = 0; i < keys.size(); i++) {
+    if (duplicate[i]) {
+      SpzLog("[SPZ ERROR] two extensions of type 0x%08x share the key '%s'",
+             static_cast<unsigned>(keys[i]->first), keys[i]->second.c_str());
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace spz

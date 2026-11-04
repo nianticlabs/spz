@@ -287,6 +287,11 @@ This extension has the following attributes and default values:
 
 With extension `SPZ_NIANTIC_georeference`, SPZ can store a similarity transform (`origin`, unit quaternion `rotation`, uniform `scale`) that maps the asset's RUB positions into a geocentric CRS, named by an `AUTHORITY:CODE` such as `EPSG:4978` (WGS 84 ECEF) or by inline PROJJSON, with an optional coordinate epoch. The library never applies the transform. See [extensions/README.md](extensions/README.md) for the payload layout and validation rules.
 
+### Environment Map
+
+With extension `SPZ_ADOBE_environment_map`, an SPZ or PLY file can carry one equirectangular RGB environment map (e.g. a baked reflection environment) together with its lookup frame and free-form JSON settings, so the file is a complete asset. Pixels are stored as zstd-compressed float16 in SPZ and float32 in PLY; the frame follows coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
+
+
 ## Python Bindings
 
 The SPZ library provides Python bindings built with [nanobind](https://nanobind.readthedocs.io/) that offer a convenient interface for loading, manipulating, and saving 3D Gaussian splats from Python.

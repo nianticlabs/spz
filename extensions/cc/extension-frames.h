@@ -186,6 +186,9 @@ class ExtensionFrameDecoder {
 // Drops every record whose uniqueness key another record of the same type shares (logged).
 void dropRecordsWithDuplicateKeys(std::vector<SpzExtensionBasePtr>& extensions);
 
+// False (after logging the key) if two records of the same type share a uniqueness key.
+bool keysAreUnique(const std::vector<SpzExtensionBasePtr>& extensions);
+
 }  // namespace spz
 
 #endif  // SPZ_EXTENSION_FRAMES_H_
