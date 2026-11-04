@@ -94,7 +94,7 @@ def _frame_table_offset(data, payload_start):
     pos += 2 + name_length
     dim, _, bits = struct.unpack_from("<HBB", data, pos)
     pos += 4
-    if 1 <= bits <= 8:
+    if 1 <= bits <= 16:
         pos += 2 * 4 * dim
     return pos  # points at u32 frameCount
 
@@ -183,7 +183,7 @@ def test_float_round_trip_is_exact(dim):
     np.testing.assert_array_equal(attr.values, values)
 
 
-@pytest.mark.parametrize("bits", range(1, 9))
+@pytest.mark.parametrize("bits", range(1, 17))
 def test_quantized_round_trip_within_half_step(bits):
     cloud = _make_cloud()
     values = np.random.default_rng(2).uniform(-3, 5, size=cloud.num_points * 2).astype(np.float32)
@@ -345,7 +345,8 @@ def test_spatial_follows_convert_coordinates():
         ("x", S.CUSTOM, 0, 32, 0),  # dim 0
         ("n", S.SPATIAL, 4, 32, 4),  # SPATIAL needs a multiple of 3
         ("v", S.SPATIAL, 1, 32, 1),  # SPATIAL needs a multiple of 3
-        ("x", S.CUSTOM, 1, 9, 1),  # bad bits
+        ("x", S.CUSTOM, 1, 17, 1),  # bad bits
+        ("x", S.CUSTOM, 1, 31, 1),  # bad bits
         ("x", S.CUSTOM, 1, 0, 1),  # bad bits
         ("x", S.CUSTOM, 2, 32, 1),  # wrong value count
     ],
@@ -443,6 +444,57 @@ def test_attribute_with_invalid_descriptor_is_dropped(plain_file, semantic, dim)
     cloud, plain = plain_file
     chunk = np.zeros(cloud.num_points * max(dim, 1), np.float32).tobytes()
     data = _inject_attribute(plain, "x", dim, [chunk], semantic=semantic)
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
+    assert _attributes(loaded) == []
+    assert loaded.num_points == cloud.num_points
+
+
+def _byte_planes(levels):
+    """One component's 16-bit levels as stored: every low byte, then every high byte."""
+    levels = np.asarray(levels, dtype=np.uint16)
+    return (levels & 0xFF).astype(np.uint8).tobytes() + (levels >> 8).astype(np.uint8).tobytes()
+
+
+def test_reads_16_bit_levels_from_byte_planes(plain_file):
+    cloud, plain = plain_file
+    levels = (np.arange(cloud.num_points) * 1297) % 65536  # exercises both bytes of every level
+    data = _inject_attribute(plain, "_W", 1, [_byte_planes(levels)], bits=16,
+                             ranges=([-2.0], [2.0]))
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
+    np.testing.assert_allclose(_attributes(loaded)[0].values, -2.0 + levels * (4.0 / 65535),
+                               atol=1e-6)
+
+
+def test_writer_matches_the_byte_plane_reader():
+    # The reader is pinned to the spec above, so exact levels surviving a round trip pin the writer.
+    cloud = _make_cloud()
+    levels = (np.arange(cloud.num_points) * 1297) % 65536
+    levels[0], levels[1] = 0, 65535  # the stored range is then exactly [-2, 2]
+    expected = -2.0 + levels * (4.0 / 65535)
+    cloud.extensions = [_attribute("_W", 1, expected.astype(np.float32), bits=16)]
+    data, loaded = _round_trip(cloud)
+    np.testing.assert_allclose(_attributes(loaded)[0].values, expected, atol=1e-6)
+    ((_, payload_start, _),) = _records(data, _parse(data)["tbo"])
+    table = _frame_table_offset(data, payload_start)
+    (frame_count,) = struct.unpack_from("<I", data, table)
+    sizes = [struct.unpack_from("<QQQ", data, table + 4 + 24 * i)[2] for i in range(frame_count)]
+    assert sum(sizes) == cloud.num_points * 2
+
+
+def test_twelve_bit_level_above_range_drops_attribute(plain_file):
+    cloud, plain = plain_file
+    levels = np.full(cloud.num_points, 5000)  # 12-bit attribute allows at most 4095
+    data = _inject_attribute(plain, "_Q", 1, [_byte_planes(levels)], bits=12,
+                             ranges=([0.0], [1.0]))
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
+    assert _attributes(loaded) == []
+    assert loaded.num_points == cloud.num_points
+
+
+def test_16_bit_attribute_with_one_byte_per_level_is_dropped(plain_file):
+    cloud, plain = plain_file
+    levels = np.zeros(cloud.num_points, np.uint8)  # half the bytes a 16-bit attribute needs
+    data = _inject_attribute(plain, "_Q", 1, [levels.tobytes()], bits=16, ranges=([0.0], [1.0]))
     loaded = spz.load_spz_from_buffer(data, _decode_all())
     assert _attributes(loaded) == []
     assert loaded.num_points == cloud.num_points

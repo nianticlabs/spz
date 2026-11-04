@@ -55,7 +55,7 @@ export enum SpzAttributeSemantic {
 
 /**
  * A named per-point attribute, stored in SPZ v4 files in extension frames (zstd skippable frames).
- * Saving fails unless name is 1-65535 bytes of printable ASCII and unique in the cloud, bits is 32 or 1-8,
+ * Saving fails unless name is 1-65535 bytes of printable ASCII and unique in the cloud, bits is 32 or 1-16,
  * and the values hold numPoints * dim floats, point-major.
  */
 export class SpzExtensionCustomAttributeNiantic extends SpzExtensionBase {

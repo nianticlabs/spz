@@ -124,7 +124,7 @@ void register_extensions(nb::module_& m) {
         dim is the number of floats per point and semantic how they convert: SPATIAL needs dim to
         be a multiple of 3 and each xyz triple is converted with the cloud's coordinates; CUSTOM is
         never converted. name is a free-form label. Saving fails unless names are 1-65535 bytes of printable
-        ASCII and unique in the cloud, bits is 32 (lossless float32) or 1-8 (quantized per component), values
+        ASCII and unique in the cloud, bits is 32 (lossless float32) or 1-16 (quantized per component), values
         holds num_points * dim floats, point-major, and the file version is 4 or later.)doc")
         .def(nb::init<>())
         .def_rw("name", &spz::SpzExtensionCustomAttributeNiantic::name, "Free-form label of printable ASCII, unique per cloud")
@@ -132,7 +132,7 @@ void register_extensions(nb::module_& m) {
                 "SPATIAL values are converted with the cloud's coordinates; CUSTOM never are")
         .def_rw("dim", &spz::SpzExtensionCustomAttributeNiantic::dim, "Floats per point (1-65535)")
         .def_rw("bits", &spz::SpzExtensionCustomAttributeNiantic::bits,
-                "32 for float32, or 1-8 for quantized storage")
+                "32 for float32, or 1-16 for quantized storage")
         .def_prop_rw("values",
                      [](const spz::SpzExtensionCustomAttributeNiantic& self) { return copyToNumpy(self.values); },
                      [](spz::SpzExtensionCustomAttributeNiantic& self, const FloatArray& arr) {

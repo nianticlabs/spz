@@ -47,7 +47,7 @@ enum class SpzAttributeSemantic : uint8_t {
 //   - name is 1-65535 bytes of printable ASCII (0x20-0x7E), and unique among the cloud's custom
 //     attributes.
 //   - dim >= 1, and a multiple of 3 for semantic Spatial.
-//   - bits is 32 (float32, lossless) or 1-8 (each component quantized to 2^bits levels between
+//   - bits is 32 (float32, lossless) or 1-16 (each component quantized to 2^bits levels between
 //     its min and max over all points; values must then be finite).
 //   - values holds numPoints * dim floats, point-major.
 //   - The file version is 4 or later.

@@ -95,6 +95,7 @@ if(SPZ_BUILD_EXTENSIONS)
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/georeference-niantic.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/custom-attribute-niantic.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/extension-frames.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/quantized-planes.cc"
   )
   list(APPEND spz_headers
     "${CMAKE_CURRENT_SOURCE_DIR}/extensions/cc/splat-extensions.h"

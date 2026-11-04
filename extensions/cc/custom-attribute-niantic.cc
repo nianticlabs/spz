@@ -25,6 +25,7 @@ SOFTWARE.
 
 #include "custom-attribute-niantic.h"
 #include "extension-frames.h"
+#include "quantized-planes.h"
 #include "load-spz.h"
 #include "splat-types.h"
 
@@ -37,7 +38,6 @@ SOFTWARE.
 namespace spz {
 namespace {
 constexpr uint8_t kFloatBits = 32;
-constexpr uint8_t kMaxQuantizedBits = 8;
 constexpr uint8_t kMaxSemantic = static_cast<uint8_t>(SpzAttributeSemantic::Spatial);
 // Spatial attributes are made of xyz triples.
 constexpr uint16_t kSpatialComponents = 3;
@@ -45,11 +45,9 @@ constexpr uint16_t kSpatialComponents = 3;
 constexpr char kFirstPrintable = 0x20;
 constexpr char kLastPrintable = 0x7E;
 
-bool isQuantized(uint8_t bits) { return bits >= 1 && bits <= kMaxQuantizedBits; }
-
-size_t bytesPerComponent(uint8_t bits) { return isQuantized(bits) ? 1 : sizeof(float); }
-
-uint32_t maxLevel(uint8_t bits) { return (1u << bits) - 1; }
+size_t bytesPerComponent(uint8_t bits) {
+  return isQuantizedBits(bits) ? quantizedLevelBytes(bits) : sizeof(float);
+}
 
 bool isPrintable(const std::string& s) {
   return std::all_of(s.begin(), s.end(),
@@ -80,7 +78,7 @@ const char* descriptorProblem(const std::string& name, uint16_t dim, SpzAttribut
   if (static_cast<uint8_t>(semantic) > kMaxSemantic) return "unknown semantic";
   if (semantic == SpzAttributeSemantic::Spatial && dim % kSpatialComponents != 0)
     return "SPATIAL attributes need dim to be a multiple of 3";
-  if (bits != kFloatBits && !isQuantized(bits)) return "bits must be 1-8 or 32";
+  if (bits != kFloatBits && !isQuantizedBits(bits)) return "bits must be 1-16 or 32";
   return nullptr;
 }
 
@@ -110,21 +108,17 @@ void computeRanges(const std::vector<float>& values, Descriptor* d) {
 }
 
 // Stores point-major values component-major (every point's first component, then every point's
-// second, ...), which groups similar values together and compresses better.
+// second, ...), which groups similar values together and compresses better; byte planes do the same
+// for the bytes of multi-byte levels.
 std::vector<uint8_t> encodeValues(const std::vector<float>& values, const Descriptor& d,
                                   size_t points, size_t bytes) {
   std::vector<uint8_t> out(bytes);
-  if (isQuantized(d.bits)) {
-    const double top = maxLevel(d.bits);
+  if (points == 0) return out;
+  if (isQuantizedBits(d.bits)) {
+    const size_t componentBytes = points * quantizedLevelBytes(d.bits);
     for (size_t c = 0; c < d.dim; ++c) {
-      // Double precision keeps the range finite even when max - min overflows float.
-      const double range = static_cast<double>(d.max[c]) - d.min[c];
-      const double scale = range > 0.0 ? top / range : 0.0;
-      for (size_t p = 0; p < points; ++p) {
-        const double offset = values[p * d.dim + c] - static_cast<double>(d.min[c]);
-        const double level = std::round(offset * scale);
-        out[c * points + p] = static_cast<uint8_t>(std::clamp(level, 0.0, top));
-      }
+      encodeQuantizedPlanes(&values[c], d.dim, points, d.min[c], d.max[c], d.bits,
+                            &out[c * componentBytes]);
     }
   } else {
     for (size_t c = 0; c < d.dim; ++c) {
@@ -140,14 +134,13 @@ std::vector<uint8_t> encodeValues(const std::vector<float>& values, const Descri
 bool decodeValues(const std::vector<uint8_t>& bytes, const Descriptor& d, size_t points,
                   std::vector<float>* values) {
   values->resize(points * d.dim);
-  if (isQuantized(d.bits)) {
-    const uint32_t top = maxLevel(d.bits);
+  if (points == 0) return true;
+  if (isQuantizedBits(d.bits)) {
+    const size_t componentBytes = points * quantizedLevelBytes(d.bits);
     for (size_t c = 0; c < d.dim; ++c) {
-      const double step = (static_cast<double>(d.max[c]) - d.min[c]) / top;
-      for (size_t p = 0; p < points; ++p) {
-        const uint8_t level = bytes[c * points + p];
-        if (level > top) return false;
-        (*values)[p * d.dim + c] = static_cast<float>(d.min[c] + level * step);
+      if (!decodeQuantizedPlanes(&bytes[c * componentBytes], points, d.min[c], d.max[c], d.bits,
+                                 &(*values)[c], d.dim)) {
+        return false;
       }
     }
   } else {
@@ -229,7 +222,7 @@ std::optional<SpzFrameWritePlan> SpzExtensionCustomAttributeNiantic::planFrameWr
     return std::nullopt;
   }
   Descriptor d{name, dim, semantic, bits, {}, {}};
-  if (isQuantized(bits)) {
+  if (isQuantizedBits(bits)) {
     if (!std::all_of(values.begin(), values.end(), [](float v) { return std::isfinite(v); })) {
       logProblem(name, "quantized values must be finite");
       return std::nullopt;
@@ -275,7 +268,7 @@ std::optional<SpzFrameReadPlan> parseCustomAttributeNiantic(std::istream& is) {
     return std::nullopt;
   }
   SpzLog("[SPZ] Found extension: CustomAttributeNiantic (name=%s)", d.name.c_str());
-  if (isQuantized(d.bits)) {
+  if (isQuantizedBits(d.bits)) {
     d.min.resize(d.dim);
     d.max.resize(d.dim);
     if (!is.read(reinterpret_cast<char*>(d.min.data()), d.dim * sizeof(float)) ||

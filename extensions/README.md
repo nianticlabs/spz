@@ -208,20 +208,20 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
   u16 nameLength, u8 name[nameLength]   // printable ASCII (0x20-0x7E), 1-65535 bytes
   u16 dim                               // floats per point, >= 1
   u8  semantic                          // 0 CUSTOM, 1 SPATIAL (dim % 3 == 0)
-  u8  bits                              // 32 = float32; 1-8 = quantized
+  u8  bits                              // 32 = float32; 1-16 = quantized
   f32 min[dim], f32 max[dim]            // only when quantized
   u32 frameCount
   frameCount x { u64 frameOffset; u64 compressedSize; u64 uncompressedSize; }   // the frame table: one
                                                                                  // entry per extension frame
   ```
 
-  Joining the extension frames' decompressed payloads in order gives the values component-major: every point's first component, then every point's second, and so on. float32 components are 4 bytes, little-endian. Quantized components are one byte each: level `round((v - min) / (max - min) * (2^bits - 1))`, rounding halves away from zero, or 0 when `min == max`; decoded in double precision as `min + level * ((max - min) / (2^bits - 1))`.
+  Joining the extension frames' decompressed payloads in order gives the values component-major: every point's first component, then every point's second, and so on. float32 components are 4 bytes, little-endian. Quantized components store level `round((v - min) / (max - min) * (2^bits - 1))`, rounding halves away from zero, or 0 when `min == max`; decoded in double precision as `min + level * ((max - min) / (2^bits - 1))`. A level takes `ceil(bits / 8)` bytes, stored as byte planes: a component's data is every point's least significant level byte, then (for `bits` 9–16) every point's most significant byte. Splitting the bytes this way compresses better than storing them together; with `bits` ≤ 8 there is a single plane, one byte per point.
 
   Readers MUST drop the attribute (the core cloud still loads) when:
   - `nameLength` is 0, or the name has a byte outside printable ASCII (0x20-0x7E);
   - `semantic` is unknown, or `SPATIAL` with `dim` not a multiple of 3, or `dim` is 0;
-  - `bits` is not 32 or 1–8, a quantized range isn't finite with `min <= max`, or a decoded level exceeds `2^bits - 1`;
-  - the extension frames' decompressed sizes don't add up to `numPoints * dim * (bits == 32 ? 4 : 1)`;
+  - `bits` is not 32 or 1–16, a quantized range isn't finite with `min <= max`, or a decoded level exceeds `2^bits - 1`;
+  - the extension frames' decompressed sizes don't add up to `numPoints * dim * (bits == 32 ? 4 : ceil(bits / 8))`;
   - another custom attribute in the file with a well-formed descriptor (valid name, `dim`, `semantic` and `bits`) has the same name, compared byte for byte without Unicode normalization. This applies even when that attribute's extension frames or values are invalid; an attribute whose descriptor is malformed is dropped on its own and doesn't count.
 
   Readers MUST ignore bytes after the frame table: later versions may append fields there.
