@@ -6,6 +6,8 @@
   SpzExtensionSafeOrbitCameraAdobe: typeof SpzExtensionSafeOrbitCameraAdobe;
   SpzExtensionCoordinateSystemAdobe: typeof SpzExtensionCoordinateSystemAdobe;
   SpzExtensionGeoreferenceNiantic: typeof SpzExtensionGeoreferenceNiantic;
+  SpzExtensionCustomAttributeNiantic: typeof SpzExtensionCustomAttributeNiantic;
+  SpzAttributeSemantic: typeof SpzAttributeSemantic;
 
   /** Returns true if the PLY extra element name is handled by an extension. */
   isKnownPlyExtensionElement: (elementName: string) => boolean;

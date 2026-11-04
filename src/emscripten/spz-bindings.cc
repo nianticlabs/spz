@@ -72,13 +72,6 @@ inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer
   return array;
 }
 
-inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer) {
-  emscripten::val Float32Array = emscripten::val::global("Float32Array");
-  emscripten::val array = Float32Array.new_(buffer.size());
-  array.call<void>("set", emscripten::typed_memory_view(buffer.size(), buffer.data()));
-  return array;
-}
-
 // WASM-side unpack chunk size. 64K points keeps the scratch ~18 MB at SH=4.
 constexpr int32_t kStreamingChunkPoints = 1 << 16;
 
@@ -97,6 +90,51 @@ inline spz::CoordinateSystem resolvePackedFromCoord(const spz::PackedGaussians& 
   }
   return spz::CoordinateSystem::RUB;
 #endif
+}
+
+// The extensions as a JS array, converted to coordTo. The chunked unpack path skips
+// GaussianCloud::convertCoordinates, which would otherwise do this.
+inline emscripten::val jsExtensionsInCoordinates(const spz::PackedGaussians& packed,
+                                                 spz::CoordinateSystem coordFrom,
+                                                 spz::CoordinateSystem coordTo) {
+#ifdef SPZ_BUILD_EXTENSIONS
+  const spz::CoordinateConverter c =
+    spz::coordinateConverter(coordFrom, coordTo, packed.shDegree);
+  return jsArrayFromVector(spz::convertExtensionCoordinates(packed.extensions, c));
+#else
+  return emscripten::val::array();
+#endif
+}
+
+constexpr char kCustomAttributesNotStrings[] =
+  "options.customAttributes must be an array of strings, or null for all";
+
+// Parsed by hand: a value_object would make customAttributes mandatory. Omitted keeps the default
+// (none); null decodes all. Returns the problem, or nullptr.
+const char* unpackOptionsFromJs(const emscripten::val& js, spz::UnpackOptions* out) {
+  out->to = js["to"].as<spz::CoordinateSystem>();
+  const emscripten::val names = js["customAttributes"];
+  if (names.isUndefined()) {
+    return nullptr;
+  }
+  if (names.isNull()) {
+    out->customAttributes.reset();
+    return nullptr;
+  }
+  if (!emscripten::val::global("Array").call<bool>("isArray", names)) {
+    return kCustomAttributesNotStrings;
+  }
+  std::vector<std::string> parsed;
+  const size_t count = names["length"].as<size_t>();
+  for (size_t i = 0; i < count; ++i) {
+    const emscripten::val name = names[i];
+    if (!name.isString()) {
+      return kCustomAttributesNotStrings;
+    }
+    parsed.push_back(name.as<std::string>());
+  }
+  out->customAttributes = std::move(parsed);
+  return nullptr;
 }
 
 // Fill a pre-allocated JS Float32Array with one attribute by chunked unpacking
@@ -137,11 +175,8 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   emCloud.numPoints = packed.numPoints;
   emCloud.shDegree = packed.shDegree;
   emCloud.antialiased = packed.antialiased;
-#ifdef SPZ_BUILD_EXTENSIONS
-  emCloud.extensions = jsArrayFromVector(packed.extensions);
-#else
-  emCloud.extensions = emscripten::val::array();
-#endif
+  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
+  emCloud.extensions = jsExtensionsInCoordinates(packed, fromCoord, options.to);
 
   // Pre-allocate the six output Float32Arrays in JS heap (outside WASM linear
   // memory) so they don't count against the WASM heap budget. For very large
@@ -176,7 +211,6 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   };
   static_assert(sizeof(slots) / sizeof(slots[0]) == spz::kAllSplatAttributes.size(),
                 "slot count must match kAllSplatAttributes");
-  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   for (size_t i = 0; i < spz::kAllSplatAttributes.size(); ++i) {
     streamAttributeIntoJsArray(packed, spz::kAllSplatAttributes[i],
                                fromCoord, options.to, scratch, *slots[i]);
@@ -185,7 +219,13 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   return emCloud;
 }
 
-EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::UnpackOptions& options) {
+EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const emscripten::val& jsOptions) {
+  // Before allocating: throw_() skips C++ destructors.
+  spz::UnpackOptions options;
+  if (const char* problem = unpackOptionsFromJs(jsOptions, &options)) {
+    emscripten::val::global("TypeError").new_(emscripten::val(problem)).throw_();
+  }
+
   // Allocate one input region in the WASM heap and copy directly from the
   // JS-side Uint8Array via HEAPU8.set. Peak memory while parsing is ~2x the
   // input because the caller's JS Uint8Array remains alive alongside the heap
@@ -202,7 +242,7 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const spz::Unpa
         "set", buffer, reinterpret_cast<uintptr_t>(data.get()));
   }
 
-  spz::PackedGaussians packed = spz::loadSpzPacked(data.get(), byteLength);
+  spz::PackedGaussians packed = spz::loadSpzPacked(data.get(), byteLength, options);
   data.reset();
 
   return buildEmCloud(std::move(packed), options);
@@ -247,7 +287,7 @@ emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackO
 // only for the duration of the call. Consumers must copy or upload it before
 // returning — a later WASM allocation may detach the view.
 void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
-                      const spz::UnpackOptions& options,
+                      const emscripten::val& jsOptions,
                       const emscripten::val& callbacks) {
   emscripten::val onHeader = callbacks["onHeader"];
   emscripten::val onChunk  = callbacks["onChunk"];
@@ -266,8 +306,14 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
     return;
   }
 
+  spz::UnpackOptions options;
+  if (const char* problem = unpackOptionsFromJs(jsOptions, &options)) {
+    reportError(std::string("loadSpzStreaming: ") + problem);
+    return;
+  }
+
   const uint8_t* data = reinterpret_cast<const uint8_t*>(ptr);
-  spz::PackedGaussians packed = spz::loadSpzPacked(data, byteLength);
+  spz::PackedGaussians packed = spz::loadSpzPacked(data, byteLength, options);
   // loadSpzPacked returns numPoints==0 only on parse failure (the SPZ format
   // itself rejects 0-point clouds at parse time — see load-spz.cc:965).
   if (packed.numPoints == 0) {
@@ -275,16 +321,13 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
     return;
   }
 
+  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   if (isCallable(onHeader)) {
     emscripten::val header = emscripten::val::object();
     header.set("numPoints", packed.numPoints);
     header.set("shDegree", packed.shDegree);
     header.set("antialiased", packed.antialiased);
-#ifdef SPZ_BUILD_EXTENSIONS
-    header.set("extensions", jsArrayFromVector(packed.extensions));
-#else
-    header.set("extensions", emscripten::val::array());
-#endif
+    header.set("extensions", jsExtensionsInCoordinates(packed, fromCoord, options.to));
     onHeader(header);
   }
 
@@ -293,7 +336,6 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
       spz::floatsPerPoint(spz::SplatAttribute::Sh, packed.shDegree));
   std::vector<float> scratch(static_cast<size_t>(kStreamingChunkPoints) * maxFpp);
 
-  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   for (size_t ai = 0; ai < spz::kAllSplatAttributes.size(); ++ai) {
     const spz::SplatAttribute attr = spz::kAllSplatAttributes[ai];
     const size_t fpp = spz::floatsPerPoint(attr, packed.shDegree);
@@ -366,8 +408,6 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .field("from", &spz::PackOptions::from)
       .field("sh1Bits", &spz::PackOptions::sh1Bits)
       .field("shRestBits", &spz::PackOptions::shRestBits);
-
-  emscripten::value_object<spz::UnpackOptions>("UnpackOptions").field("to", &spz::UnpackOptions::to);
 
   emscripten::value_object<EmGaussianCloud>("GaussianCloud")
       .field("numPoints", &EmGaussianCloud::numPoints)

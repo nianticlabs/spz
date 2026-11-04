@@ -29,6 +29,7 @@ SOFTWARE.
 #include "extensions/cc/safe-orbit-camera-adobe.h"
 #include "extensions/cc/coordinate-system-adobe.h"
 #include "extensions/cc/georeference-niantic.h"
+#include "extensions/cc/custom-attribute-niantic.h"
 #include "extensions/emscripten/splat-extensions.h"
 #include "src/emscripten/utils.h"
 
@@ -40,7 +41,8 @@ void register_extensions() {
   ::emscripten::enum_<spz::SpzExtensionType>("SpzExtensionType")
       .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera)
       .value("SPZ_ADOBE_coordinate_system", spz::SpzExtensionType::SPZ_ADOBE_coordinate_system)
-      .value("SPZ_NIANTIC_georeference", spz::SpzExtensionType::SPZ_NIANTIC_georeference);
+      .value("SPZ_NIANTIC_georeference", spz::SpzExtensionType::SPZ_NIANTIC_georeference)
+      .value("SPZ_NIANTIC_custom_attribute", spz::SpzExtensionType::SPZ_NIANTIC_custom_attribute);
 
   ::emscripten::class_<spz::SpzExtensionBase>("SpzExtensionBase")
       .smart_ptr<std::shared_ptr<spz::SpzExtensionBase>>("SpzExtensionBasePtr")
@@ -85,6 +87,26 @@ void register_extensions() {
       .property("scale", &spz::SpzExtensionGeoreferenceNiantic::scale)
       .property("epoch", &spz::SpzExtensionGeoreferenceNiantic::epoch)
       .class_function("type", &spz::SpzExtensionGeoreferenceNiantic::type);
+
+  ::emscripten::enum_<spz::SpzAttributeSemantic>("SpzAttributeSemantic")
+      .value("CUSTOM", spz::SpzAttributeSemantic::Custom)
+      .value("SPATIAL", spz::SpzAttributeSemantic::Spatial);
+
+  using CustomAttribute = spz::SpzExtensionCustomAttributeNiantic;
+  // Created through a shared_ptr so attributes built in JS can be added to a cloud's extensions.
+  ::emscripten::class_<CustomAttribute, ::emscripten::base<spz::SpzExtensionBase>>("SpzExtensionCustomAttributeNiantic")
+      .smart_ptr_constructor("SpzExtensionCustomAttributeNiantic", &std::make_shared<CustomAttribute>)
+      .property("name", &CustomAttribute::name)
+      .property("dim", &CustomAttribute::dim)
+      .property("semantic", &CustomAttribute::semantic)
+      .property("bits", &CustomAttribute::bits)
+      .function("getValues", ::emscripten::optional_override([](const CustomAttribute& self) {
+        return jsFloat32ArrayFromVector(self.values);
+      }))
+      .function("setValues", ::emscripten::optional_override([](CustomAttribute& self, const ::emscripten::val& values) {
+        vectorFromJsArray(values, self.values);
+      }))
+      .class_function("type", &CustomAttribute::type);
 
   ::emscripten::function("isKnownPlyExtensionElement", &spz::isKnownPlyExtensionElement);
 }

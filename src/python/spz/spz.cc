@@ -1,6 +1,7 @@
 // Nanobind Python bindings for the spz library.
 
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
@@ -189,7 +190,10 @@ NB_MODULE(spz, m) {
     nb::class_<spz::UnpackOptions>(m, "UnpackOptions")
         .def(nb::init<>())
         .def_rw("to_coord", &spz::UnpackOptions::to,
-                "Desired coordinate system of the output splat");
+                "Desired coordinate system of the output splat")
+        .def_rw("custom_attributes", &spz::UnpackOptions::customAttributes,
+                "Custom attribute names to decode: [] (default) none, None all. Use None when "
+                "re-saving, or attributes are lost. Assign a new list; in-place edits don't stick.");
 
     // -------------------------------------------------------------------------
     // Extensions structs
