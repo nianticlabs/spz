@@ -252,6 +252,10 @@ This extension has the following attributes and default values:
   float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
 ```
 
+### Environment Map
+
+With extension `SPZ_ADOBE_environment_map`, an SPZ or PLY file can carry one equirectangular RGB environment map (e.g. a baked reflection environment) together with its lookup frame and free-form JSON settings, so the file is a complete asset. Pixels are stored as zstd-compressed float16 in SPZ and float32 in PLY; the frame follows coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
+
 
 ## Python Bindings
 

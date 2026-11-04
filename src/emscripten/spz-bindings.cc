@@ -72,13 +72,6 @@ inline emscripten::val jsUint8ArrayFromVector(const std::vector<uint8_t>& buffer
   return array;
 }
 
-inline emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer) {
-  emscripten::val Float32Array = emscripten::val::global("Float32Array");
-  emscripten::val array = Float32Array.new_(buffer.size());
-  array.call<void>("set", emscripten::typed_memory_view(buffer.size(), buffer.data()));
-  return array;
-}
-
 // WASM-side unpack chunk size. 64K points keeps the scratch ~18 MB at SH=4.
 constexpr int32_t kStreamingChunkPoints = 1 << 16;
 
@@ -137,7 +130,10 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   emCloud.numPoints = packed.numPoints;
   emCloud.shDegree = packed.shDegree;
   emCloud.antialiased = packed.antialiased;
+  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
 #ifdef SPZ_BUILD_EXTENSIONS
+  spz::convertExtensionCoordinates(
+      packed.extensions, spz::coordinateConverter(fromCoord, options.to, packed.shDegree));
   emCloud.extensions = jsArrayFromVector(packed.extensions);
 #else
   emCloud.extensions = emscripten::val::array();
@@ -176,7 +172,6 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   };
   static_assert(sizeof(slots) / sizeof(slots[0]) == spz::kAllSplatAttributes.size(),
                 "slot count must match kAllSplatAttributes");
-  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   for (size_t i = 0; i < spz::kAllSplatAttributes.size(); ++i) {
     streamAttributeIntoJsArray(packed, spz::kAllSplatAttributes[i],
                                fromCoord, options.to, scratch, *slots[i]);
@@ -275,12 +270,15 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
     return;
   }
 
+  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   if (isCallable(onHeader)) {
     emscripten::val header = emscripten::val::object();
     header.set("numPoints", packed.numPoints);
     header.set("shDegree", packed.shDegree);
     header.set("antialiased", packed.antialiased);
 #ifdef SPZ_BUILD_EXTENSIONS
+    spz::convertExtensionCoordinates(
+        packed.extensions, spz::coordinateConverter(fromCoord, options.to, packed.shDegree));
     header.set("extensions", jsArrayFromVector(packed.extensions));
 #else
     header.set("extensions", emscripten::val::array());
@@ -293,7 +291,6 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
       spz::floatsPerPoint(spz::SplatAttribute::Sh, packed.shDegree));
   std::vector<float> scratch(static_cast<size_t>(kStreamingChunkPoints) * maxFpp);
 
-  const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
   for (size_t ai = 0; ai < spz::kAllSplatAttributes.size(); ++ai) {
     const spz::SplatAttribute attr = spz::kAllSplatAttributes[ai];
     const size_t fpp = spz::floatsPerPoint(attr, packed.shDegree);

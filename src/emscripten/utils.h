@@ -39,6 +39,12 @@ inline ::emscripten::val jsArrayFromVector(const std::vector<T>& vec) {
   return array;
 }
 
+inline ::emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer) {
+  ::emscripten::val array = ::emscripten::val::global("Float32Array").new_(buffer.size());
+  array.call<void>("set", ::emscripten::typed_memory_view(buffer.size(), buffer.data()));
+  return array;
+}
+
 template <typename T>
 inline void vectorFromJsArray(const ::emscripten::val& array, std::vector<T>& out) {
   if constexpr (std::is_arithmetic_v<T>) {
