@@ -52,5 +52,13 @@ inline void vectorFromJsArray(const ::emscripten::val& array, std::vector<T>& ou
   }
 }
 
+// Returns a new JS Float32Array holding a copy of buffer.
+inline ::emscripten::val jsFloat32ArrayFromVector(const std::vector<float>& buffer) {
+  ::emscripten::val Float32Array = ::emscripten::val::global("Float32Array");
+  ::emscripten::val array = Float32Array.new_(buffer.size());
+  array.call<void>("set", ::emscripten::typed_memory_view(buffer.size(), buffer.data()));
+  return array;
+}
+
 #endif  // SPZ_EMSCRIPTEN_UTILS_H_
 

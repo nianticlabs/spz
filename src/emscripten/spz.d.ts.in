@@ -75,6 +75,7 @@ export interface PackOptions {
 
 export interface UnpackOptions {
   to: CoordinateSystem;
+  customAttributes?: string[] | null;
 }
 
 export class GaussianCloud {
@@ -178,4 +179,3 @@ export interface SpzModule {
 }
 
 export default function createSpzModule(overrides?: any): Promise<SpzModule>;
-

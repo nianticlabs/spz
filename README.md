@@ -139,6 +139,37 @@ Bytes  (tbo+N*16)..end:   N independent ZSTD-compressed attribute streams
 
 `tbo` = `tocByteOffset` from the header. When no extensions are present, `tbo = 32`.
 
+Each TOC entry covers one core stream, in this order, omitting empty ones: positions, alphas, colors, scales, rotations, spherical harmonics (absent when `shDegree` is 0). Each stream's data is exactly one zstd frame, except that the **last** stream's zstd frame may be followed by extension frames (see [Extension frames](#extension-frames)). A stream's `compressedSize` covers all of its bytes; its `uncompressedSize` counts only its own zstd frame.
+
+#### Extension frames
+
+Terms used below:
+- **zstd frame**: one self-contained unit of zstd-compressed data ([RFC 8878 §3.1.1](https://www.rfc-editor.org/rfc/rfc8878#section-3.1.1)).
+- **Skippable frame**: zstd's container for bytes every zstd decoder steps over ([RFC 8878 §3.1.2](https://www.rfc-editor.org/rfc/rfc8878#section-3.1.2)).
+- **Extension frame**: a skippable frame with SPZ's magic whose payload is exactly one zstd frame holding part of an extension's data:
+
+```
+[u32 magic = 0x184D2A53][u32 payloadSize][payload: exactly one zstd frame]
+```
+
+Extension data too large for the plaintext zone is stored in extension frames, appended back to back with no gaps after the zstd frame of the last core stream. The extension record that owns the data lists its extension frames in order, giving each one's byte offset from the start of the last core stream's data (pointing at the magic), its `payloadSize`, and the payload's decompressed size. Joining the decompressed payloads in that order gives the extension's data. zstd decoders skip skippable frames, so decompressing the last stream as a whole yields exactly its core data: readers that don't know an extension load the file unchanged, and never decompress its extension frames.
+
+Writers MUST:
+- keep every payload at most 2^32 - 1 bytes, the range of the u32 `payloadSize`. This is the only size limit: an extension's data may be any size, split across as many extension frames as it needs;
+- record the decompressed size in each payload's zstd frame header (the default when the size is known);
+- never let extension frames overlap.
+
+How much data to put in each extension frame is the writer's choice. zstd's worst-case output is about `n + n/256` bytes, so payloads stay within the limit for any data up to about 3.98 GiB uncompressed. This library uses at most 16 MiB, which compresses within 0.3% of much larger frames while letting large data compress and decompress in parallel. Readers MUST accept any size within the format limit.
+
+Readers that decode an extension frame MUST check, before allocating for it, that:
+- it lies entirely within the last core stream;
+- its magic is `0x184D2A53` and its `payloadSize` matches the record;
+- its payload is exactly one zstd frame, whose header records a decompressed size equal to the record's.
+
+Readers should also check that the extension frame starts after the core stream's own zstd frame (this needs that frame's compressed size, e.g. from `ZSTD_findFrameCompressedSize`), and MAY cap the total decoded extension data; this library drops data beyond 1024 times the file size, the same bound it applies to `numPoints`. An extension whose extension frames fail these checks is dropped; the core data still loads. Readers ignore skippable frames that no record they understand points at.
+
+Every reader, including ones that predate extension frames, still reads their bytes as part of the last core stream, so large extension data delays loading that stream. Consider a separate file for very large payloads.
+
 ### Header (version 4)
 
 ```c
@@ -252,6 +283,9 @@ This extension has the following attributes and default values:
   float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
 ```
 
+### Georeferencing
+
+With extension `SPZ_NIANTIC_georeference`, SPZ can store a similarity transform (`origin`, unit quaternion `rotation`, uniform `scale`) that maps the asset's RUB positions into a geocentric CRS, named by an `AUTHORITY:CODE` such as `EPSG:4978` (WGS 84 ECEF) or by inline PROJJSON, with an optional coordinate epoch. The library never applies the transform. See [extensions/README.md](extensions/README.md) for the payload layout and validation rules.
 
 ## Python Bindings
 

@@ -1,6 +1,13 @@
 export enum SpzExtensionType {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002,
   SPZ_ADOBE_coordinate_system = 0xADBE0003,
+  SPZ_NIANTIC_georeference = 0x4E530001,
+  SPZ_NIANTIC_custom_attribute = 0x4E530002,
+}
+
+export enum GeoreferenceCrsEncoding {
+  AUTHORITY_CODE = 0,
+  PROJJSON = 1,
 }
 
 export class SpzExtensionBase {
@@ -18,6 +25,49 @@ export class SpzExtensionSafeOrbitCameraAdobe extends SpzExtensionBase {
 export class SpzExtensionCoordinateSystemAdobe extends SpzExtensionBase {
   coordinateSystem: CoordinateSystem;
   constructor();
+  static type(): SpzExtensionType;
+}
+
+export class SpzExtensionGeoreferenceNiantic extends SpzExtensionBase {
+  /** Target geocentric CRS, e.g. `"EPSG:4978"` or inline PROJJSON; required. */
+  crs: string;
+  /** Serialization of `crs`: AUTHORITY_CODE (default) or PROJJSON (only when no code exists). */
+  crsEncoding: GeoreferenceCrsEncoding;
+  /** Translation from the RUB origin to the target CRS, in meters (x, y, z). Returns a copy; assign the whole tuple. */
+  origin: readonly [number, number, number];
+  /** Unit Hamilton quaternion (x, y, z, w) rotating RUB positions into the target CRS; near-unit values are normalized on save. Returns a copy; assign the whole tuple. */
+  rotation: readonly [number, number, number, number];
+  /** Dimensionless uniform scale from RUB positions into the target CRS; must be finite and > 0. */
+  scale: number;
+  /** Coordinate epoch of the transformed coordinates, as a decimal year; NaN when absent. */
+  epoch: number;
+  constructor();
+  static type(): SpzExtensionType;
+}
+
+/** How a custom attribute responds to coordinate conversions. */
+export enum SpzAttributeSemantic {
+  /** Never converted. */
+  CUSTOM = 0,
+  /** xyz triples in the cloud's coordinate space, converted like positions; dim must be a multiple of 3. */
+  SPATIAL = 1,
+}
+
+/**
+ * A named per-point attribute, stored in SPZ v4 files in extension frames (zstd skippable frames).
+ * Saving fails unless name is 1-65535 bytes of printable ASCII and unique in the cloud, bits is 32 or 1-16,
+ * and the values hold numPoints * dim floats, point-major.
+ */
+export class SpzExtensionCustomAttributeNiantic extends SpzExtensionBase {
+  name: string;
+  dim: number;
+  semantic: SpzAttributeSemantic;
+  bits: number;
+  constructor();
+  /** Returns a copy of the values: numPoints * dim floats, point-major. */
+  getValues(): Float32Array;
+  /** Replaces the values with a copy of the given array. */
+  setValues(values: Float32Array | number[]): void;
   static type(): SpzExtensionType;
 }
 
