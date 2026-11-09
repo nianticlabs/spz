@@ -68,7 +68,7 @@ struct SpzExtensionGeoreferenceNiantic : public SpzExtensionBase {
   bool isValid() const override;
   SpzExtensionBase* copyAsRawData() const override;
   std::optional<std::shared_ptr<SpzExtensionBase>> tryReadFromPly(
-      std::istream& in, const std::unordered_set<std::string>& elementNames) const override;
+      std::istream& in, const std::vector<PlyExtraElement>& elements) const override;
   void writePlyHeader(std::ostream& out) const override;
   void writePlyData(std::ostream& out) const override;
   static std::optional<SpzExtensionBasePtr> read(std::istream& is);

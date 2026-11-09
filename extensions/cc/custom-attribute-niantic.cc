@@ -303,7 +303,7 @@ std::optional<SpzFrameReadPlan> parseCustomAttributeNiantic(std::istream& is) {
 }
 
 std::optional<std::shared_ptr<SpzExtensionBase>> SpzExtensionCustomAttributeNiantic::tryReadFromPly(
-    std::istream& /*in*/, const std::unordered_set<std::string>& /*elementNames*/) const {
+    std::istream& /*in*/, const std::vector<PlyExtraElement>& /*elements*/) const {
   return std::nullopt;
 }
 

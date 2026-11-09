@@ -8,6 +8,7 @@
   SpzExtensionGeoreferenceNiantic: typeof SpzExtensionGeoreferenceNiantic;
   SpzExtensionCustomAttributeNiantic: typeof SpzExtensionCustomAttributeNiantic;
   SpzAttributeSemantic: typeof SpzAttributeSemantic;
+  SpzExtensionEnvironmentMapAdobe: typeof SpzExtensionEnvironmentMapAdobe;
 
   /** Returns true if the PLY extra element name is handled by an extension. */
   isKnownPlyExtensionElement: (elementName: string) => boolean;
