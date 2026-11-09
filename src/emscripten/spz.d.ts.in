@@ -76,6 +76,11 @@ export interface PackOptions {
 export interface UnpackOptions {
   to: CoordinateSystem;
   customAttributes?: string[] | null;
+  /**
+   * TemporalLoad.SKIP (default) loads an animated clip's poster frame as a static cloud; INCLUDE keeps the
+   * clip. Only in builds with extension support.
+   */
+  temporal?: number;
 }
 
 export class GaussianCloud {

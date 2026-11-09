@@ -3,6 +3,7 @@ export enum SpzExtensionType {
   SPZ_ADOBE_coordinate_system = 0xADBE0003,
   SPZ_NIANTIC_georeference = 0x4E530001,
   SPZ_NIANTIC_custom_attribute = 0x4E530002,
+  SPZ_NIANTIC_temporal = 0x4E530003,
 }
 
 export enum GeoreferenceCrsEncoding {
@@ -68,7 +69,171 @@ export class SpzExtensionCustomAttributeNiantic extends SpzExtensionBase {
   getValues(): Float32Array;
   /** Replaces the values with a copy of the given array. */
   setValues(values: Float32Array | number[]): void;
+  /** [begin, end) when the attribute covers only those points (values then hold (end - begin) * dim floats); null for all. */
+  getPointRange(): [number, number] | null;
+  setPointRange(range: [number, number] | null): void;
   static type(): SpzExtensionType;
+}
+
+/** Whether loading keeps an animated clip's temporal record. */
+export enum TemporalLoad {
+  /** Load the poster frame as a static cloud (default). */
+  SKIP = 0,
+  /** Keep the animated clip. */
+  INCLUDE = 1,
+}
+
+/** The property a temporal channel animates. */
+export enum SpzTemporalTarget {
+  POSITION = 1,
+  ROTATION = 2,
+  OPACITY = 3,
+  /** Position and rotation together, driven by the record's rigid drivers. */
+  TRANSFORM = 6,
+}
+
+/** How a temporal channel animates its target. */
+export enum SpzTemporalChannelType {
+  /** Per-point polynomial in (t - posterTime). */
+  POLYNOMIAL = 1,
+  /** Per-point Gaussian visibility window: [center, ln sigma, peak opacity]. */
+  WINDOW = 2,
+  /** Per-point weighted blend of rigid drivers: J indices, then J weights. */
+  SKIN = 4,
+}
+
+/** How a temporal channel's values are stored. */
+export enum SpzChannelEncoding {
+  /** Lossless. */
+  FLOAT32 = 0,
+  /** bits-bit levels between each component's min and max over the covered points. */
+  RANGE = 1,
+  /** Integer multiples of a per-component step: error at most step / 2. */
+  STEP = 2,
+}
+
+export enum SpzTemporalChannelFlags {
+  NONE = 0,
+  /** Readers that don't support the channel must treat the cloud as static. */
+  REQUIRED = 1,
+}
+
+/** Playback hint for a standalone clip. */
+export enum SpzTemporalLoop {
+  ONCE = 0,
+  LOOP = 1,
+  PING_PONG = 2,
+}
+
+/**
+ * One animated property and its per-point data. Layouts (dim floats per covered point):
+ * POSITION/POLYNOMIAL dim 3·d, xyz terms of u^k; ROTATION/POLYNOMIAL dim 4·e, xyzw terms added to the core
+ * rotation; OPACITY/WINDOW dim 3, [center, ln sigma, peak], or dim 5 adding a hard interval [lo, hi);
+ * TRANSFORM/SKIN dim 2·J, J driver indices then J weights. u is time normalized over the point's visible
+ * span (see extensions/README.md).
+ */
+export interface SpzTemporalChannel {
+  target: SpzTemporalTarget;
+  type: SpzTemporalChannelType;
+  /** Defaults to REQUIRED when set from JS. */
+  flags?: SpzTemporalChannelFlags;
+  dim: number;
+  /** Defaults to FLOAT32 when set from JS. */
+  encoding?: SpzChannelEncoding;
+  /** RANGE only: 1-16. */
+  bits?: number;
+  /** STEP only: one positive step per component. */
+  steps?: Float32Array | number[];
+  /** [begin, end) when the channel covers only those points; null or omitted for every point. */
+  pointRange?: [number, number] | null;
+  /** dim floats per covered point, point-major. */
+  values: Float32Array | number[];
+}
+
+/**
+ * Makes the cloud an animated clip (4D Gaussian splatting), saved only in SPZ v4 files. The core attributes
+ * hold the scene at posterTime; channels, each holding its own per-point data, animate it over
+ * [clipStart, clipEnd). Channels are copied in and out: assign a new array to change them. See
+ * extensions/temporal-design.md for the evaluation equations.
+ */
+export class SpzExtensionTemporalNiantic extends SpzExtensionBase {
+  clipStart: number;
+  clipEnd: number;
+  posterTime: number;
+  loop: SpzTemporalLoop;
+  /** Playback hint; 0 = unspecified. */
+  nominalFps: number;
+  /** Renderers may skip Gaussians whose opacity at t is below this. */
+  opacityCutoff: number;
+  driverCount: number;
+  constructor();
+  getChannels(): SpzTemporalChannel[];
+  setChannels(channels: SpzTemporalChannel[]): void;
+  /** Strictly increasing keyframe times shared by every driver, seconds. */
+  getDriverKeyframeTimes(): Float64Array;
+  setDriverKeyframeTimes(times: Float64Array | number[]): void;
+  /** Optional labels (bone or object names): empty, or one per driver. */
+  getDriverNames(): string[];
+  setDriverNames(names: string[]): void;
+  /** driverCount * keyframes * 7 floats [tx ty tz qx qy qz qw], driver-major: transforms from the bind pose. */
+  getDriverTransforms(): Float32Array;
+  setDriverTransforms(values: Float32Array | number[]): void;
+  static type(): SpzExtensionType;
+}
+
+/** Maps seconds of playback to clip time using the clip's loop mode. */
+export function clipTime(clip: SpzExtensionTemporalNiantic, playbackSeconds: number): number;
+
+/**
+ * Plays an animated clip from SPZ bytes: holds it in the WASM heap and evaluates frames into reused buffers.
+ * Static files play as their single frame (isAnimated() is false). The arrays returned by positions(),
+ * rotations(), alphas() (and the static scales(), colors(), sh()) are views into WASM memory: valid until the
+ * next evaluate() or heap growth, so upload or copy them right away. Call delete() when done.
+ */
+export class TemporalPlayer {
+  constructor(bytes: Uint8Array | ArrayBuffer, to: CoordinateSystem);
+  isAnimated(): boolean;
+  numPoints(): number;
+  shDegree(): number;
+  clipStart(): number;
+  clipEnd(): number;
+  posterTime(): number;
+  loop(): SpzTemporalLoop;
+  nominalFps(): number;
+  opacityCutoff(): number;
+  /** Maps seconds of playback to clip time using the clip's loop mode. */
+  clipTime(playbackSeconds: number): number;
+  /** Evaluates clip time t (seconds) into the frame buffers, for every Gaussian. */
+  evaluate(t: number): void;
+  /** The most Gaussians evaluateVisible can return: size per-frame GPU buffers for this many. */
+  maxVisible(): number;
+  /**
+   * Evaluates only the Gaussians the clip's time index says may be visible at t, keeps those at least
+   * opacityCutoff opaque, and returns how many. Cost scales with what's visible, not the whole clip.
+   * Static clouds return every point.
+   */
+  evaluateVisible(t: number): number;
+  /** The visible Gaussians' indices, ascending: gather scales(), colors() and sh() through these. */
+  visibleIndices(): Uint32Array;
+  /** count * 3 floats. */
+  visiblePositions(): Float32Array;
+  /** count * 4 floats, xyzw. */
+  visibleRotations(): Float32Array;
+  /** count opacities as logits. */
+  visibleAlphas(): Float32Array;
+  /** numPoints * 3 floats. */
+  positions(): Float32Array;
+  /** numPoints * 4 floats, xyzw. */
+  rotations(): Float32Array;
+  /** numPoints opacities as logits (sigmoid gives [0, 1]). */
+  alphas(): Float32Array;
+  /** numPoints * 3 log scales (constant over time). */
+  scales(): Float32Array;
+  /** numPoints * 3 SH DC colors (constant over time). */
+  colors(): Float32Array;
+  /** Higher-order SH, coefficient-major with RGB innermost (constant over time). */
+  sh(): Float32Array;
+  delete(): void;
 }
 
 /** Returns true if the PLY extra element name is handled by an extension. */

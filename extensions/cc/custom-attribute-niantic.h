@@ -41,15 +41,18 @@ enum class SpzAttributeSemantic : uint8_t {
 // readers without this extension load the core cloud and skip the attribute.
 //
 // dim is the number of floats per point; semantic says whether coordinate conversions apply. The
-// name is a free-form label (e.g. "roughness", or a PLY property name) used to look it up.
+// name is a free-form label (e.g. "roughness", or a PLY property name) used to look it up. An
+// attribute covers every point, or only pointRange when it is set (e.g. just the moving points).
 //
 // Preconditions for saving (checked; saveSpz fails and logs the problem otherwise):
 //   - name is 1-65535 bytes of printable ASCII (0x20-0x7E), and unique among the cloud's custom
 //     attributes.
 //   - dim >= 1, and a multiple of 3 for semantic Spatial.
 //   - bits is 32 (float32, lossless) or 1-16 (each component quantized to 2^bits levels between
-//     its min and max over all points; values must then be finite).
-//   - values holds numPoints * dim floats, point-major.
+//     its min and max over the covered points; values must then be finite).
+//   - pointRange, when set, satisfies begin < end <= numPoints.
+//   - values holds coveredPoints * dim floats, point-major, where coveredPoints is numPoints, or
+//     end - begin with a pointRange.
 //   - The file version is 4 or later.
 struct SpzExtensionCustomAttributeNiantic : public SpzExtensionBase,
                                             public SpzFramedExtension,
@@ -59,7 +62,9 @@ struct SpzExtensionCustomAttributeNiantic : public SpzExtensionBase,
   uint16_t dim = 1;
   SpzAttributeSemantic semantic = SpzAttributeSemantic::Custom;
   uint8_t bits = 32;
+  std::optional<SpzPointRange> pointRange;
   std::vector<float> values;
+
 
   SpzExtensionCustomAttributeNiantic();
 

@@ -26,6 +26,8 @@ SOFTWARE.
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <limits>
 
 namespace spz {
 namespace {
@@ -84,4 +86,138 @@ bool decodeQuantizedPlanes(const uint8_t* in, size_t points, float min, float ma
                                         : decode<2>(in, points, min, step, top, values, stride);
 }
 
+std::optional<size_t> componentMajorBytes(size_t points, uint16_t dim, uint8_t bits) {
+  const size_t perComponent = isQuantizedBits(bits) ? quantizedLevelBytes(bits) : sizeof(float);
+  // points < 2^32, dim < 2^16 and perComponent <= 4, so this fits in 64 bits.
+  const uint64_t bytes = static_cast<uint64_t>(points) * dim * perComponent;
+  if (bytes > std::numeric_limits<size_t>::max()) return std::nullopt;
+  return static_cast<size_t>(bytes);
+}
+
+void componentRanges(const std::vector<float>& values, uint16_t dim, std::vector<float>* min,
+                     std::vector<float>* max) {
+  min->assign(dim, 0.0f);
+  max->assign(dim, 0.0f);
+  const size_t points = dim == 0 ? 0 : values.size() / dim;
+  if (points == 0) return;
+  std::copy(values.begin(), values.begin() + dim, min->begin());
+  std::copy(values.begin(), values.begin() + dim, max->begin());
+  for (size_t p = 1; p < points; ++p) {
+    for (size_t c = 0; c < dim; ++c) {
+      (*min)[c] = std::min((*min)[c], values[p * dim + c]);
+      (*max)[c] = std::max((*max)[c], values[p * dim + c]);
+    }
+  }
+}
+
+// Byte planes group similar bytes together, which compresses better than whole levels.
+std::vector<uint8_t> encodeComponentMajor(const std::vector<float>& values, size_t points,
+                                          uint16_t dim, uint8_t bits, const std::vector<float>& min,
+                                          const std::vector<float>& max) {
+  std::vector<uint8_t> out(*componentMajorBytes(points, dim, bits));
+  if (points == 0) return out;
+  if (isQuantizedBits(bits)) {
+    const size_t componentBytes = points * quantizedLevelBytes(bits);
+    for (size_t c = 0; c < dim; ++c) {
+      encodeQuantizedPlanes(&values[c], dim, points, min[c], max[c], bits, &out[c * componentBytes]);
+    }
+  } else {
+    for (size_t c = 0; c < dim; ++c) {
+      for (size_t p = 0; p < points; ++p) {
+        std::memcpy(&out[(c * points + p) * sizeof(float)], &values[p * dim + c], sizeof(float));
+      }
+    }
+  }
+  return out;
+}
+
+bool decodeComponentMajor(const uint8_t* bytes, size_t points, uint16_t dim, uint8_t bits,
+                          const std::vector<float>& min, const std::vector<float>& max,
+                          std::vector<float>* values) {
+  values->resize(points * dim);
+  if (points == 0) return true;
+  if (isQuantizedBits(bits)) {
+    const size_t componentBytes = points * quantizedLevelBytes(bits);
+    for (size_t c = 0; c < dim; ++c) {
+      if (!decodeQuantizedPlanes(bytes + c * componentBytes, points, min[c], max[c], bits,
+                                 &(*values)[c], dim)) {
+        return false;
+      }
+    }
+  } else {
+    for (size_t c = 0; c < dim; ++c) {
+      for (size_t p = 0; p < points; ++p) {
+        std::memcpy(&(*values)[p * dim + c], bytes + (c * points + p) * sizeof(float),
+                    sizeof(float));
+      }
+    }
+  }
+  return true;
+}
+
+namespace {
+// Signed levels zigzag to unsigned ones so small magnitudes of either sign keep the high bytes 0.
+uint32_t zigzag(int32_t level) {
+  return (static_cast<uint32_t>(level) << 1) ^ static_cast<uint32_t>(level >> 31);
+}
+
+int32_t unzigzag(uint32_t z) {
+  return static_cast<int32_t>(z >> 1) ^ -static_cast<int32_t>(z & 1);
+}
+
+// The level for v, or std::nullopt if v isn't finite or the level doesn't fit in 32 bits.
+std::optional<int32_t> stepLevel(float v, float step) {
+  const double level = std::round(static_cast<double>(v) / step);
+  if (!std::isfinite(level) || level < std::numeric_limits<int32_t>::min() ||
+      level > std::numeric_limits<int32_t>::max()) {
+    return std::nullopt;
+  }
+  return static_cast<int32_t>(level);
+}
+
+float levelValue(int32_t level, float step) {
+  return static_cast<float>(static_cast<double>(level) * step);
+}
+}  // namespace
+
+bool validSteps(const std::vector<float>& steps) {
+  return std::all_of(steps.begin(), steps.end(),
+                     [](float s) { return std::isfinite(s) && s > 0.0f; });
+}
+
+bool encodeComponentMajorSteps(const std::vector<float>& values, size_t points, uint16_t dim,
+                               const std::vector<float>& steps, std::vector<uint8_t>* out) {
+  out->assign(points * dim * kStepLevelBytes, 0);
+  for (size_t c = 0; c < dim; ++c) {
+    uint8_t* planes = out->data() + c * points * kStepLevelBytes;
+    for (size_t p = 0; p < points; ++p) {
+      const std::optional<int32_t> level = stepLevel(values[p * dim + c], steps[c]);
+      if (!level) return false;
+      const uint32_t z = zigzag(*level);
+      for (size_t k = 0; k < kStepLevelBytes; ++k) {
+        planes[k * points + p] = static_cast<uint8_t>(z >> (k * kBitsPerByte));
+      }
+    }
+  }
+  return true;
+}
+
+void decodeComponentMajorSteps(const uint8_t* bytes, size_t points, uint16_t dim,
+                               const std::vector<float>& steps, std::vector<float>* values) {
+  values->resize(points * dim);
+  for (size_t c = 0; c < dim; ++c) {
+    const uint8_t* planes = bytes + c * points * kStepLevelBytes;
+    for (size_t p = 0; p < points; ++p) {
+      uint32_t z = 0;
+      for (size_t k = 0; k < kStepLevelBytes; ++k) {
+        z |= static_cast<uint32_t>(planes[k * points + p]) << (k * kBitsPerByte);
+      }
+      (*values)[p * dim + c] = levelValue(unzigzag(z), steps[c]);
+    }
+  }
+}
+
+float quantizeToStep(float v, float step) { return levelValue(*stepLevel(v, step), step); }
+
 }  // namespace spz
+

@@ -8,6 +8,15 @@
   SpzExtensionGeoreferenceNiantic: typeof SpzExtensionGeoreferenceNiantic;
   SpzExtensionCustomAttributeNiantic: typeof SpzExtensionCustomAttributeNiantic;
   SpzAttributeSemantic: typeof SpzAttributeSemantic;
+  SpzExtensionTemporalNiantic: typeof SpzExtensionTemporalNiantic;
+  TemporalLoad: typeof TemporalLoad;
+  SpzTemporalTarget: typeof SpzTemporalTarget;
+  SpzTemporalChannelType: typeof SpzTemporalChannelType;
+  SpzTemporalChannelFlags: typeof SpzTemporalChannelFlags;
+  SpzTemporalLoop: typeof SpzTemporalLoop;
+  SpzChannelEncoding: typeof SpzChannelEncoding;
+  TemporalPlayer: typeof TemporalPlayer;
+  clipTime: typeof clipTime;
 
   /** Returns true if the PLY extra element name is handled by an extension. */
   isKnownPlyExtensionElement: (elementName: string) => boolean;

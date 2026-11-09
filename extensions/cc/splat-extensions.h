@@ -55,6 +55,7 @@ enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_coordinate_system = 0xADBE0003u,
   SPZ_NIANTIC_georeference = 0x4E530001u,
   SPZ_NIANTIC_custom_attribute = 0x4E530002u,
+  SPZ_NIANTIC_temporal = 0x4E530003u,
 };
 
 struct SpzExtensionBase {
@@ -88,6 +89,12 @@ bool readExact(std::istream& is, T& out) {
 // or -1 if the stream does not support positioning. Restores the original position on success.
 std::streamoff remainingBytes(std::istream& is);
 }  // namespace detail
+
+// The points [begin, end) of a cloud.
+struct SpzPointRange {
+  uint32_t begin = 0;
+  uint32_t end = 0;
+};
 
 // ---- Optional capabilities ----
 // An extension opts into a capability by also inheriting its interface; the library detects it
@@ -143,6 +150,18 @@ struct SpzCoordinateDependentExtension {
   // Returns a converted copy, or nullptr if c leaves the record unchanged. Records are shared
   // between clouds, so implementations must never modify *this.
   virtual SpzExtensionBasePtr withConvertedCoordinates(const CoordinateConverter& c) const = 0;
+};
+
+// Capability: the record holds per-point values tied to each point's core rotation quaternion,
+// such as terms added to it. Saving normalizes every core rotation and may negate it (q and -q are
+// the same rotation, and SPZ stores whichever sign packs better), so such values must be multiplied
+// by the same per-point factor to stay consistent with the stored rotation.
+struct SpzRotationCoupledExtension {
+  virtual ~SpzRotationCoupledExtension() = default;
+  // Returns a copy with each point's values multiplied by factors[point], or nullptr if the record
+  // is unaffected. Records are shared between clouds, so implementations must never modify *this.
+  // Precondition: factors holds one entry per point of the cloud.
+  virtual SpzExtensionBasePtr withRotationFactors(const std::vector<float>& factors) const = 0;
 };
 
 // Built-in extension types are declared in their own headers, e.g. safe-orbit-camera-adobe.h

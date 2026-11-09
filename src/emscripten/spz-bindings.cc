@@ -113,6 +113,10 @@ constexpr char kCustomAttributesNotStrings[] =
 // (none); null decodes all. Returns the problem, or nullptr.
 const char* unpackOptionsFromJs(const emscripten::val& js, spz::UnpackOptions* out) {
   out->to = js["to"].as<spz::CoordinateSystem>();
+  const emscripten::val temporal = js["temporal"];
+  if (!temporal.isUndefined()) {
+    out->temporal = static_cast<spz::TemporalLoad>(temporal.as<int>());
+  }
   const emscripten::val names = js["customAttributes"];
   if (names.isUndefined()) {
     return nullptr;

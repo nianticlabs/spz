@@ -37,17 +37,12 @@ SOFTWARE.
 
 namespace spz {
 namespace {
-constexpr uint8_t kFloatBits = 32;
 constexpr uint8_t kMaxSemantic = static_cast<uint8_t>(SpzAttributeSemantic::Spatial);
 // Spatial attributes are made of xyz triples.
 constexpr uint16_t kSpatialComponents = 3;
 // Names are printable ASCII, so they are safe to log and to hand to Python and JS as strings.
 constexpr char kFirstPrintable = 0x20;
 constexpr char kLastPrintable = 0x7E;
-
-size_t bytesPerComponent(uint8_t bits) {
-  return isQuantizedBits(bits) ? quantizedLevelBytes(bits) : sizeof(float);
-}
 
 bool isPrintable(const std::string& s) {
   return std::all_of(s.begin(), s.end(),
@@ -66,6 +61,7 @@ struct Descriptor {
   uint8_t bits = 0;
   std::vector<float> min;  // per component, only when quantized
   std::vector<float> max;
+  std::optional<SpzPointRange> pointRange;
 };
 
 // Returns why the descriptor fields are invalid, or nullptr if they are valid.
@@ -78,80 +74,22 @@ const char* descriptorProblem(const std::string& name, uint16_t dim, SpzAttribut
   if (static_cast<uint8_t>(semantic) > kMaxSemantic) return "unknown semantic";
   if (semantic == SpzAttributeSemantic::Spatial && dim % kSpatialComponents != 0)
     return "SPATIAL attributes need dim to be a multiple of 3";
-  if (bits != kFloatBits && !isQuantizedBits(bits)) return "bits must be 1-16 or 32";
+  if (bits != kFloat32Bits && !isQuantizedBits(bits)) return "bits must be 1-16 or 32";
   return nullptr;
 }
 
-// Byte size of the component-major data for numPoints points, or std::nullopt if it can't be
-// addressed on this platform (e.g. on wasm32).
-std::optional<size_t> dataSize(int32_t numPoints, uint16_t dim, uint8_t bits) {
-  if (numPoints < 0) return std::nullopt;
-  // numPoints < 2^31, dim < 2^16 and bytesPerComponent <= 4, so this fits in 64 bits.
-  const uint64_t bytes = static_cast<uint64_t>(numPoints) * dim * bytesPerComponent(bits);
-  if (bytes > std::numeric_limits<size_t>::max()) return std::nullopt;
-  return static_cast<size_t>(bytes);
+// Returns why range doesn't fit a cloud of numPoints points, or nullptr if it does (or is unset).
+const char* rangeProblem(const std::optional<SpzPointRange>& range, int32_t numPoints) {
+  if (!range) return nullptr;
+  if (range->begin >= range->end) return "point range must have begin < end";
+  if (numPoints < 0 || range->end > static_cast<uint32_t>(numPoints))
+    return "point range exceeds the cloud's points";
+  return nullptr;
 }
 
-void computeRanges(const std::vector<float>& values, Descriptor* d) {
-  d->min.assign(d->dim, 0.0f);
-  d->max.assign(d->dim, 0.0f);
-  const size_t points = values.size() / d->dim;
-  if (points == 0) return;
-  std::copy(values.begin(), values.begin() + d->dim, d->min.begin());
-  std::copy(values.begin(), values.begin() + d->dim, d->max.begin());
-  for (size_t p = 1; p < points; ++p) {
-    for (size_t c = 0; c < d->dim; ++c) {
-      d->min[c] = std::min(d->min[c], values[p * d->dim + c]);
-      d->max[c] = std::max(d->max[c], values[p * d->dim + c]);
-    }
-  }
-}
-
-// Stores point-major values component-major (every point's first component, then every point's
-// second, ...), which groups similar values together and compresses better; byte planes do the same
-// for the bytes of multi-byte levels.
-std::vector<uint8_t> encodeValues(const std::vector<float>& values, const Descriptor& d,
-                                  size_t points, size_t bytes) {
-  std::vector<uint8_t> out(bytes);
-  if (points == 0) return out;
-  if (isQuantizedBits(d.bits)) {
-    const size_t componentBytes = points * quantizedLevelBytes(d.bits);
-    for (size_t c = 0; c < d.dim; ++c) {
-      encodeQuantizedPlanes(&values[c], d.dim, points, d.min[c], d.max[c], d.bits,
-                            &out[c * componentBytes]);
-    }
-  } else {
-    for (size_t c = 0; c < d.dim; ++c) {
-      for (size_t p = 0; p < points; ++p) {
-        std::memcpy(&out[(c * points + p) * sizeof(float)], &values[p * d.dim + c], sizeof(float));
-      }
-    }
-  }
-  return out;
-}
-
-// Inverse of encodeValues. Returns false if a quantized level exceeds 2^bits - 1.
-bool decodeValues(const std::vector<uint8_t>& bytes, const Descriptor& d, size_t points,
-                  std::vector<float>* values) {
-  values->resize(points * d.dim);
-  if (points == 0) return true;
-  if (isQuantizedBits(d.bits)) {
-    const size_t componentBytes = points * quantizedLevelBytes(d.bits);
-    for (size_t c = 0; c < d.dim; ++c) {
-      if (!decodeQuantizedPlanes(&bytes[c * componentBytes], points, d.min[c], d.max[c], d.bits,
-                                 &(*values)[c], d.dim)) {
-        return false;
-      }
-    }
-  } else {
-    for (size_t c = 0; c < d.dim; ++c) {
-      for (size_t p = 0; p < points; ++p) {
-        std::memcpy(&(*values)[p * d.dim + c], &bytes[(c * points + p) * sizeof(float)],
-                    sizeof(float));
-      }
-    }
-  }
-  return true;
+// The number of points the values describe. Precondition: rangeProblem(range, numPoints) is null.
+size_t coveredPoints(const std::optional<SpzPointRange>& range, int32_t numPoints) {
+  return range ? range->end - range->begin : static_cast<size_t>(numPoints);
 }
 
 void writeRecord(std::ostream& os, const Descriptor& d,
@@ -169,6 +107,10 @@ void writeRecord(std::ostream& os, const Descriptor& d,
   payload.write(reinterpret_cast<const char*>(d.min.data()), d.min.size() * sizeof(float));
   payload.write(reinterpret_cast<const char*>(d.max.data()), d.max.size() * sizeof(float));
   writeFrameTable(payload, frames);
+  if (d.pointRange) {
+    writeValue(payload, d.pointRange->begin);
+    writeValue(payload, d.pointRange->end);
+  }
   writeExtensionRecord(os, SpzExtensionType::SPZ_NIANTIC_custom_attribute, payload.str());
 }
 
@@ -181,7 +123,9 @@ SpzExtensionBasePtr resolveRecord(const Descriptor& d, int32_t numPoints,
   rec->dim = d.dim;
   rec->semantic = d.semantic;
   rec->bits = d.bits;
-  if (!decodeValues(data, d, static_cast<size_t>(numPoints), &rec->values)) {
+  rec->pointRange = d.pointRange;
+  if (!decodeComponentMajor(data.data(), coveredPoints(d.pointRange, numPoints), d.dim, d.bits,
+                            d.min, d.max, &rec->values)) {
     logProblem(d.name, "quantized level out of range");
     return nullptr;
   }
@@ -202,6 +146,7 @@ SpzExtensionBase* SpzExtensionCustomAttributeNiantic::copyAsRawData() const {
 
 uint32_t SpzExtensionCustomAttributeNiantic::payloadBytes() const { return 0; }
 
+
 void SpzExtensionCustomAttributeNiantic::write(std::ostream& /*os*/) const {
   logProblem(name, "not written: its values can only be saved by saveSpz in SPZ version 4 files");
 }
@@ -212,24 +157,29 @@ std::optional<SpzFrameWritePlan> SpzExtensionCustomAttributeNiantic::planFrameWr
     logProblem(name, problem);
     return std::nullopt;
   }
-  const std::optional<size_t> bytes = dataSize(numPoints, dim, bits);
+  if (const char* problem = rangeProblem(pointRange, numPoints)) {
+    logProblem(name, problem);
+    return std::nullopt;
+  }
+  const size_t points = coveredPoints(pointRange, numPoints);
+  const std::optional<size_t> bytes = componentMajorBytes(points, dim, bits);
   if (!bytes) {
     logProblem(name, "too large for this platform");
     return std::nullopt;
   }
-  if (values.size() != static_cast<size_t>(numPoints) * dim) {
-    logProblem(name, "values must hold numPoints * dim floats");
+  if (values.size() != points * dim) {
+    logProblem(name, "values must hold dim floats for every covered point");
     return std::nullopt;
   }
-  Descriptor d{name, dim, semantic, bits, {}, {}};
+  Descriptor d{name, dim, semantic, bits, {}, {}, pointRange};
   if (isQuantizedBits(bits)) {
     if (!std::all_of(values.begin(), values.end(), [](float v) { return std::isfinite(v); })) {
       logProblem(name, "quantized values must be finite");
       return std::nullopt;
     }
-    computeRanges(values, &d);
+    componentRanges(values, dim, &d.min, &d.max);
   }
-  std::vector<uint8_t> data = encodeValues(values, d, static_cast<size_t>(numPoints), *bytes);
+  std::vector<uint8_t> data = encodeComponentMajor(values, points, dim, bits, d.min, d.max);
   return SpzFrameWritePlan{std::move(data),
                       [d](std::ostream& os, const std::vector<SpzFrameLocation>& frames) {
                         writeRecord(os, d, frames);
@@ -288,14 +238,29 @@ std::optional<SpzFrameReadPlan> parseCustomAttributeNiantic(std::istream& is) {
     logProblem(d.name, "truncated frame table");
     return std::nullopt;
   }
-  // Bytes after the frame table are ignored: later versions of the record may append fields.
+  // An optional point range follows the frame table; bytes after it are ignored, since later
+  // versions of the record may append fields.
+  if (detail::remainingBytes(is) > 0) {
+    SpzPointRange range;
+    if (!detail::readExact(is, range.begin) || !detail::readExact(is, range.end)) {
+      logProblem(d.name, "truncated point range");
+      return std::nullopt;
+    }
+    d.pointRange = range;
+  }
   const uint16_t dim = d.dim;
   const uint8_t bits = d.bits;
+  const std::optional<SpzPointRange> pointRange = d.pointRange;
   std::string key = d.name;
+  std::string name = d.name;
   return SpzFrameReadPlan{
     SpzExtensionType::SPZ_NIANTIC_custom_attribute, std::move(*frames), std::move(key),
-    [dim, bits](int32_t numPoints) -> std::optional<uint64_t> {
-      return dataSize(numPoints, dim, bits);
+    [dim, bits, pointRange, name](int32_t numPoints) -> std::optional<uint64_t> {
+      if (const char* problem = rangeProblem(pointRange, numPoints)) {
+        logProblem(name, problem);
+        return std::nullopt;
+      }
+      return componentMajorBytes(coveredPoints(pointRange, numPoints), dim, bits);
     },
     [d = std::move(d)](int32_t numPoints, std::vector<uint8_t>&& data) {
       return resolveRecord(d, numPoints, data);

@@ -146,6 +146,12 @@ struct PackOptions {
   uint8_t shRestBits = DEFAULT_SH_REST_BITS;  // Bits for SH degree 2+ coefficients
 };
 
+// Whether loading keeps an animated clip's temporal record (SPZ_NIANTIC_temporal).
+enum class TemporalLoad : uint8_t {
+  Skip = 0,     // load the poster frame as a static cloud
+  Include = 1,  // keep the animated clip
+};
+
 // Options for loadSpz, or for loadSpzPacked followed by unpackGaussians.
 struct UnpackOptions {
   CoordinateSystem to = CoordinateSystem::UNSPECIFIED;
@@ -153,6 +159,10 @@ struct UnpackOptions {
   // Custom attributes to decode, by name; std::nullopt decodes all. None by default, since their
   // memory scales with point count. Use std::nullopt when loading to re-save, or they are lost.
   std::optional<std::vector<std::string>> customAttributes = std::vector<std::string>{};
+
+  // Skip by default: most loaders only render a still. std::nullopt customAttributes (decode
+  // everything, for re-saving) implies Include.
+  TemporalLoad temporal = TemporalLoad::Skip;
 };
 
 // Structure for PLY extra elements (non-vertex elements)

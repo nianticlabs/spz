@@ -356,6 +356,23 @@ inline void convertDirection(const CoordinateConverter &c, float *xyz) {
   }
 }
 
+// Whether c leaves rotation quaternions unchanged.
+inline bool isIdentityRotationTransform(const CoordinateConverter &c) {
+  return !c.rotFlipQFunc && c.flipQ[0] == 1.0f && c.flipQ[1] == 1.0f && c.flipQ[2] == 1.0f;
+}
+
+// Applies c to an xyzw quaternion (or any quaternion-valued term of one) in place, exactly as core
+// rotations are converted. Precondition: xyzw points to 4 floats.
+inline void convertQuaternion(const CoordinateConverter &c, float *xyzw) {
+  if (c.rotFlipQFunc) {
+    c.rotFlipQFunc(xyzw);
+  } else {
+    xyzw[0] *= c.flipQ[0];
+    xyzw[1] *= c.flipQ[1];
+    xyzw[2] *= c.flipQ[2];
+  }
+}
+
 #ifdef SPZ_BUILD_EXTENSIONS
 // Returns the records with their directional data converted by c. Records unaffected by coordinate
 // conversion are shared with the input rather than copied, and input records are never modified.

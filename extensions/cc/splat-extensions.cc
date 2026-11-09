@@ -101,6 +101,16 @@ bool tryParseExtension(std::istream& is, std::vector<SpzParsedExtension>& out) {
         out.push_back({nullptr, std::move(*readPlan)});
       return true;
     }
+    case SpzExtensionType::SPZ_NIANTIC_temporal: {
+      std::vector<char> payload(byteLength);
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      std::istringstream iss(std::string(payload.data(), payload.size()));
+      auto readPlan = parseTemporalNiantic(iss);
+      if (readPlan)
+        out.push_back({nullptr, std::move(*readPlan)});
+      return true;
+    }
     case SpzExtensionType::SPZ_NIANTIC_georeference: {
       std::vector<char> payload(byteLength);
       if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))

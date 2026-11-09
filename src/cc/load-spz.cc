@@ -222,10 +222,36 @@ bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out
   return success;
 }
 
+// The factor that maps rotation to the quaternion packing stores: 1 / |rotation|, negated when
+// packing stores -q. Coordinate conversion doesn't change the norm or the factor. Rotation-coupled
+// extension data is multiplied by it to stay consistent with the stored rotation.
+float storedRotationFactor(const float rotation[4], bool negated) {
+  const float norm = std::sqrt(rotation[0] * rotation[0] + rotation[1] * rotation[1] +
+                               rotation[2] * rotation[2] + rotation[3] * rotation[3]);
+  const float scale = norm > 0.0f ? 1.0f / norm : 1.0f;
+  return negated ? -scale : scale;
+}
+
+#ifdef SPZ_BUILD_EXTENSIONS
+// Returns the records with rotation-coupled data multiplied by each point's stored rotation factor.
+std::vector<SpzExtensionBasePtr> applyRotationFactors(
+    const std::vector<SpzExtensionBasePtr> &extensions, const std::vector<float> &factors) {
+  std::vector<SpzExtensionBasePtr> result;
+  result.reserve(extensions.size());
+  for (const auto &ext : extensions) {
+    const auto *coupled = dynamic_cast<const SpzRotationCoupledExtension *>(ext.get());
+    SpzExtensionBasePtr scaled = coupled ? coupled->withRotationFactors(factors) : nullptr;
+    result.push_back(scaled ? std::move(scaled) : ext);
+  }
+  return result;
+}
+#endif
+
 // Backward compatibility function for version 2. In version 2, rotations are represented as the
 // (x, y, z) components of the normalized rotation quaternion, with each component encoded as an
 // 8-bit signed integer. Version 3+ uses packQuaternionSmallestThree for better accuracy.
-void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const CoordinateConverter& c) {
+// Returns the factor that took rotation to the stored quaternion (see storedRotationFactor).
+float packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const CoordinateConverter& c) {
     // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
     // NOTE: These are already in xyzw order.
     Quat4f q = normalized(quat4f(rotation));
@@ -236,14 +262,17 @@ void packQuaternionFirstThree(uint8_t r[3], const float rotation[4], const Coord
       q[1] *= c.flipQ[1];
       q[2] *= c.flipQ[2];
     }
-    q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
+    const bool negateW = q[3] < 0;
+    q = times(q, (negateW ? -127.5f : 127.5f));
     q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
     r[0] = toUint8(q[0]);
     r[1] = toUint8(q[1]);
     r[2] = toUint8(q[2]);
+    return storedRotationFactor(rotation, negateW);
 }
 
-void packQuaternionSmallestThree(uint8_t r[4], const float rotation[4], const CoordinateConverter& c) {
+// Returns the factor that took rotation to the stored quaternion (see storedRotationFactor).
+float packQuaternionSmallestThree(uint8_t r[4], const float rotation[4], const CoordinateConverter& c) {
   // Normalize the quaternion
   Quat4f q = normalized(quat4f(&rotation[0]));
   if (c.rotFlipQFunc) { c.rotFlipQFunc(q.data()); }
@@ -280,6 +309,7 @@ void packQuaternionSmallestThree(uint8_t r[4], const float rotation[4], const Co
   r[1] = (comp >> 8) & 0xff;
   r[2] = (comp >> 16) & 0xff;
   r[3] = (comp >> 24) & 0xff;
+  return storedRotationFactor(rotation, negate != 0);
 }
 
 PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
@@ -355,17 +385,23 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
     packed.scales[i] = toUint8((g.scales[i] + 10.0f) * 16.0f);
   }
 
+  std::vector<float> rotationFactors(numPoints);
   if (packed.usesQuaternionSmallestThree) {
     for (size_t i = 0; i < numPoints; i++)
     {
-      packQuaternionSmallestThree(&packed.rotations[4 * i], &g.rotations[4 * i], c);
+      rotationFactors[i] =
+        packQuaternionSmallestThree(&packed.rotations[4 * i], &g.rotations[4 * i], c);
     }
   } else {
     for (size_t i = 0; i < numPoints; i++)
     {
-      packQuaternionFirstThree(&packed.rotations[3 * i], &g.rotations[4 * i], c);
+      rotationFactors[i] =
+        packQuaternionFirstThree(&packed.rotations[3 * i], &g.rotations[4 * i], c);
     }
   }
+#ifdef SPZ_BUILD_EXTENSIONS
+  packed.extensions = applyRotationFactors(packed.extensions, rotationFactors);
+#endif
 
   for (size_t i = 0; i < numPoints; i++) {
     // Apply sigmoid activation to alpha
@@ -676,12 +712,15 @@ bool hasExtensionZone(const NgspFileHeader &header, size_t size) {
 
 
 #ifdef SPZ_BUILD_EXTENSIONS
-// Keeps every framed record except unlisted custom attributes.
+// Keeps every framed record except unlisted custom attributes, and the temporal record unless it
+// was asked for. Records the decoder keeps pull in the custom attributes they depend on.
 SpzFrameReadFilter framedRecordFilter(const UnpackOptions &options) {
   if (!options.customAttributes) {
     return [](const SpzFrameReadPlan &) { return true; };
   }
-  return [names = *options.customAttributes](const SpzFrameReadPlan &readPlan) {
+  const bool temporal = options.temporal == TemporalLoad::Include;
+  return [names = *options.customAttributes, temporal](const SpzFrameReadPlan &readPlan) {
+    if (readPlan.type == SpzExtensionType::SPZ_NIANTIC_temporal) return temporal;
     if (readPlan.type != SpzExtensionType::SPZ_NIANTIC_custom_attribute) return true;
     return readPlan.key && std::find(names.begin(), names.end(), *readPlan.key) != names.end();
   };

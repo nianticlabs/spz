@@ -213,18 +213,22 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
   u32 frameCount
   frameCount x { u64 frameOffset; u64 compressedSize; u64 uncompressedSize; }   // the frame table: one
                                                                                  // entry per extension frame
+  u32 pointBegin, u32 pointEnd          // optional: the attribute covers points [pointBegin, pointEnd)
   ```
 
-  Joining the extension frames' decompressed payloads in order gives the values component-major: every point's first component, then every point's second, and so on. float32 components are 4 bytes, little-endian. Quantized components store level `round((v - min) / (max - min) * (2^bits - 1))`, rounding halves away from zero, or 0 when `min == max`; decoded in double precision as `min + level * ((max - min) / (2^bits - 1))`. A level takes `ceil(bits / 8)` bytes, stored as byte planes: a component's data is every point's least significant level byte, then (for `bits` 9–16) every point's most significant byte. Splitting the bytes this way compresses better than storing them together; with `bits` ≤ 8 there is a single plane, one byte per point.
+  Without the point range, an attribute covers every point. With it, values exist only for points `pointBegin` to `pointEnd - 1`, so an attribute that only some points need (e.g. motion for the moving part of an animated clip, with those points written first) costs nothing for the rest. In what follows, `coveredPoints` is `numPoints`, or `pointEnd - pointBegin` with a range.
+
+  Joining the extension frames' decompressed payloads in order gives the values component-major: every covered point's first component, then every covered point's second, and so on. float32 components are 4 bytes, little-endian. Quantized components store level `round((v - min) / (max - min) * (2^bits - 1))`, rounding halves away from zero, or 0 when `min == max`; decoded in double precision as `min + level * ((max - min) / (2^bits - 1))`. A level takes `ceil(bits / 8)` bytes, stored as byte planes: a component's data is every point's least significant level byte, then (for `bits` 9–16) every point's most significant byte. Splitting the bytes this way compresses better than storing them together; with `bits` ≤ 8 there is a single plane, one byte per point.
 
   Readers MUST drop the attribute (the core cloud still loads) when:
   - `nameLength` is 0, or the name has a byte outside printable ASCII (0x20-0x7E);
-  - `semantic` is unknown, or `SPATIAL` with `dim` not a multiple of 3, or `dim` is 0;
+  - `semantic` is unknown, `SPATIAL` with `dim` not a multiple of 3, or `dim` is 0;
   - `bits` is not 32 or 1–16, a quantized range isn't finite with `min <= max`, or a decoded level exceeds `2^bits - 1`;
-  - the extension frames' decompressed sizes don't add up to `numPoints * dim * (bits == 32 ? 4 : ceil(bits / 8))`;
+  - 1–7 bytes follow the frame table (a truncated point range), or the point range doesn't satisfy `pointBegin < pointEnd <= numPoints`;
+  - the extension frames' decompressed sizes don't add up to `coveredPoints * dim * (bits == 32 ? 4 : ceil(bits / 8))`;
   - another custom attribute in the file with a well-formed descriptor (valid name, `dim`, `semantic` and `bits`) has the same name, compared byte for byte without Unicode normalization. This applies even when that attribute's extension frames or values are invalid; an attribute whose descriptor is malformed is dropped on its own and doesn't count.
 
-  Readers MUST ignore bytes after the frame table: later versions may append fields there.
+  Readers MUST ignore bytes after the point range: later versions may append fields there, and writers that append them write the point range too (`0, numPoints` for every point). Readers that predate the point range ignore it, see a size mismatch, and drop ranged attributes, which is safe.
 
   An attribute of any size is supported; large ones simply have more extension frames. Readers that can't hold the decoded attribute in memory (e.g. over 4 GiB on wasm32) drop it and still load the core cloud.
 
@@ -263,6 +267,126 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
   const all = spz.loadSpzFromBuffer(bytes, { to: spz.CoordinateSystem.RUB, customAttributes: null });
   ```
 
+- **SPZ_NIANTIC_temporal** (`0x4E530003`) — Makes the cloud an animated clip (4D Gaussian splatting). Implemented in `extensions/cc/temporal-niantic.h` and `temporal-niantic.cc`; the design and its rationale are in [temporal-design.md](temporal-design.md). At most one per file; v4 only. A [conformance corpus](../tests/conformance) and a [Kaitai Struct grammar](spz-v4.ksy) accompany it.
+
+  The core attributes hold the scene at `posterTime`, so readers without this extension render a correct still frame. **Channels** animate it over `[clipStart, clipEnd)`. Each animates one target property with one type, and holds its own per-point data in the record's extension frames:
+
+  | Target | Type | `dim` | Per-point data |
+  | --- | --- | --- | --- |
+  | `POSITION` (1) | `POLYNOMIAL` (1) | 3·d (d = 1–3) | `d_1..d_d`: xyz displacement terms |
+  | `ROTATION` (2) | `POLYNOMIAL` (1) | 4·e (e = 1–3) | `e_1..e_e`: xyzw terms added to the core rotation |
+  | `OPACITY` (3) | `WINDOW` (2) | 3, or 5 | `[c, ln σ, peak]`: center and width in seconds, peak opacity in [0, 1]; dim 5 adds a hard visibility interval `[lo, hi)` in seconds |
+  | `TRANSFORM` (6) | `SKIN` (4) | 2·J (J = 1–8) | J driver indices (rounded to integers), then J non-negative weights |
+
+  Targets 4 (scale) and 5 (color) and type 3 (per-point keyframes) are reserved. A channel covers every point, or only a point range.
+
+  **Time frames.** Each point's polynomials are measured from an origin `o` and normalized by a span `s`, both derived (not stored) from the clip and the point's window:
+  - The point's visible span `[lo, hi]` is the clip, intersected with `[c − Kσ, c + Kσ]` where `K = sqrt(−2 ln opacityCutoff)` (unbounded when the cutoff is 0) and with its interval, when it has a window and an interval.
+  - `o = clamp(posterTime, lo, hi)` and `s = hi − lo`. If the span is empty, `o = posterTime` and `s = clipEnd − clipStart`.
+
+  A point visible at `posterTime` therefore has `o = posterTime`, so the core attributes stay the poster frame. A point invisible then is stored as it is at the nearest edge of its visible span: it's transparent in the poster frame and stays near where it's actually seen. With `u = (t − o) / s` in [−1, 1] over the visible span, a term `d_k` is the displacement it causes across the span, so a term's quantization error bounds its position error for short- and long-lived Gaussians alike.
+
+  **Evaluation** at clip time `t` (each step only for points its channel covers), with core position `p`, rotation `q` and alpha `α₀`:
+
+  ```
+  p_l = p + Σ_k d_k u^k                       q_l = normalize(q + Σ_k e_k u^k)
+  skinned (weights w_j > 0, ŵ_j = w_j / Σ w):
+    p(t) = Σ_j ŵ_j (R_j(t) p_l + T_j(t))      q(t) = normalize(Σ_j ŵ_j s_j r_j(t)) ⊗ q_l
+    s_j = ±1 so that r_j · r_first >= 0, r_first the first driver with ŵ > 0
+  α(t) = peak · exp(-½ ((t - c) / σ)²), σ = exp(ln σ); 0 outside [lo, hi) when dim is 5   (else α₀)
+  α(t) = 0 when t ∉ [clipStart, clipEnd); scales and SH don't change
+  ```
+
+  Drivers are rigid transforms `(R_j, T_j)` from the bind pose (the core state), keyframed at times shared by every driver: translation interpolated linearly, rotation by shortest-path slerp, held constant before the first and after the last keyframe. Drivers may be named (bones, objects). A skinned clip's core attributes are its bind pose; writers should make that a real frame and set `posterTime` to it. Renderers MAY skip Gaussians whose `α(t)` is below `opacityCutoff`.
+
+  Rotation terms are added to the stored `q`, so they follow every linear map applied to it. Coordinate conversions convert each xyzw term like `q`. Saving stores `q / |q|`, negated when that packs better (`-q` is the same rotation), so writers multiply each point's terms by the same factor `±1 / |q|`. Position terms convert like positions, and drivers `(R, T)` become `(C R Cᵀ, C T)` for a conversion `C`. The library does all of this.
+
+  **Encodings.** Each channel stores its values in one of three ways:
+  - `FLOAT32` (0): lossless.
+  - `RANGE` (1): `bits`-bit levels between each component's min and max over the covered points (the custom-attribute encoding). One outlier coarsens the step for every point.
+  - `STEP` (2): per-component steps; each value is stored as the integer `round(v / step)`, zigzag-coded to a u32, then split into 4 byte planes, least significant first, component-major. It decodes in double precision as `level · step`. The error is at most `step / 2` whatever the value, so a file states its precision. Writers MUST fail rather than store a value more than 2³¹ steps from 0.
+
+  The library's builder uses `STEP` with steps of twice the requested error bounds (0.5 mm per position term, 50 µs for times by default). `channelMaxError` reports a channel's bound per component.
+
+  **Payload:**
+
+  ```
+  f64 clipStart, f64 clipEnd, f64 posterTime   // seconds; clipStart < clipEnd, clipStart <= posterTime < clipEnd
+  u8  loop                                     // playback hint: 0 ONCE, 1 LOOP, 2 PING_PONG (unknown: ONCE)
+  u8  reserved                                 // 0
+  f32 nominalFps                               // playback hint, 0 = unspecified
+  f32 opacityCutoff                            // in [0, 1)
+  u8  channelCount
+  channelCount x {
+    u32 descriptorBytes                        // the bytes that follow, so unknown parameters can be skipped
+    u8  target, u8 type, u8 flags              // flags bit 0: REQUIRED
+    u16 dim                                    // floats per covered point, >= 1
+    u32 pointBegin, u32 pointEnd               // pointEnd 0: every point; else points [pointBegin, pointEnd)
+    u64 dataBytes                              // the channel's encoded data size
+    u8  encoding                               // 0 FLOAT32, 1 RANGE, 2 STEP
+    RANGE: u8 bits, f32 min[dim], f32 max[dim] // STEP: f32 step[dim]; FLOAT32: nothing
+    ...                                        // readers ignore further descriptor bytes
+  }
+  u32 driverCount, u32 keyframeCount           // both 0, or both > 0
+  f64 keyframeTimes[keyframeCount]             // strictly increasing
+  u32 nameCount                                // 0 or driverCount
+  nameCount x { u16 length, u8 name[length] }  // printable ASCII, 1-65535 bytes
+  u32 frameCount
+  frameCount x { u64 frameOffset; u64 compressedSize; u64 uncompressedSize; }
+  u32 binCount                                 // the time index (optional: absent in older files)
+  f64 boundaries[binCount + 1]                 // increasing, clipStart .. clipEnd
+  binCount x { u32 pointBegin, u32 pointEnd }  // points that may be visible in [boundaries[b], boundaries[b+1])
+  ```
+
+  **Time index.** Writers store which points may be visible when, so renderers evaluate only those:
+  - Each bin's range MUST contain every point whose opacity reaches `opacityCutoff` at some time in the bin, judged from the values readers decode. It is a superset, not an exact set.
+  - Writers sort points by when they become visible, so ranges stay tight.
+  - **Bin boundaries:** the distinct bounds of the windows' hard intervals when the clip has them (so a frame sequence gets one bin per frame), else equal bins, one per frame at `nominalFps`, else 64.
+  - **Use:** a renderer evaluates `range(bin(t))` and sizes per-frame buffers for the largest bin.
+  - **This library:** it recomputes the index from the data on load rather than trust the file's copy, which is for other readers.
+
+  Joining the extension frames' decompressed payloads gives the driver data, then each channel's `dataBytes`, in channel order:
+  - **Drivers:** `driverCount * 7 * keyframeCount` float32 values. For each driver and each of its components `[tx ty tz qx qy qz qw]`, every keyframe's value: index `(driver * 7 + component) * keyframeCount + keyframe`.
+  - **Channels:** for known encodings, `dataBytes` MUST equal `coveredPoints * dim * (RANGE: ceil(bits / 8); FLOAT32, STEP: 4)`.
+
+  An optional channel in an encoding a reader doesn't know is skipped using `descriptorBytes` and `dataBytes`. Readers MUST ignore bytes after the time index.
+
+  **Fallback.** Readers MUST treat the cloud as static (render the core attributes, dropping the record) when:
+  - the record's times are invalid;
+  - two channels share a target;
+  - a `REQUIRED` channel's target/type isn't supported, or it uses an unknown encoding;
+  - a supported channel's `dim` doesn't fit its layout;
+  - a channel's encoding parameters, point range or `dataBytes` are invalid, or its window interval isn't finite;
+  - a skin index is outside `[0, driverCount)` or a weight is negative;
+  - a `TRANSFORM` channel has no drivers;
+  - the driver data or names are malformed (non-finite, zero quaternions, unordered keyframe times, name counts other than 0 or `driverCount`).
+
+  Optional channels with a target/type they don't support but a known encoding are kept and otherwise ignored.
+
+  **Objects.** Per-Gaussian object membership, in static and animated clouds alike, is a custom attribute named `object_id`: `dim` 1, float32, non-negative integers, 0 for background. A rigid object in a clip is a driver, named after it, that its Gaussians skin to with weight 1; `tools/4dgs/spz4d.py` has helpers for both.
+
+  **Loading** keeps the clip only on request: `UnpackOptions::temporal = TemporalLoad::Include` (`temporal = spz.TemporalLoad.INCLUDE` in Python, `temporal: spz.TemporalLoad.INCLUDE` in JavaScript). The default loads the poster frame as a static cloud and never decompresses the clip's data. `customAttributes = null` decodes everything, the clip included, for re-saving.
+
+  ```python
+  options = spz.UnpackOptions()
+  options.temporal = spz.TemporalLoad.INCLUDE
+  clip = spz.load_spz("clip.spz", options)
+  frame = spz.evaluate_temporal(clip, 1.25)       # a static GaussianCloud at t = 1.25 s
+  built = spz.build_temporal_cloud(cloud, clip_start=0, clip_end=5, poster_time=2.5, t_center=...,
+                                   t_log_sigma=..., position_coefficients=..., position_degree=1,
+                                   position_error=5e-4)
+  ```
+
+  ```js
+  const player = new spz.TemporalPlayer(bytes, spz.CoordinateSystem.RUB);
+  const count = player.evaluateVisible(player.clipTime(seconds));  // only what's visible now
+  // upload count Gaussians from visiblePositions(), visibleRotations(), visibleAlphas(), gathering
+  // scales()/colors() through visibleIndices(); size buffers for player.maxVisible()
+  ```
+
+  C++ has `bindTemporalModel`, `evaluateTemporal`, `evaluateTemporalInto` (every point), `computeTemporalTimeIndex` and `evaluateVisibleTemporal` (only the points visible at t; per-frame cost scales with what's on screen), `temporalTimeFrame`, `channelMaxError`, `clipTime` and `buildTemporalCloud`. Converters for trained 4DGS models are in [tools/4dgs](../tools/4dgs/README.md).
+
+  **Conformance.** [tests/conformance](../tests/conformance) holds small files every reader must handle, each with the frames it must produce: every encoding, point ranges, intervals, skinning, rigid objects, coordinate conversion, unknown optional channels, and malformed variants that must load as static. The C++ reader is checked by `tests/python/test_conformance.py` and the WASM reader by `tools/4dgs/check_conformance.mjs`. Regenerate the corpus deliberately with `python tools/4dgs/conformance.py write tests/conformance`.
 
 - **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `extensions/cc/safe-orbit-camera-adobe.h` and `safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults.
 

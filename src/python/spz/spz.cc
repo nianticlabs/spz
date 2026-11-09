@@ -187,13 +187,21 @@ NB_MODULE(spz, m) {
         .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
                 "Bits used for non-first-order spherical harmonics quantization");
 
+    nb::enum_<spz::TemporalLoad>(m, "TemporalLoad",
+        "Whether loading keeps an animated clip's temporal record (SPZ_NIANTIC_temporal).")
+        .value("SKIP", spz::TemporalLoad::Skip, "Load the poster frame as a static cloud")
+        .value("INCLUDE", spz::TemporalLoad::Include, "Keep the animated clip");
+
     nb::class_<spz::UnpackOptions>(m, "UnpackOptions")
         .def(nb::init<>())
         .def_rw("to_coord", &spz::UnpackOptions::to,
                 "Desired coordinate system of the output splat")
         .def_rw("custom_attributes", &spz::UnpackOptions::customAttributes,
                 "Custom attribute names to decode: [] (default) none, None all. Use None when "
-                "re-saving, or attributes are lost. Assign a new list; in-place edits don't stick.");
+                "re-saving, or attributes are lost. Assign a new list; in-place edits don't stick.")
+        .def_rw("temporal", &spz::UnpackOptions::temporal,
+                "SKIP (default) loads an animated clip's poster frame as a static cloud; INCLUDE keeps "
+                "the clip. custom_attributes=None implies INCLUDE.");
 
     // -------------------------------------------------------------------------
     // Extensions structs
