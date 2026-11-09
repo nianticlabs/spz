@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14...3.31)
 
 project(spz
   DESCRIPTION "A 3D Gaussians format"
@@ -15,6 +15,21 @@ option(SPZ_BUILD_TOOLS "Build command line tools" ON)
 
 # --- Extensions Option ---
 option(SPZ_BUILD_EXTENSIONS "Build SPZ extensions support" OFF)
+
+# --- WASM output directory ---
+set(SPZ_WASM_OUTPUT_DIR "${PROJECT_BINARY_DIR}/dist" CACHE PATH
+  "Directory that receives spz.js and its TypeScript declarations (WASM builds only)")
+
+# --- Emscripten guard ---
+# The wasm presets set this so that forgetting `emcmake` fails loudly instead of
+# silently producing a native build in build/wasm*.
+option(SPZ_REQUIRE_EMSCRIPTEN "Fail configuration unless the Emscripten toolchain is active" OFF)
+if(SPZ_REQUIRE_EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  message(FATAL_ERROR
+    "SPZ_REQUIRE_EMSCRIPTEN is ON but the Emscripten toolchain is not active. "
+    "Configure with `emcmake cmake --preset <wasm-preset>` or use scripts/build.sh. "
+    "If this build directory was first configured without emcmake, add --fresh.")
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(SPZ_BUILD_PYTHON_BINDINGS OFF CACHE BOOL "Build Python bindings using nanobind" FORCE)
@@ -36,7 +51,7 @@ if(NOT SPZ_USE_EMSCRIPTEN_ZLIB)
     include(FetchContent)
     FetchContent_Declare(
       zlib
-      URL https://zlib.net/zlib-1.3.2.tar.gz
+      URL https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz
       URL_HASH SHA256=bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
     )
     FetchContent_MakeAvailable(zlib)
@@ -63,6 +78,11 @@ if(NOT zstd_FOUND)
   set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
   set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
   set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # The WASM build is single-threaded (see runParallel in zstd-batch.cc), and
+    # zstd's find_package(Threads) fails under newer Emscripten + CMake 4.x.
+    set(ZSTD_MULTITHREAD_SUPPORT OFF CACHE BOOL "" FORCE)
+  endif()
   FetchContent_MakeAvailable(zstd)
   add_library(zstd::zstd ALIAS libzstd_static)
   set(SPZ_SHOULD_INSTALL FALSE)
@@ -147,7 +167,7 @@ set_target_properties(spz PROPERTIES
 )
 
 if(SPZ_BUILD_WASM)
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dist")
+  file(MAKE_DIRECTORY "${SPZ_WASM_OUTPUT_DIR}")
 
   set(spz_binding_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-bindings.cc"
@@ -170,8 +190,7 @@ if(SPZ_BUILD_WASM)
   endif()
 
   target_link_options(spz-wasm PRIVATE
-    "-O3"
-    "-sUSE_ZLIB=1"
+    "$<$<NOT:$<CONFIG:Debug>>:-O3>"
     "--bind"
     "-sMODULARIZE=1"
     "-sEXPORT_NAME=createSpzModule"
@@ -186,7 +205,7 @@ if(SPZ_BUILD_WASM)
 
   set_target_properties(spz-wasm PROPERTIES
     OUTPUT_NAME "spz"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dist"
+    RUNTIME_OUTPUT_DIRECTORY "${SPZ_WASM_OUTPUT_DIR}"
   )
 
   # Generate the TypeScript declaration file conditionally based on SPZ_BUILD_EXTENSIONS
@@ -203,26 +222,19 @@ if(SPZ_BUILD_WASM)
 
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz.d.ts.in"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
+    "${SPZ_WASM_OUTPUT_DIR}/spz.d.ts"
     @ONLY
   )
 
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-helpers.js"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz-helpers.js"
+    "${SPZ_WASM_OUTPUT_DIR}/spz-helpers.js"
     COPYONLY
   )
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/spz-helpers.d.ts"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz-helpers.d.ts"
+    "${SPZ_WASM_OUTPUT_DIR}/spz-helpers.d.ts"
     COPYONLY
-  )
-
-  add_custom_target(copy_spz_dts ALL
-    DEPENDS
-      "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz.d.ts"
-      "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz-helpers.js"
-      "${CMAKE_CURRENT_SOURCE_DIR}/dist/spz-helpers.d.ts"
   )
 endif()
 
@@ -290,6 +302,34 @@ if(SPZ_BUILD_TOOLS)
   install(TARGETS ply_to_spz spz_to_ply spz_info
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
+
+  # Round-trip smoke tests through the CLI tools. Only when spz is the top-level
+  # project so that consumers using add_subdirectory don't inherit our tests.
+  if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    enable_testing()
+    set(spz_sample "${CMAKE_CURRENT_SOURCE_DIR}/samples/hornedlizard.spz")
+    set(spz_sample_point_count 786233)
+    set(spz_test_dir "${CMAKE_CURRENT_BINARY_DIR}/test-output")
+    file(MAKE_DIRECTORY "${spz_test_dir}")
+
+    add_test(NAME spz_info.sample
+      COMMAND spz_info "${spz_sample}")
+    add_test(NAME spz_to_ply.sample
+      COMMAND spz_to_ply "${spz_sample}" "${spz_test_dir}/roundtrip.ply")
+    add_test(NAME ply_to_spz.roundtrip
+      COMMAND ply_to_spz "${spz_test_dir}/roundtrip.ply" "${spz_test_dir}/roundtrip.spz")
+    add_test(NAME spz_info.roundtrip
+      COMMAND spz_info "${spz_test_dir}/roundtrip.spz")
+
+    # The CLI tools exit 0 when they cannot open a file, so assert on the point
+    # count rather than trusting the exit code.
+    set_tests_properties(spz_info.sample spz_info.roundtrip PROPERTIES
+      PASS_REGULAR_EXPRESSION "Number of points: ${spz_sample_point_count}\n")
+    set_tests_properties(spz_to_ply.sample PROPERTIES FIXTURES_SETUP spz_ply)
+    set_tests_properties(ply_to_spz.roundtrip PROPERTIES
+      FIXTURES_REQUIRED spz_ply FIXTURES_SETUP spz_roundtrip)
+    set_tests_properties(spz_info.roundtrip PROPERTIES FIXTURES_REQUIRED spz_roundtrip)
+  endif()
 endif()
 
 # --- Python Bindings (nanobind) ---
