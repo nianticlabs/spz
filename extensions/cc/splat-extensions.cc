@@ -25,6 +25,9 @@ SOFTWARE.
 #include "splat-extensions.h"
 #include "safe-orbit-camera-adobe.h"
 #include "coordinate-system-adobe.h"
+#include "georeference-niantic.h"
+#include "custom-attribute-niantic.h"
+#include "extension-frames.h"
 #include "load-spz.h"
 
 #include <sstream>
@@ -32,17 +35,7 @@ SOFTWARE.
 #include <unordered_set>
 
 namespace spz {
-namespace {
-template <class T>
-bool readExact(std::istream& is, T& out) {
-  return static_cast<bool>(is.read(reinterpret_cast<char*>(&out), sizeof(T)));
-}
-
-// Extension stream format: [u32 type][u32 byteLength][payload...] per record, until EOF.
-// Unknown types are skipped by advancing byteLength bytes so multiple vendors can coexist.
-// Returns the number of bytes remaining between the current get position and the end of `is`,
-// or -1 if the stream does not support positioning. Restores the original position on success.
-std::streamoff remainingBytes(std::istream& is) {
+std::streamoff detail::remainingBytes(std::istream& is) {
   const std::streampos cur = is.tellg();
   if (cur == std::streampos(-1)) return -1;
   is.seekg(0, std::ios::end);
@@ -52,7 +45,13 @@ std::streamoff remainingBytes(std::istream& is) {
   return end - cur;
 }
 
-bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
+namespace {
+using detail::readExact;
+using detail::remainingBytes;
+
+// Extension stream format: [u32 type][u32 byteLength][payload...] per record, until EOF.
+// Unknown types are skipped by advancing byteLength bytes so multiple vendors can coexist.
+bool tryParseExtension(std::istream& is, std::vector<SpzParsedExtension>& out) {
   uint32_t type_u32{};
   if (!readExact(is, type_u32))
     return false;  // EOF or short read -> stop
@@ -79,7 +78,7 @@ bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
       std::istringstream iss(std::string(payload.data(), payload.size()));
       auto rec = SpzExtensionSafeOrbitCameraAdobe::read(iss);
       if (rec)
-        out.push_back(std::move(*rec));
+        out.push_back({std::move(*rec), std::nullopt});
       return true;  // continue to next record
     }
     case SpzExtensionType::SPZ_ADOBE_coordinate_system: {
@@ -89,7 +88,27 @@ bool tryParseExtension(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
       std::istringstream iss(std::string(payload.data(), payload.size()));
       auto rec = SpzExtensionCoordinateSystemAdobe::read(iss);
       if (rec)
-        out.push_back(std::move(*rec));
+        out.push_back({std::move(*rec), std::nullopt});
+      return true;
+    }
+    case SpzExtensionType::SPZ_NIANTIC_custom_attribute: {
+      std::vector<char> payload(byteLength);
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      std::istringstream iss(std::string(payload.data(), payload.size()));
+      auto readPlan = parseCustomAttributeNiantic(iss);
+      if (readPlan)
+        out.push_back({nullptr, std::move(*readPlan)});
+      return true;
+    }
+    case SpzExtensionType::SPZ_NIANTIC_georeference: {
+      std::vector<char> payload(byteLength);
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      std::istringstream iss(std::string(payload.data(), payload.size()));
+      auto rec = SpzExtensionGeoreferenceNiantic::read(iss);
+      if (rec)
+        out.push_back({std::move(*rec), std::nullopt});
       return true;
     }
     default:
@@ -131,11 +150,18 @@ CoordinateSystem getPackedCoordinateSystem(
   return CoordinateSystem::RUB;  // default: no known extension overrides the packed coordinate system
 }
 
+bool allExtensionsValid(const std::vector<SpzExtensionBasePtr>& extensions) {
+  for (const auto& ext : extensions) {
+    if (!ext->isValid()) return false;
+  }
+  return true;
+}
+
 bool isKnownPlyExtensionElement(const std::string& elementName) {
   return getKnownPlyExtensionElementNames().count(elementName) != 0;
 }
 
-void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
+void readExtensionRecords(std::istream& is, std::vector<SpzParsedExtension>& out) {
   while (tryParseExtension(is, out));
 
   // Stopped because there are no more extension records (EOF). Clear stream state
@@ -145,9 +171,29 @@ void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out) 
   }
 }
 
+void readAllExtensions(std::istream& is, std::vector<SpzExtensionBasePtr>& out) {
+  std::vector<SpzParsedExtension> parsed;
+  readExtensionRecords(is, parsed);
+  for (auto& entry : parsed) {
+    if (entry.record) {
+      out.push_back(std::move(entry.record));
+    } else if (entry.readPlan) {
+      SpzLog("[SPZ ERROR] Dropped extension 0x%08x: its data is only stored in SPZ version 4 files",
+             static_cast<unsigned>(entry.readPlan->type));
+    }
+  }
+}
+
 void writeAllExtensions(const std::vector<SpzExtensionBasePtr>& list, std::ostream& os) {
-  for (const auto& rec : list)
+  for (const auto& rec : list) {
+    if (!rec) continue;
+    if (dynamic_cast<const SpzFramedExtension*>(rec.get())) {
+      SpzLog("[SPZ ERROR] Skipped extension 0x%08x: its data can only be saved by saveSpz in SPZ "
+             "version 4 files", static_cast<unsigned>(rec->extensionType));
+      continue;
+    }
     rec->write(os);
+  }
 }
 
 void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElement>& extraElements, std::vector<SpzExtensionBasePtr>& extensions) {

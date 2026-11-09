@@ -27,6 +27,7 @@ SOFTWARE.
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -145,8 +146,13 @@ struct PackOptions {
   uint8_t shRestBits = DEFAULT_SH_REST_BITS;  // Bits for SH degree 2+ coefficients
 };
 
+// Options for loadSpz, or for loadSpzPacked followed by unpackGaussians.
 struct UnpackOptions {
   CoordinateSystem to = CoordinateSystem::UNSPECIFIED;
+
+  // Custom attributes to decode, by name; std::nullopt decodes all. None by default, since their
+  // memory scales with point count. Use std::nullopt when loading to re-save, or they are lost.
+  std::optional<std::vector<std::string>> customAttributes = std::vector<std::string>{};
 };
 
 // Structure for PLY extra elements (non-vertex elements)
@@ -164,10 +170,14 @@ bool saveSpz(
 // Loads Gaussian splat from a vector of bytes in packed format.
 GaussianCloud loadSpz(const std::vector<uint8_t> &data, const UnpackOptions &options);
 
-// Loads Gaussian splat from a file / byte pointer / vector in packed format.
+// Loads Gaussian splat from a file / byte pointer / vector in packed format, without custom
+// attributes.
 PackedGaussians loadSpzPacked(const std::string &filename);
 PackedGaussians loadSpzPacked(const uint8_t *data, size_t size);
 PackedGaussians loadSpzPacked(const std::vector<uint8_t> &data);
+
+// As above, decoding the custom attributes options selects.
+PackedGaussians loadSpzPacked(const uint8_t *data, size_t size, const UnpackOptions &options);
 
 // Saves Gaussian splat in packed format to a file
 bool saveSpz(
@@ -186,6 +196,9 @@ bool saveSplatToPly(
 // Loads Gaussian splat data in .ply format
 GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions &options);
 
+// Writes packed in the legacy (version 1-3) uncompressed layout. Extensions whose data needs
+// extension frames (e.g. custom attributes) can't be stored there and are skipped, with an error
+// logged; use saveSpz with version 4 to keep them.
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream *out);
 
 bool compressGzipped(const uint8_t *data, size_t size, std::vector<uint8_t> *out);
