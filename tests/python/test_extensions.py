@@ -621,6 +621,25 @@ def test_environment_map_spz_round_trip():
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
+def test_environment_map_pixels_stored_after_core_streams():
+    """The pixels go in extension frames, so a large map leaves the extension zone (in front of the TOC)
+    small; the map needs a version 4 file."""
+    env = _env_map(width=256, height=128)
+    cloud = _make_cloud(20)
+    cloud.extensions = [env]
+    data = spz.save_spz_to_buffer(cloud, spz.PackOptions())
+    toc_byte_offset = struct.unpack_from("<I", data, 16)[0]
+
+    assert toc_byte_offset - 32 < 1024  # 256 * 128 * 3 float16 pixels = 196,608 bytes before compression
+    (loaded_env,) = _env_maps(spz.load_spz_from_buffer(data))
+    _assert_env_map_equal(loaded_env, env)
+    legacy = spz.PackOptions()
+    legacy.version = 3
+    with pytest.raises(RuntimeError):
+        spz.save_spz_to_buffer(cloud, legacy)
+
+
+@pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
 def test_environment_map_ply_round_trip(tmp_path):
     env = _env_map()
     orbit = spz.SpzExtensionSafeOrbitCameraAdobe()

@@ -364,16 +364,19 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
   | `metadata` | Free-form UTF-8 (JSON by convention, e.g. renderer settings), never converted |
   | `pixels` | `height * width * 3` floats, row-major, RGB interleaved, linear-in-file values in the model's color space |
 
-  **Payload** (little-endian):
+  **Record payload** (little-endian), in the extension zone:
 
   ```
   u32 width, u32 height
   f32 origin[3], f32 up[3], f32 e1[3], f32 e2[3]
   u32 metadataLength, u8 metadata[metadataLength]
-  zstd frame, to the end of the payload: height * width * 3 float16 (IEEE half bits), row-major, RGB interleaved
+  u32 frameCount
+  frameCount x { u64 frameOffset; u64 compressedSize; u64 uncompressedSize; }   // frame table, as for custom attributes
   ```
 
-  Pixels are float32 in memory and float16 in the SPZ record, so float16 inputs round-trip exactly. Saving fails on a zero width or height, a pixel count other than `width * height * 3`, non-finite pixels or vectors, pixels beyond ±65504, or a second environment map. On load, a malformed record is dropped with an error and the core splat data still loads; a file with more than one environment map loses all of them, like any extension whose records share a uniqueness key.
+  The pixels are stored in [extension frames](../README.md#extension-frames) after the core streams, like custom attributes: joining the frames' decompressed payloads in order gives `height * width * 3` float16 values (IEEE half bits), row-major, RGB interleaved. So the record needs a version 4 file (`saveSpz` refuses older versions), stays small (the pixels are not in front of the TOC), and the pixels decompress in parallel with the core streams. Readers MUST ignore bytes after the frame table.
+
+  Pixels are float32 in memory and float16 in SPZ, so float16 inputs round-trip exactly. Saving fails on a zero width or height, a pixel count other than `width * height * 3`, non-finite pixels or vectors, pixels beyond ±65504, or a second environment map. On load, a malformed record or one whose extension frames fail the checks above is dropped with an error and the core splat data still loads; a file with more than one environment map loses all of them, like any extension whose records share a uniqueness key. The environment map is always decoded; `UnpackOptions::customAttributes` doesn't filter it.
 
   **PLY form** (after `vertex`, these three elements in this order; binary little-endian; pixels stay float32):
 

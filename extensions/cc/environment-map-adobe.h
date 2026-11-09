@@ -38,9 +38,12 @@ namespace spz {
 // (JSON by convention) and never converted. At most one per cloud: saving fails with two, and
 // loading drops every copy when a file has more than one.
 //
-// `pixels` holds height * width * 3 floats, row-major, RGB interleaved. The SPZ record stores them as
-// float16 (zstd-compressed), so float16 inputs round-trip exactly; PLY stores float32.
+// `pixels` holds height * width * 3 floats, row-major, RGB interleaved. In SPZ (version 4 only) they
+// are stored as float16 in extension frames after the core streams, so float16 inputs round-trip
+// exactly and the record in the extension zone holds only the size, frame and metadata; PLY stores
+// float32.
 struct SpzExtensionEnvironmentMapAdobe : public SpzExtensionBase,
+                                         public SpzFramedExtension,
                                          public SpzKeyedExtension,
                                          public SpzCoordinateDependentExtension {
   uint32_t width = 0;
@@ -55,6 +58,8 @@ struct SpzExtensionEnvironmentMapAdobe : public SpzExtensionBase,
   static const std::unordered_set<std::string> kRequiredPlyElementNames;
 
   SpzExtensionEnvironmentMapAdobe();
+  // The pixels only fit in extension frames, which saveSpz writes through planFrameWrites(); write(os)
+  // therefore writes nothing (and logs an error), and payloadBytes() is 0.
   uint32_t payloadBytes() const override;
   void write(std::ostream& os) const override;
   SpzExtensionBase* copyAsRawData() const override;
@@ -62,7 +67,6 @@ struct SpzExtensionEnvironmentMapAdobe : public SpzExtensionBase,
       std::istream& in, const std::vector<PlyExtraElement>& elements) const override;
   void writePlyHeader(std::ostream& out) const override;
   void writePlyData(std::ostream& out) const override;
-  static std::optional<SpzExtensionBasePtr> read(std::istream& is);
   static SpzExtensionType type();
 
   // False (after logging why) if this map can't be saved.
@@ -71,9 +75,7 @@ struct SpzExtensionEnvironmentMapAdobe : public SpzExtensionBase,
   std::string uniquenessKey() const override;
   // A copy with origin, up, e1 and e2 converted like positions, or nullptr if c leaves them unchanged.
   SpzExtensionBasePtr withConvertedCoordinates(const CoordinateConverter& c) const override;
-
- private:
-  std::string encode() const;
+  std::optional<SpzFrameWritePlan> planFrameWrites(int32_t numPoints) const override;
 };
 
 }  // namespace spz

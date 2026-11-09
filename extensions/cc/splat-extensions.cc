@@ -119,9 +119,9 @@ bool tryParseExtension(std::istream& is, std::vector<SpzParsedExtension>& out) {
       if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
         return false;
       std::istringstream iss(payload);
-      auto rec = SpzExtensionEnvironmentMapAdobe::read(iss);
-      if (rec)
-        out.push_back({std::move(*rec), std::nullopt});
+      auto readPlan = parseEnvironmentMapAdobe(iss);
+      if (readPlan)
+        out.push_back({nullptr, std::move(*readPlan)});
       return true;
     }
     default:
