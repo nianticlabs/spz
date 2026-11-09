@@ -40,6 +40,11 @@ constexpr uint64_t kMaxZstdExpansion = 32768;
 constexpr float kMaxHalf = 65504.0f;
 // width, height, origin, up, e1, e2, metadataLength
 constexpr size_t kFixedBytes = 2 * sizeof(uint32_t) + 12 * sizeof(float) + sizeof(uint32_t);
+constexpr uint32_t kChannels = 3;  // RGB
+// PLY elements, written in this order after the vertex element.
+constexpr const char* kPlyEnvironment = "environment";
+constexpr const char* kPlyMap = "environment_map";
+constexpr const char* kPlyMetadata = "environment_metadata";
 
 template <class T>
 bool readExact(std::istream& is, T& out) {
@@ -56,14 +61,14 @@ bool isFinite(const std::array<float, 3>& v) {
 }
 
 uint64_t pixelFloats(uint32_t width, uint32_t height) {
-  return static_cast<uint64_t>(width) * height * 3;
+  return static_cast<uint64_t>(width) * height * kChannels;
 }
 }  // namespace
 
 const std::unordered_set<std::string> SpzExtensionEnvironmentMapAdobe::kRequiredPlyElementNames = {
-  "environment",
-  "environment_map",
-  "environment_metadata",
+  kPlyEnvironment,
+  kPlyMap,
+  kPlyMetadata,
 };
 
 SpzExtensionEnvironmentMapAdobe::SpzExtensionEnvironmentMapAdobe()
@@ -192,10 +197,10 @@ SpzExtensionBase* SpzExtensionEnvironmentMapAdobe::copyAsRawData() const {
 
 std::optional<SpzExtensionBasePtr> SpzExtensionEnvironmentMapAdobe::tryReadFromPly(
     std::istream& in, const std::vector<PlyExtraElement>& elements) const {
-  if (elements.size() != 3 || elements[0].name != "environment" || elements[0].count != 1 ||
-      elements[0].bytesPerElement != kFixedBytes - sizeof(uint32_t) ||
-      elements[1].name != "environment_map" || elements[1].bytesPerElement != 3 * sizeof(float) ||
-      elements[2].name != "environment_metadata" || elements[2].bytesPerElement != 1) {
+  if (elements.size() != kRequiredPlyElementNames.size() || elements[0].name != kPlyEnvironment ||
+      elements[0].count != 1 || elements[0].bytesPerElement != kFixedBytes - sizeof(uint32_t) ||
+      elements[1].name != kPlyMap || elements[1].bytesPerElement != kChannels * sizeof(float) ||
+      elements[2].name != kPlyMetadata || elements[2].bytesPerElement != 1) {
     SpzLog("[SPZ ERROR] Environment map: PLY elements don't match the expected layout");
     return std::nullopt;
   }
@@ -221,19 +226,18 @@ std::optional<SpzExtensionBasePtr> SpzExtensionEnvironmentMapAdobe::tryReadFromP
 }
 
 void SpzExtensionEnvironmentMapAdobe::writePlyHeader(std::ostream& out) const {
-  out << "element environment 1\n";
+  out << "element " << kPlyEnvironment << " 1\n";
   out << "property uint environment_width\n";
   out << "property uint environment_height\n";
   for (const char* v : {"origin", "up", "e1", "e2"}) {
     for (const char* axis : {"x", "y", "z"})
       out << "property float environment_" << v << "_" << axis << "\n";
   }
-  out << "element environment_map " << static_cast<uint64_t>(width) * height << "\n";
-  out << "property float environment_map_r\n";
-  out << "property float environment_map_g\n";
-  out << "property float environment_map_b\n";
-  out << "element environment_metadata " << metadata.size() << "\n";
-  out << "property uchar environment_metadata\n";
+  out << "element " << kPlyMap << " " << static_cast<uint64_t>(width) * height << "\n";
+  for (const char* channel : {"r", "g", "b"})
+    out << "property float " << kPlyMap << "_" << channel << "\n";
+  out << "element " << kPlyMetadata << " " << metadata.size() << "\n";
+  out << "property uchar " << kPlyMetadata << "\n";
 }
 
 void SpzExtensionEnvironmentMapAdobe::writePlyData(std::ostream& out) const {

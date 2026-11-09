@@ -638,6 +638,27 @@ def test_environment_map_ply_round_trip(tmp_path):
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
+def test_ply_safe_orbit_written_right_after_vertex_data(tmp_path):
+    """Readers that predate the environment map read safe orbit's three floats right after the vertex
+    data, so it must be written there whatever the order of cloud.extensions."""
+    orbit = spz.SpzExtensionSafeOrbitCameraAdobe()
+    orbit.safe_orbit_elevation_min, orbit.safe_orbit_elevation_max, orbit.safe_orbit_radius_min = -0.5, 1.2, 0.3
+    cloud = _make_cloud(20)
+    cloud.extensions = [_env_map(), orbit]
+    assert _save_ply(cloud, tmp_path / "env_first.ply")
+    data = (tmp_path / "env_first.ply").read_bytes()
+    header_end = data.index(b"end_header\n") + len(b"end_header\n")
+    header = data[:header_end].decode().splitlines()
+    vertex_at = next(i for i, line in enumerate(header) if line.startswith("element vertex"))
+    after_vertex = header[vertex_at + 1:]
+    vertex_props = after_vertex[:next(i for i, line in enumerate(after_vertex) if not line.startswith("property"))]
+    assert all(line.startswith("property float") for line in vertex_props)
+    orbit_at = header_end + 20 * 4 * len(vertex_props)
+
+    assert struct.unpack_from("<3f", data, orbit_at) == pytest.approx((-0.5, 1.2, 0.3))
+
+
+@pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
 @pytest.mark.parametrize("fmt,from_coord,to_coord", [
     ("spz", spz.RDF, spz.RUB),
     ("spz", spz.LUF, spz.RDF),
