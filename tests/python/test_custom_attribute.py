@@ -564,6 +564,22 @@ def test_decoded_size_far_beyond_file_size_is_dropped_before_allocating(plain_fi
     assert loaded.num_points == cloud.num_points
 
 
+def test_frame_reused_by_many_references_is_capped_by_file_size(plain_file):
+    cloud, plain = plain_file
+    host_compressed, _ = _parse(plain)["toc"][-1]
+    per_frame = cloud.num_points * 4 * 300
+    references = 200
+    zframe = _rle_zstd_frame(0, per_frame)
+    location = struct.pack("<QQQ", host_compressed, len(zframe), per_frame)
+    data = _inject_attribute(plain, "reused", 300 * references, [b""], zframes=[zframe],
+                             uncompressed_delta=per_frame, frame_count=references,
+                             trailing=location * (references - 1))
+    assert per_frame * references > 1024 * len(data)
+    loaded = spz.load_spz_from_buffer(data, _decode_all())
+    assert _attributes(loaded) == []
+    assert loaded.num_points == cloud.num_points
+
+
 def test_find_custom_attribute():
     cloud = _make_cloud()
     values = np.arange(cloud.num_points, dtype=np.float32)
