@@ -79,6 +79,7 @@ void readExtensionRecords(std::istream& is, std::vector<SpzParsedExtension>& out
 // bytes after type and byteLength). Each returns std::nullopt (after logging why) if the payload is
 // malformed.
 std::optional<SpzFrameReadPlan> parseCustomAttributeNiantic(std::istream& payload);
+std::optional<SpzFrameReadPlan> parseEnvironmentMapAdobe(std::istream& payload);
 
 // ---- Helpers for writing and parsing framed extensions' records ----
 

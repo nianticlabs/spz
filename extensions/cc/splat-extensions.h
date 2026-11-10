@@ -50,7 +50,6 @@ namespace spz {
 struct PlyExtraElement;
 struct CoordinateConverter;
 enum class CoordinateSystem : uint32_t;
-struct CoordinateConverter;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
   SPZ_ADOBE_coordinate_system = 0xADBE0003u,

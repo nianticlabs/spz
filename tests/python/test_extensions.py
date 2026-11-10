@@ -621,6 +621,25 @@ def test_environment_map_spz_round_trip():
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
+def test_environment_map_pixels_stored_after_core_streams():
+    """The pixels go in extension frames, so a large map leaves the extension zone (in front of the TOC)
+    small; the map needs a version 4 file."""
+    env = _env_map(width=256, height=128)
+    cloud = _make_cloud(20)
+    cloud.extensions = [env]
+    data = spz.save_spz_to_buffer(cloud, spz.PackOptions())
+    toc_byte_offset = struct.unpack_from("<I", data, 16)[0]
+
+    assert toc_byte_offset - 32 < 1024  # 256 * 128 * 3 float16 pixels = 196,608 bytes before compression
+    (loaded_env,) = _env_maps(spz.load_spz_from_buffer(data))
+    _assert_env_map_equal(loaded_env, env)
+    legacy = spz.PackOptions()
+    legacy.version = 3
+    with pytest.raises(RuntimeError):
+        spz.save_spz_to_buffer(cloud, legacy)
+
+
+@pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
 def test_environment_map_ply_round_trip(tmp_path):
     env = _env_map()
     orbit = spz.SpzExtensionSafeOrbitCameraAdobe()
@@ -635,6 +654,27 @@ def test_environment_map_ply_round_trip(tmp_path):
     (loaded_env,) = _env_maps(loaded)
     _assert_env_map_equal(loaded_env, env)
     assert any(isinstance(e, spz.SpzExtensionSafeOrbitCameraAdobe) for e in loaded.extensions)
+
+
+@pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
+def test_ply_safe_orbit_written_right_after_vertex_data(tmp_path):
+    """Readers that predate the environment map read safe orbit's three floats right after the vertex
+    data, so it must be written there whatever the order of cloud.extensions."""
+    orbit = spz.SpzExtensionSafeOrbitCameraAdobe()
+    orbit.safe_orbit_elevation_min, orbit.safe_orbit_elevation_max, orbit.safe_orbit_radius_min = -0.5, 1.2, 0.3
+    cloud = _make_cloud(20)
+    cloud.extensions = [_env_map(), orbit]
+    assert _save_ply(cloud, tmp_path / "env_first.ply")
+    data = (tmp_path / "env_first.ply").read_bytes()
+    header_end = data.index(b"end_header\n") + len(b"end_header\n")
+    header = data[:header_end].decode().splitlines()
+    vertex_at = next(i for i, line in enumerate(header) if line.startswith("element vertex"))
+    after_vertex = header[vertex_at + 1:]
+    vertex_props = after_vertex[:next(i for i, line in enumerate(after_vertex) if not line.startswith("property"))]
+    assert all(line.startswith("property float") for line in vertex_props)
+    orbit_at = header_end + 20 * 4 * len(vertex_props)
+
+    assert struct.unpack_from("<3f", data, orbit_at) == pytest.approx((-0.5, 1.2, 0.3))
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")

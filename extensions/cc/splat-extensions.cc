@@ -119,9 +119,9 @@ bool tryParseExtension(std::istream& is, std::vector<SpzParsedExtension>& out) {
       if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
         return false;
       std::istringstream iss(payload);
-      auto rec = SpzExtensionEnvironmentMapAdobe::read(iss);
-      if (rec)
-        out.push_back({std::move(*rec), std::nullopt});
+      auto readPlan = parseEnvironmentMapAdobe(iss);
+      if (readPlan)
+        out.push_back({nullptr, std::move(*readPlan)});
       return true;
     }
     default:
@@ -136,12 +136,30 @@ bool tryParseExtension(std::istream& is, std::vector<SpzParsedExtension>& out) {
 
 using PlyExemplarEntry = std::pair<const std::unordered_set<std::string>*, SpzExtensionBasePtr>;
 
+// Also the order extensions are written to PLY in. Safe orbit must stay first: readers that predate
+// the environment map read its three floats right after the vertex data.
 static const std::vector<PlyExemplarEntry>& getPlyExtensionRegistry() {
   static const std::vector<PlyExemplarEntry> registry = {
     {&SpzExtensionSafeOrbitCameraAdobe::kRequiredPlyElementNames, std::make_shared<SpzExtensionSafeOrbitCameraAdobe>()},
     {&SpzExtensionEnvironmentMapAdobe::kRequiredPlyElementNames, std::make_shared<SpzExtensionEnvironmentMapAdobe>()},
   };
   return registry;
+}
+
+// The extensions in PLY write order: registered types in registry order, then the rest (which write
+// nothing to PLY, or only a warning) in their original order.
+std::vector<const SpzExtensionBase*> inPlyWriteOrder(const std::vector<SpzExtensionBasePtr>& extensions) {
+  const auto& registry = getPlyExtensionRegistry();
+  const auto rank = [&](const SpzExtensionBase* ext) {
+    const auto it = std::find_if(registry.begin(), registry.end(),
+                                 [&](const auto& e) { return e.second->extensionType == ext->extensionType; });
+    return static_cast<size_t>(it - registry.begin());
+  };
+  std::vector<const SpzExtensionBase*> ordered;
+  for (const auto& ext : extensions)
+    if (ext) ordered.push_back(ext.get());
+  std::stable_sort(ordered.begin(), ordered.end(), [&](auto* a, auto* b) { return rank(a) < rank(b); });
+  return ordered;
 }
 
 const std::unordered_set<std::string>& getKnownPlyExtensionElementNames() {
@@ -238,12 +256,12 @@ void readExtensionsFromPly(std::istream& in, const std::vector<spz::PlyExtraElem
 }
 
 void writeExtensionsToPlyHeader(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out) {
-  for (const auto& ext : extensions)
+  for (const auto* ext : inPlyWriteOrder(extensions))
     ext->writePlyHeader(out);
 }
 
 void writeExtensionsToPlyData(const std::vector<SpzExtensionBasePtr>& extensions, std::ostream& out) {
-  for (const auto& ext : extensions)
+  for (const auto* ext : inPlyWriteOrder(extensions))
     ext->writePlyData(out);
 }
 }  // namespace spz

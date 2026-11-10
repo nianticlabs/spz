@@ -23,47 +23,64 @@ SOFTWARE.
 */
 
 #include "environment-map-adobe.h"
+#include "extension-frames.h"
 #include "load-spz.h"
 #include "splat-types.h"
 
-#include <zstd.h>
-
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
+#include <sstream>
 
 namespace spz {
 namespace {
-constexpr int kZstdLevel = 3;
-// No zstd frame inflates more than 32768x, which bounds the allocation for a record's pixels.
-constexpr uint64_t kMaxZstdExpansion = 32768;
 constexpr float kMaxHalf = 65504.0f;
 // width, height, origin, up, e1, e2, metadataLength
 constexpr size_t kFixedBytes = 2 * sizeof(uint32_t) + 12 * sizeof(float) + sizeof(uint32_t);
+constexpr uint32_t kChannels = 3;  // RGB
+// PLY elements, written in this order after the vertex element.
+constexpr const char* kPlyEnvironment = "environment";
+constexpr const char* kPlyMap = "environment_map";
+constexpr const char* kPlyMetadata = "environment_metadata";
 
 template <class T>
 bool readExact(std::istream& is, T& out) {
   return static_cast<bool>(is.read(reinterpret_cast<char*>(&out), sizeof(T)));
 }
 
-template <class T>
-void append(std::string& out, const T* data, size_t count) {
-  out.append(reinterpret_cast<const char*>(data), count * sizeof(T));
+uint64_t pixelFloats(uint32_t width, uint32_t height) {
+  return static_cast<uint64_t>(width) * height * kChannels;
+}
+
+// Byte size of the float16 pixels, or std::nullopt if it can't be addressed on this platform.
+std::optional<size_t> pixelBytes(uint32_t width, uint32_t height) {
+  const uint64_t bytes = pixelFloats(width, height) * sizeof(Half);
+  if (bytes > std::numeric_limits<size_t>::max()) return std::nullopt;
+  return static_cast<size_t>(bytes);
+}
+
+// Everything in the record but the frame table: width, height, the frame vectors and the metadata.
+std::string encodeHeader(const SpzExtensionEnvironmentMapAdobe& env) {
+  std::ostringstream os;
+  writeValue(os, env.width);
+  writeValue(os, env.height);
+  for (const auto* v : {&env.origin, &env.up, &env.e1, &env.e2})
+    os.write(reinterpret_cast<const char*>(v->data()), v->size() * sizeof(float));
+  writeValue(os, static_cast<uint32_t>(env.metadata.size()));
+  os.write(env.metadata.data(), static_cast<std::streamsize>(env.metadata.size()));
+  return os.str();
 }
 
 bool isFinite(const std::array<float, 3>& v) {
   return std::all_of(v.begin(), v.end(), [](float x) { return std::isfinite(x); });
 }
-
-uint64_t pixelFloats(uint32_t width, uint32_t height) {
-  return static_cast<uint64_t>(width) * height * 3;
-}
 }  // namespace
 
 const std::unordered_set<std::string> SpzExtensionEnvironmentMapAdobe::kRequiredPlyElementNames = {
-  "environment",
-  "environment_map",
-  "environment_metadata",
+  kPlyEnvironment,
+  kPlyMap,
+  kPlyMetadata,
 };
 
 SpzExtensionEnvironmentMapAdobe::SpzExtensionEnvironmentMapAdobe()
@@ -80,9 +97,8 @@ bool SpzExtensionEnvironmentMapAdobe::isValid() const {
   else if (!std::all_of(pixels.begin(), pixels.end(),
                         [](float v) { return std::isfinite(v) && std::abs(v) <= kMaxHalf; }))
     problem = "pixels must be finite and within the float16 range";
-  else if (kFixedBytes + metadata.size() + ZSTD_compressBound(pixels.size() * sizeof(Half)) >
-           std::numeric_limits<uint32_t>::max())
-    problem = "data exceeds the 4 GiB record limit";
+  else if (kFixedBytes + metadata.size() > std::numeric_limits<uint32_t>::max() / 2)
+    problem = "metadata is too large for an extension record";
   if (problem) {
     SpzLog("[SPZ ERROR] Environment map: %s", problem);
     return false;
@@ -100,86 +116,69 @@ SpzExtensionBasePtr SpzExtensionEnvironmentMapAdobe::withConvertedCoordinates(co
   return converted;
 }
 
-std::string SpzExtensionEnvironmentMapAdobe::encode() const {
-  const uint32_t metadataLength = static_cast<uint32_t>(metadata.size());
-  std::string out;
-  append(out, &width, 1);
-  append(out, &height, 1);
-  for (const auto* v : {&origin, &up, &e1, &e2})
-    append(out, v->data(), 3);
-  append(out, &metadataLength, 1);
-  out += metadata;
+uint32_t SpzExtensionEnvironmentMapAdobe::payloadBytes() const { return 0; }
 
-  std::vector<Half> halves(pixels.size());
-  std::transform(pixels.begin(), pixels.end(), halves.begin(), floatToHalf);
-  const size_t srcBytes = halves.size() * sizeof(Half);
-  const size_t offset = out.size();
-  out.resize(offset + ZSTD_compressBound(srcBytes));
-  size_t compressed = ZSTD_compress(&out[offset], out.size() - offset, halves.data(), srcBytes, kZstdLevel);
-  if (ZSTD_isError(compressed)) {
-    // Writing no pixels makes readers reject this record instead of misreading it.
-    SpzLog("[SPZ ERROR] Environment map: zstd compression failed");
-    compressed = 0;
+void SpzExtensionEnvironmentMapAdobe::write(std::ostream& /*os*/) const {
+  SpzLog("[SPZ ERROR] Environment map not written: its pixels can only be saved by saveSpz in SPZ version 4 files");
+}
+
+std::optional<SpzFrameWritePlan> SpzExtensionEnvironmentMapAdobe::planFrameWrites(int32_t /*numPoints*/) const {
+  const std::optional<size_t> bytes = pixelBytes(width, height);
+  if (!isValid() || !bytes) return std::nullopt;
+  std::vector<uint8_t> data(*bytes);
+  for (size_t i = 0; i < pixels.size(); ++i) {
+    const Half half = floatToHalf(pixels[i]);
+    std::memcpy(&data[i * sizeof(Half)], &half, sizeof(Half));
   }
-  out.resize(offset + compressed);
-  return out;
+  SpzLog("[SPZ] Writing extension: EnvironmentMapAdobe (%ux%u)", width, height);
+  return SpzFrameWritePlan{std::move(data),
+                           [header = encodeHeader(*this)](std::ostream& os, const std::vector<SpzFrameLocation>& frames) {
+                             std::ostringstream payload;
+                             payload << header;
+                             writeFrameTable(payload, frames);
+                             writeExtensionRecord(os, SpzExtensionType::SPZ_ADOBE_environment_map, payload.str());
+                           }};
 }
 
-uint32_t SpzExtensionEnvironmentMapAdobe::payloadBytes() const {
-  return static_cast<uint32_t>(encode().size());
-}
-
-void SpzExtensionEnvironmentMapAdobe::write(std::ostream& os) const {
-  const std::string payload = encode();
-  const uint32_t t = static_cast<uint32_t>(extensionType);
-  const uint32_t len = static_cast<uint32_t>(payload.size());  // validate() keeps this under 4 GiB
-  SpzLog("[SPZ] Writing extension: EnvironmentMapAdobe (%ux%u, %u bytes)", width, height, len);
-  os.write(reinterpret_cast<const char*>(&t), sizeof(t));
-  os.write(reinterpret_cast<const char*>(&len), sizeof(len));
-  os.write(payload.data(), static_cast<std::streamsize>(payload.size()));
-}
-
-std::optional<SpzExtensionBasePtr> SpzExtensionEnvironmentMapAdobe::read(std::istream& is) {
-  auto rec = std::make_shared<SpzExtensionEnvironmentMapAdobe>();
+std::optional<SpzFrameReadPlan> parseEnvironmentMapAdobe(std::istream& is) {
+  SpzExtensionEnvironmentMapAdobe header;
   uint32_t metadataLength{};
-  bool ok = readExact(is, rec->width) && readExact(is, rec->height);
-  for (auto* v : {&rec->origin, &rec->up, &rec->e1, &rec->e2})
-    ok = ok && is.read(reinterpret_cast<char*>(v->data()), 3 * sizeof(float));
+  bool ok = readExact(is, header.width) && readExact(is, header.height);
+  for (auto* v : {&header.origin, &header.up, &header.e1, &header.e2})
+    ok = ok && is.read(reinterpret_cast<char*>(v->data()), v->size() * sizeof(float));
   ok = ok && readExact(is, metadataLength);
   // The payload stream is an in-memory buffer, so in_avail() is the rest of it.
-  ok = ok && metadataLength < is.rdbuf()->in_avail();
+  ok = ok && metadataLength <= is.rdbuf()->in_avail();
   if (ok) {
-    rec->metadata.resize(metadataLength);
-    ok = static_cast<bool>(is.read(rec->metadata.data(), metadataLength));
+    header.metadata.resize(metadataLength);
+    ok = static_cast<bool>(is.read(header.metadata.data(), metadataLength));
   }
-  if (!ok) {
-    SpzLog("[SPZ ERROR] EnvironmentMapAdobe: truncated payload");
+  std::optional<std::vector<SpzFrameLocation>> frames = ok ? readFrameTable(is) : std::nullopt;
+  if (!frames) {
+    SpzLog("[SPZ ERROR] EnvironmentMapAdobe: truncated record");
     return std::nullopt;
   }
-
-  const std::streamsize compressedSize = is.rdbuf()->in_avail();
-  const uint64_t expected = pixelFloats(rec->width, rec->height) * sizeof(Half);
-  if (expected == 0 || expected > std::numeric_limits<size_t>::max() ||
-      expected > static_cast<uint64_t>(compressedSize) * kMaxZstdExpansion) {
-    SpzLog("[SPZ ERROR] EnvironmentMapAdobe: pixels don't cover %ux%u", rec->width, rec->height);
+  if (header.width == 0 || header.height == 0) {
+    SpzLog("[SPZ ERROR] EnvironmentMapAdobe: width and height must be at least 1");
     return std::nullopt;
   }
-  std::string compressed(static_cast<size_t>(compressedSize), '\0');
-  is.read(compressed.data(), compressedSize);
-  std::vector<Half> halves(static_cast<size_t>(expected / sizeof(Half)));
-  const size_t decompressed =
-      ZSTD_decompress(halves.data(), static_cast<size_t>(expected), compressed.data(), compressed.size());
-  if (ZSTD_isError(decompressed) || decompressed != expected) {
-    SpzLog("[SPZ ERROR] EnvironmentMapAdobe: pixels don't cover %ux%u", rec->width, rec->height);
-    return std::nullopt;
-  }
-  rec->pixels.resize(halves.size());
-  std::transform(halves.begin(), halves.end(), rec->pixels.begin(), halfToFloat);
-  if (!rec->isValid())
-    return std::nullopt;
-
-  SpzLog("[SPZ] Found extension: EnvironmentMapAdobe (%ux%u)", rec->width, rec->height);
-  return std::optional{std::move(rec)};
+  SpzLog("[SPZ] Found extension: EnvironmentMapAdobe (%ux%u)", header.width, header.height);
+  const uint32_t width = header.width;
+  const uint32_t height = header.height;
+  return SpzFrameReadPlan{
+    SpzExtensionType::SPZ_ADOBE_environment_map, std::move(*frames), header.uniquenessKey(),
+    [width, height](int32_t) -> std::optional<uint64_t> { return pixelBytes(width, height); },
+    [header = std::move(header)](int32_t, std::vector<uint8_t>&& data) -> SpzExtensionBasePtr {
+      auto rec = std::make_shared<SpzExtensionEnvironmentMapAdobe>(header);
+      rec->pixels.resize(data.size() / sizeof(Half));
+      for (size_t i = 0; i < rec->pixels.size(); ++i) {
+        Half half;
+        std::memcpy(&half, &data[i * sizeof(Half)], sizeof(Half));
+        rec->pixels[i] = halfToFloat(half);
+      }
+      if (!rec->isValid()) return nullptr;
+      return rec;
+    }};
 }
 
 SpzExtensionType SpzExtensionEnvironmentMapAdobe::type() {
@@ -192,10 +191,10 @@ SpzExtensionBase* SpzExtensionEnvironmentMapAdobe::copyAsRawData() const {
 
 std::optional<SpzExtensionBasePtr> SpzExtensionEnvironmentMapAdobe::tryReadFromPly(
     std::istream& in, const std::vector<PlyExtraElement>& elements) const {
-  if (elements.size() != 3 || elements[0].name != "environment" || elements[0].count != 1 ||
-      elements[0].bytesPerElement != kFixedBytes - sizeof(uint32_t) ||
-      elements[1].name != "environment_map" || elements[1].bytesPerElement != 3 * sizeof(float) ||
-      elements[2].name != "environment_metadata" || elements[2].bytesPerElement != 1) {
+  if (elements.size() != kRequiredPlyElementNames.size() || elements[0].name != kPlyEnvironment ||
+      elements[0].count != 1 || elements[0].bytesPerElement != kFixedBytes - sizeof(uint32_t) ||
+      elements[1].name != kPlyMap || elements[1].bytesPerElement != kChannels * sizeof(float) ||
+      elements[2].name != kPlyMetadata || elements[2].bytesPerElement != 1) {
     SpzLog("[SPZ ERROR] Environment map: PLY elements don't match the expected layout");
     return std::nullopt;
   }
@@ -221,19 +220,18 @@ std::optional<SpzExtensionBasePtr> SpzExtensionEnvironmentMapAdobe::tryReadFromP
 }
 
 void SpzExtensionEnvironmentMapAdobe::writePlyHeader(std::ostream& out) const {
-  out << "element environment 1\n";
+  out << "element " << kPlyEnvironment << " 1\n";
   out << "property uint environment_width\n";
   out << "property uint environment_height\n";
   for (const char* v : {"origin", "up", "e1", "e2"}) {
     for (const char* axis : {"x", "y", "z"})
       out << "property float environment_" << v << "_" << axis << "\n";
   }
-  out << "element environment_map " << static_cast<uint64_t>(width) * height << "\n";
-  out << "property float environment_map_r\n";
-  out << "property float environment_map_g\n";
-  out << "property float environment_map_b\n";
-  out << "element environment_metadata " << metadata.size() << "\n";
-  out << "property uchar environment_metadata\n";
+  out << "element " << kPlyMap << " " << static_cast<uint64_t>(width) * height << "\n";
+  for (const char* channel : {"r", "g", "b"})
+    out << "property float " << kPlyMap << "_" << channel << "\n";
+  out << "element " << kPlyMetadata << " " << metadata.size() << "\n";
+  out << "property uchar " << kPlyMetadata << "\n";
 }
 
 void SpzExtensionEnvironmentMapAdobe::writePlyData(std::ostream& out) const {

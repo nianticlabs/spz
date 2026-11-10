@@ -289,7 +289,7 @@ With extension `SPZ_NIANTIC_georeference`, SPZ can store a similarity transform 
 
 ### Environment Map
 
-With extension `SPZ_ADOBE_environment_map`, an SPZ or PLY file can carry one equirectangular RGB environment map (e.g. a baked reflection environment) together with its lookup frame and free-form JSON settings, so the file is a complete asset. Pixels are stored as zstd-compressed float16 in SPZ and float32 in PLY; the frame follows coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
+With extension `SPZ_ADOBE_environment_map`, an SPZ or PLY file can carry one equirectangular RGB environment map (e.g. a baked reflection environment) together with its lookup frame and free-form JSON settings, so the file is a complete asset. In SPZ (version 4) the pixels are zstd-compressed float16 in [extension frames](#extension-frames) after the core streams; PLY stores them as float32. The frame follows coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
 
 
 ## Python Bindings
