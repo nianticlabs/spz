@@ -45,16 +45,6 @@ export enum CoordinateSystem {
   RBU,
 }
 
-// Order MUST match spz::LengthUnit in splat-types.h, like CoordinateSystem. SPZ data is in meters
-// unless the SPZ_ADOBE_units extension says otherwise.
-export enum LengthUnit {
-  UNSPECIFIED,
-  MILLIMETER,
-  CENTIMETER,
-  METER,
-  KILOMETER,
-}
-
 /**
  * Identifies one of the six per-point attributes in a SPZ splat.
  *
@@ -79,16 +69,12 @@ export type SplatAttribute = 0 | 1 | 2 | 3 | 4 | 5;
 export interface PackOptions {
   version: number;
   from: CoordinateSystem;
-  /** Length unit of the cloud's data; default METER. */
-  fromUnit?: LengthUnit;
   sh1Bits: number;
   shRestBits: number;
 }
 
 export interface UnpackOptions {
   to: CoordinateSystem;
-  /** Length unit to load into; default METER, whatever unit the file stores. */
-  toUnit?: LengthUnit;
   customAttributes?: string[] | null;
 }
 
@@ -154,7 +140,6 @@ export interface SpzStreamCallbacks {
 export interface SpzModule {
   // Enums
   CoordinateSystem: typeof CoordinateSystem;
-  LengthUnit: typeof LengthUnit;
   SplatAttribute: typeof SplatAttribute;
 @SPZ_EXTENSIONS_MODULE_INTERFACE@
   // Loaders / Savers

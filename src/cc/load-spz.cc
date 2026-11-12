@@ -301,18 +301,15 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
         g.shDegree, o.version);
   }
 #ifdef SPZ_BUILD_EXTENSIONS
-  // If the cloud carries a coordinate-system or units extension, use its value as the storage
-  // target instead of RUB / meters so that callers can persist data in any system they choose.
+  // If the cloud carries a coordinate-system extension, use its value as the storage target
+  // instead of RUB so that callers can persist data in any coordinate system they choose.
   CoordinateSystem packToCoord = getPackedCoordinateSystem(g.extensions);
   CoordinateConverter c = coordinateConverter(o.from, packToCoord, g.shDegree);
-  const double unitFactor = lengthUnitFactor(o.fromUnit, getPackedLengthUnit(g.extensions));
 #else
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RUB, g.shDegree);
-  const double unitFactor = lengthUnitFactor(o.fromUnit, LengthUnit::METER);
 #endif
-  const float logUnitFactor = static_cast<float>(std::log(unitFactor));
 
-  // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution in meters). In the future
+  // Use 12 bits for the fractional part of coordinates (~0.25 millimeter resolution). In the future
   // we can use different values on a per-splat basis and still be compatible with the decoder.
   PackedGaussians packed;
   packed.version = o.version;
@@ -332,37 +329,30 @@ PackedGaussians packGaussians(const GaussianCloud &g, const PackOptions &o) {
   packed.sh.resize(numPoints * shDim * 3);
 
 #ifdef SPZ_BUILD_EXTENSIONS
-  packed.extensions = scaleExtensionLengths(convertExtensionCoordinates(g.extensions, c), unitFactor);
+  packed.extensions = convertExtensionCoordinates(g.extensions, c);
 #endif
 
   // Store coordinates as 24-bit fixed point values.
   const float scale = (1 << packed.fractionalBits);
   std::array<float, 3> bufPos = {};
-  size_t outOfRange = 0;
   for (int32_t pi = 0; pi < numPoints; ++pi) {
     const size_t base = static_cast<size_t>(pi) * 3;
-    bufPos[0] = static_cast<float>(g.positions[base + 0] * unitFactor) * scale;
-    bufPos[1] = static_cast<float>(g.positions[base + 1] * unitFactor) * scale;
-    bufPos[2] = static_cast<float>(g.positions[base + 2] * unitFactor) * scale;
+    bufPos[0] = g.positions[base + 0] * scale;
+    bufPos[1] = g.positions[base + 1] * scale;
+    bufPos[2] = g.positions[base + 2] * scale;
     if (c.rotFlipPFunc) { c.rotFlipPFunc(bufPos.data()); }
     else { bufPos[0] *= c.flipP[0]; bufPos[1] *= c.flipP[1]; bufPos[2] *= c.flipP[2]; }
     for (size_t j = 0; j < 3; ++j) {
       const int32_t fixed32 =
           static_cast<int32_t>(std::round(bufPos[j]));
-      outOfRange += fixed32 < -(1 << 23) || fixed32 >= (1 << 23);
       packed.positions[(base + j) * 3 + 0] = fixed32 & 0xff;
       packed.positions[(base + j) * 3 + 1] = (fixed32 >> 8) & 0xff;
       packed.positions[(base + j) * 3 + 2] = (fixed32 >> 16) & 0xff;
     }
   }
-  if (outOfRange > 0) {
-    // Smaller storage units shrink this range, e.g. to +-2.048 m for millimeters.
-    SpzLog("[SPZ WARNING] packGaussians: %zu position coordinates are beyond the 24-bit range of "
-           "+-%d stored units and wrap around", outOfRange, 1 << (23 - packed.fractionalBits));
-  }
 
   for (size_t i = 0; i < numPoints * 3; i++) {
-    packed.scales[i] = toUint8((g.scales[i] + logUnitFactor + 10.0f) * 16.0f);
+    packed.scales[i] = toUint8((g.scales[i] + 10.0f) * 16.0f);
   }
 
   if (packed.usesQuaternionSmallestThree) {
@@ -595,7 +585,6 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
   {
     CoordinateSystem fromCoord = getPackedCoordinateSystem(result.extensions);
     result.convertCoordinates(fromCoord, o.to);
-    result.convertUnits(getPackedLengthUnit(result.extensions), o.toUnit);
   }
 #else
   if (packed.hadSkippedExtensions) {
@@ -604,7 +593,6 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed, const UnpackOptions
            "build with SPZ_BUILD_EXTENSIONS to ensure correct results");
   }
   result.convertCoordinates(CoordinateSystem::RUB, o.to);
-  result.convertUnits(LengthUnit::METER, o.toUnit);
 #endif
   return result;
 }
@@ -1358,7 +1346,6 @@ GaussianCloud loadSplatFromPly(const std::string &filename, const UnpackOptions 
   }
 
   result.convertCoordinates(CoordinateSystem::RDF, o.to);
-  result.convertUnits(LengthUnit::METER, o.toUnit);  // PLY is always meters, as it is always RDF
   return result;
 }
 
@@ -1374,14 +1361,11 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
   const int64_t D = 17 + shDim * 3;
 
   CoordinateConverter c = coordinateConverter(o.from, CoordinateSystem::RDF, data.shDegree);
-  const double unitFactor = lengthUnitFactor(o.fromUnit, LengthUnit::METER);
-  const float logUnitFactor = static_cast<float>(std::log(unitFactor));
 #ifdef SPZ_BUILD_EXTENSIONS
   if (!allExtensionsValid(data.extensions) || !keysAreUnique(data.extensions)) {
     return false;
   }
-  const std::vector<SpzExtensionBasePtr> extensions =
-      scaleExtensionLengths(convertExtensionCoordinates(data.extensions, c), unitFactor);
+  const std::vector<SpzExtensionBasePtr> extensions = convertExtensionCoordinates(data.extensions, c);
 #endif
 
   std::ofstream out(filename, std::ios::binary);
@@ -1434,7 +1418,7 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
       const int64_t i3 = i * 3;
       const int64_t i4 = i * 4;
       // Position (x, y, z)
-      for (size_t j = 0; j < 3; j++) { values[outIdx + j] = static_cast<float>(data.positions[i3 + j] * unitFactor); }
+      for (size_t j = 0; j < 3; j++) { values[outIdx + j] = data.positions[i3 + j]; }
       if (c.rotFlipPFunc) {
         c.rotFlipPFunc(values.data() + outIdx);
       } else {
@@ -1464,10 +1448,10 @@ bool saveSplatToPly(const GaussianCloud &data, const PackOptions &o, const std::
       }
       // Alpha
       values[outIdx++] = data.alphas[i];
-      // Scale (sx, sy, sz); skipping + log(1) keeps -0.0f bit-exact.
-      for (int64_t j = 0; j < 3; j++) {
-        values[outIdx++] = unitFactor == 1.0 ? data.scales[i3 + j] : data.scales[i3 + j] + logUnitFactor;
-      }
+      // Scale (sx, sy, sz)
+      values[outIdx++] = data.scales[i3 + 0];
+      values[outIdx++] = data.scales[i3 + 1];
+      values[outIdx++] = data.scales[i3 + 2];
       // Rotation (qw, qx, qy, qz)
       for (int32_t j = 0; j < 4; j++) { bufQuat[j] = data.rotations[i4 + j]; }
       if (c.rotFlipQFunc) {

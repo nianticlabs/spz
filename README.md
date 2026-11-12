@@ -29,17 +29,6 @@ There are 16 named coordinate systems organised in two families:
 Converting between families applies a 90-degree rotation about the X axis in addition to any axis
 flips, which also rotates spherical-harmonics coefficients via the appropriate Wigner D-matrix.
 
-### Length Units
-
-SPZ stores lengths in meters by default: positions are 24-bit fixed point with 12 fractional bits
-(a 0.24 mm grid, ±2048 m range) and scales are 8-bit log values covering e^-10 to e^5.94 (45 µm to
-379 m). The `SPZ_ADOBE_units` extension stores them in millimeters, centimeters or kilometers
-instead, which moves both ranges by the unit (millimeters: a 0.24 µm grid within ±2.048 m, and
-scales from 45 nm to 0.38 m). `PackOptions::fromUnit` names the unit of the cloud being saved and
-`UnpackOptions::toUnit` the unit to load into; both default to `METER`, so loaders get meters
-whatever unit the file stores. `UNSPECIFIED` disables the conversion. PLY is always meters. See
-the extension's entry in [extensions/README.md](extensions/README.md#built-in-extensions).
-
 ## Implementations
 
 ### C++
@@ -131,7 +120,6 @@ Check [src/emscripten/spz.d.ts.in](src/emscripten/spz.d.ts.in) (source) or `dist
 The `PackOptions` struct supports the following fields:
 
 - `from`: Source coordinate system (default: `UNSPECIFIED`)
-- `fromUnit`: Length unit of the cloud's data (default: `METER`). `UnpackOptions::toUnit` is its counterpart on load (default: `METER`)
 - `version`: Version of the packed format (default: `4`)
 - `sh1Bits`: Number of quantization bits for SH degree 1 coefficients (default: 5, range: 1-8)
 - `shRestBits`: Number of quantization bits for SH degree 2+ coefficients (default: 4, range: 1-8)
@@ -222,13 +210,11 @@ bytes[0..1] == 0x1f 0x8b  →  legacy gzip format (versions 1–3, read-only)
 ### Positions
 
 Positions are represented as `(x, y, z)` coordinates, each as a 24-bit fixed point signed integer.
-The number of fractional bits is determined by the `fractionalBits` field in the header. Values are
-in meters, or in the unit recorded by `SPZ_ADOBE_units`.
+The number of fractional bits is determined by the `fractionalBits` field in the header.
 
 ### Scales
 
-Scales are represented as `(x, y, z)` components, each represented as an 8-bit log-encoded integer,
-in the same length unit as positions.
+Scales are represented as `(x, y, z)` components, each represented as an 8-bit log-encoded integer.
 
 ### Rotation
 
@@ -304,6 +290,10 @@ With extension `SPZ_NIANTIC_georeference`, SPZ can store a similarity transform 
 ### Environment Map
 
 With extension `SPZ_ADOBE_environment_map`, an SPZ or PLY file can carry one equirectangular RGB environment map (e.g. a baked reflection environment) together with its lookup frame and free-form JSON settings, so the file is a complete asset. In SPZ (version 4) the pixels are zstd-compressed float16 in [extension frames](#extension-frames) after the core streams; PLY stores them as float32. The frame follows coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
+
+### Length Units
+
+With extension `SPZ_ADOBE_units`, a file can say which length unit its positions and scales are written in: millimeters, centimeters, meters or kilometers. Writers can then store small objects in millimeters, where the 12 fractional position bits give a 0.24 µm grid and the log-scale floor of e^-10 is 45 nm, instead of 0.24 mm and 45 µm in meters. The record is a label only: the library never converts the data, so clients scale it themselves if they need another unit. Without the record the unit is unspecified, meters by convention. See [extensions/README.md](extensions/README.md#built-in-extensions).
 
 
 ## Python Bindings

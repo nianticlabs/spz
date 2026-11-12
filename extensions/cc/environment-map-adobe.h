@@ -45,8 +45,7 @@ namespace spz {
 struct SpzExtensionEnvironmentMapAdobe : public SpzExtensionBase,
                                          public SpzFramedExtension,
                                          public SpzKeyedExtension,
-                                         public SpzCoordinateDependentExtension,
-                                         public SpzLengthDependentExtension {
+                                         public SpzCoordinateDependentExtension {
   uint32_t width = 0;
   uint32_t height = 0;
   std::array<float, 3> origin = {0.0f, 0.0f, 0.0f};
@@ -76,8 +75,6 @@ struct SpzExtensionEnvironmentMapAdobe : public SpzExtensionBase,
   std::string uniquenessKey() const override;
   // A copy with origin, up, e1 and e2 converted like positions, or nullptr if c leaves them unchanged.
   SpzExtensionBasePtr withConvertedCoordinates(const CoordinateConverter& c) const override;
-  // A copy with origin scaled; up, e1 and e2 are directions.
-  SpzExtensionBasePtr withScaledLengths(double factor) const override;
   std::optional<SpzFrameWritePlan> planFrameWrites(int32_t numPoints) const override;
 };
 

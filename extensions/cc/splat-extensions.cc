@@ -193,12 +193,6 @@ CoordinateSystem getPackedCoordinateSystem(
   return CoordinateSystem::RUB;  // default: no known extension overrides the packed coordinate system
 }
 
-LengthUnit getPackedLengthUnit(const std::vector<SpzExtensionBasePtr>& extensions) {
-  if (auto unitsExt = findExtensionByType<SpzExtensionUnitsAdobe>(extensions))
-    return unitsExt->resolve();
-  return LengthUnit::METER;  // SPZ data without the extension is in meters
-}
-
 bool allExtensionsValid(const std::vector<SpzExtensionBasePtr>& extensions) {
   for (const auto& ext : extensions) {
     if (!ext->isValid()) return false;

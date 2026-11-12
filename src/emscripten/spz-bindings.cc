@@ -92,27 +92,15 @@ inline spz::CoordinateSystem resolvePackedFromCoord(const spz::PackedGaussians& 
 #endif
 }
 
-// The factor from the packed cloud's stored length unit to toUnit. Mirrors unpackGaussians: the
-// units extension if extensions were retained, otherwise meters.
-inline double packedLengthFactor(const spz::PackedGaussians& packed, spz::LengthUnit toUnit) {
-#ifdef SPZ_BUILD_EXTENSIONS
-  return spz::lengthUnitFactor(spz::getPackedLengthUnit(packed.extensions), toUnit);
-#else
-  return spz::lengthUnitFactor(spz::LengthUnit::METER, toUnit);
-#endif
-}
-
-// The extensions as a JS array, converted to coordTo and scaled by lengthFactor. The chunked unpack
-// path skips GaussianCloud::convertCoordinates and convertUnits, which would otherwise do this.
+// The extensions as a JS array, converted to coordTo. The chunked unpack path skips
+// GaussianCloud::convertCoordinates, which would otherwise do this.
 inline emscripten::val jsExtensionsInCoordinates(const spz::PackedGaussians& packed,
                                                  spz::CoordinateSystem coordFrom,
-                                                 spz::CoordinateSystem coordTo,
-                                                 double lengthFactor) {
+                                                 spz::CoordinateSystem coordTo) {
 #ifdef SPZ_BUILD_EXTENSIONS
   const spz::CoordinateConverter c =
     spz::coordinateConverter(coordFrom, coordTo, packed.shDegree);
-  return jsArrayFromVector(
-    spz::scaleExtensionLengths(spz::convertExtensionCoordinates(packed.extensions, c), lengthFactor));
+  return jsArrayFromVector(spz::convertExtensionCoordinates(packed.extensions, c));
 #else
   return emscripten::val::array();
 #endif
@@ -121,14 +109,10 @@ inline emscripten::val jsExtensionsInCoordinates(const spz::PackedGaussians& pac
 constexpr char kCustomAttributesNotStrings[] =
   "options.customAttributes must be an array of strings, or null for all";
 
-// Parsed by hand: a value_object would make customAttributes and toUnit mandatory. Omitted
-// customAttributes keeps the default (none); null decodes all. Returns the problem, or nullptr.
+// Parsed by hand: a value_object would make customAttributes mandatory. Omitted keeps the default
+// (none); null decodes all. Returns the problem, or nullptr.
 const char* unpackOptionsFromJs(const emscripten::val& js, spz::UnpackOptions* out) {
   out->to = js["to"].as<spz::CoordinateSystem>();
-  const emscripten::val toUnit = js["toUnit"];
-  if (!toUnit.isUndefined()) {
-    out->toUnit = toUnit.as<spz::LengthUnit>();
-  }
   const emscripten::val names = js["customAttributes"];
   if (names.isUndefined()) {
     return nullptr;
@@ -153,31 +137,12 @@ const char* unpackOptionsFromJs(const emscripten::val& js, spz::UnpackOptions* o
   return nullptr;
 }
 
-// Parsed by hand like UnpackOptions, so fromUnit is optional. Returns the problem, or nullptr.
-const char* packOptionsFromJs(const emscripten::val& js, spz::PackOptions* out) {
-  for (const char* key : {"version", "from", "sh1Bits", "shRestBits"}) {
-    if (js[key].isUndefined()) {
-      return "options.version, from, sh1Bits and shRestBits are required";
-    }
-  }
-  out->version = js["version"].as<uint32_t>();
-  out->from = js["from"].as<spz::CoordinateSystem>();
-  out->sh1Bits = js["sh1Bits"].as<uint8_t>();
-  out->shRestBits = js["shRestBits"].as<uint8_t>();
-  const emscripten::val fromUnit = js["fromUnit"];
-  if (!fromUnit.isUndefined()) {
-    out->fromUnit = fromUnit.as<spz::LengthUnit>();
-  }
-  return nullptr;
-}
-
 // Fill a pre-allocated JS Float32Array with one attribute by chunked unpacking
 // through a reusable WASM-side scratch buffer.
 inline void streamAttributeIntoJsArray(spz::PackedGaussians& packed,
                                        spz::SplatAttribute attr,
                                        spz::CoordinateSystem coordFrom,
                                        spz::CoordinateSystem coordTo,
-                                       double lengthFactor,
                                        std::vector<float>& scratch,
                                        emscripten::val& outArray) {
   const int32_t numPoints = packed.numPoints;
@@ -189,7 +154,7 @@ inline void streamAttributeIntoJsArray(spz::PackedGaussians& packed,
   for (int32_t off = 0; off < numPoints; off += kStreamingChunkPoints) {
     const int32_t cnt = std::min(kStreamingChunkPoints, numPoints - off);
     const size_t floats = static_cast<size_t>(cnt) * fpp;
-    if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), coordFrom, coordTo, lengthFactor)) {
+    if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), coordFrom, coordTo)) {
       spz::releasePacked(packed, attr);
       spz::SpzLog("[SPZ ERROR] loadSpzFromBuffer: unpackChunk failed (attr=%d, offset=%d)",
                   static_cast<int>(attr), off);
@@ -211,8 +176,7 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
   emCloud.shDegree = packed.shDegree;
   emCloud.antialiased = packed.antialiased;
   const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
-  const double lengthFactor = packedLengthFactor(packed, options.toUnit);
-  emCloud.extensions = jsExtensionsInCoordinates(packed, fromCoord, options.to, lengthFactor);
+  emCloud.extensions = jsExtensionsInCoordinates(packed, fromCoord, options.to);
 
   // Pre-allocate the six output Float32Arrays in JS heap (outside WASM linear
   // memory) so they don't count against the WASM heap budget. For very large
@@ -249,7 +213,7 @@ EmGaussianCloud buildEmCloud(spz::PackedGaussians packed, const spz::UnpackOptio
                 "slot count must match kAllSplatAttributes");
   for (size_t i = 0; i < spz::kAllSplatAttributes.size(); ++i) {
     streamAttributeIntoJsArray(packed, spz::kAllSplatAttributes[i],
-                               fromCoord, options.to, lengthFactor, scratch, *slots[i]);
+                               fromCoord, options.to, scratch, *slots[i]);
   }
 
   return emCloud;
@@ -284,12 +248,7 @@ EmGaussianCloud loadSpzFromBuffer(const emscripten::val& buffer, const emscripte
   return buildEmCloud(std::move(packed), options);
 }
 
-emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const emscripten::val& jsOptions) {
-  spz::PackOptions options;
-  if (const char* problem = packOptionsFromJs(jsOptions, &options)) {
-    emscripten::val::global("TypeError").new_(emscripten::val(problem)).throw_();
-  }
-
+emscripten::val saveSpzToBuffer(const EmGaussianCloud& emCloud, const spz::PackOptions& options) {
   spz::GaussianCloud cloud;
   cloud.numPoints = emCloud.numPoints;
   cloud.shDegree = emCloud.shDegree;
@@ -363,13 +322,12 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
   }
 
   const spz::CoordinateSystem fromCoord = resolvePackedFromCoord(packed);
-  const double lengthFactor = packedLengthFactor(packed, options.toUnit);
   if (isCallable(onHeader)) {
     emscripten::val header = emscripten::val::object();
     header.set("numPoints", packed.numPoints);
     header.set("shDegree", packed.shDegree);
     header.set("antialiased", packed.antialiased);
-    header.set("extensions", jsExtensionsInCoordinates(packed, fromCoord, options.to, lengthFactor));
+    header.set("extensions", jsExtensionsInCoordinates(packed, fromCoord, options.to));
     onHeader(header);
   }
 
@@ -388,7 +346,7 @@ void loadSpzStreaming(uintptr_t ptr, size_t byteLength,
     for (int32_t off = 0; off < packed.numPoints; off += kStreamingChunkPoints) {
       const int32_t cnt = std::min(kStreamingChunkPoints, packed.numPoints - off);
       const size_t floats = static_cast<size_t>(cnt) * fpp;
-      if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), fromCoord, options.to, lengthFactor)) {
+      if (!spz::unpackChunk(packed, attr, off, cnt, scratch.data(), fromCoord, options.to)) {
         spz::releasePacked(packed, attr);
         reportError("loadSpzStreaming: unpackChunk failed");
         return;
@@ -427,13 +385,6 @@ EMSCRIPTEN_BINDINGS(spz_module) {
       .value("LBU", spz::CoordinateSystem::LBU)
       .value("RBU", spz::CoordinateSystem::RBU);
 
-  emscripten::enum_<spz::LengthUnit>("LengthUnit")
-      .value("UNSPECIFIED", spz::LengthUnit::UNSPECIFIED)
-      .value("MILLIMETER", spz::LengthUnit::MILLIMETER)
-      .value("CENTIMETER", spz::LengthUnit::CENTIMETER)
-      .value("METER", spz::LengthUnit::METER)
-      .value("KILOMETER", spz::LengthUnit::KILOMETER);
-
   // Attribute tag passed to loadSpzStreaming's onChunk callback. Registered as
   // `number` so JS receives plain integers (0..5), matching the TS enum in the
   // generated .d.ts. With the default `object` policy, JS would receive enum
@@ -451,6 +402,12 @@ EMSCRIPTEN_BINDINGS(spz_module) {
 #ifdef SPZ_BUILD_EXTENSIONS
   spz::emscripten::register_extensions();
 #endif
+
+  emscripten::value_object<spz::PackOptions>("PackOptions")
+      .field("version", &spz::PackOptions::version)
+      .field("from", &spz::PackOptions::from)
+      .field("sh1Bits", &spz::PackOptions::sh1Bits)
+      .field("shRestBits", &spz::PackOptions::shRestBits);
 
   emscripten::value_object<EmGaussianCloud>("GaussianCloud")
       .field("numPoints", &EmGaussianCloud::numPoints)

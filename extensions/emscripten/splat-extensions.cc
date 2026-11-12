@@ -80,6 +80,14 @@ void register_extensions() {
       .property("coordinateSystem", &spz::SpzExtensionCoordinateSystemAdobe::coordinateSystem)
       .class_function("type", &spz::SpzExtensionCoordinateSystemAdobe::type);
 
+  // Registered as `number`, like GeoreferenceCrsEncoding, to match the numeric enum in splat-extensions.d.ts.in.
+  ::emscripten::enum_<spz::LengthUnit>("LengthUnit", ::emscripten::enum_value_type::number)
+      .value("UNSPECIFIED", spz::LengthUnit::UNSPECIFIED)
+      .value("MILLIMETER", spz::LengthUnit::MILLIMETER)
+      .value("CENTIMETER", spz::LengthUnit::CENTIMETER)
+      .value("METER", spz::LengthUnit::METER)
+      .value("KILOMETER", spz::LengthUnit::KILOMETER);
+
   ::emscripten::class_<spz::SpzExtensionUnitsAdobe, ::emscripten::base<spz::SpzExtensionBase>>("SpzExtensionUnitsAdobe")
       .smart_ptr_constructor("SpzExtensionUnitsAdobePtr", &std::make_shared<spz::SpzExtensionUnitsAdobe>)
       .property("lengthUnit", &spz::SpzExtensionUnitsAdobe::lengthUnit)

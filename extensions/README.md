@@ -55,7 +55,7 @@ If an SPZ file that contains extensions is loaded by a library build that was **
   - NGSP v4: `[SPZ WARNING] loadSpzPacked: file has extensions but extension support is disabled — skipped extensions may affect how data was packed or will be unpacked; build with SPZ_BUILD_EXTENSIONS to ensure correct results`
   - Legacy gzip: `[SPZ WARNING] deserializePackedGaussians: stream has extensions but extension support is disabled — skipped extensions may affect how data was packed or will be unpacked; build with SPZ_BUILD_EXTENSIONS to ensure correct results`
 - **Returned clouds have no extensions.** `PackedGaussians` and `GaussianCloud` in a no-extension build do not have an `extensions` member; the loaded result simply omits any extension data.
-- **Data may be incorrect.** Some extensions (such as `SPZ_ADOBE_coordinate_system` and `SPZ_ADOBE_units`) alter how data is packed or unpacked. If a file was written with such an extension, a build without extension support will silently misinterpret the data — for example, applying the wrong coordinate system conversion, or reading millimeters as meters. The warning above is the only signal this has occurred.
+- **Data may be incorrect.** Some extensions (such as `SPZ_ADOBE_coordinate_system`) alter how data is packed or unpacked. If a file was written with such an extension, a build without extension support will silently misinterpret the data — for example, applying the wrong coordinate system conversion. The warning above is the only signal this has occurred.
 
 To preserve or use extension data, and to ensure correct data interpretation, build with `-DSPZ_BUILD_EXTENSIONS=ON`.
 
@@ -160,7 +160,7 @@ To add a new extension type in the C++ codebase:
 5. **Register in the parser**  
    In `extensions/cc/splat-extensions.cc`, ensure your extension’s header is included (e.g. `#include "my-extension.h"`). In `tryParseExtension`, add a `case` for your `SpzExtensionType`: read `byteLength` bytes into a buffer, open an `std::istringstream` on it, and call `MyExtension::read(iss)`. Push the result into `out` if valid. Return `true` to continue. Unknown types are already handled: the common code skips `byteLength` bytes and logs a warning.
 
-   If your extension affects the packed coordinate system, also add a case in `getPackedCoordinateSystem` (in the same file) that calls your extension’s resolve logic. This ensures `packGaussians` and `unpackGaussians` apply the correct coordinate conversion. `getPackedLengthUnit` does the same for the stored length unit.
+   If your extension affects the packed coordinate system, also add a case in `getPackedCoordinateSystem` (in the same file) that calls your extension’s resolve logic. This ensures `packGaussians` and `unpackGaussians` apply the correct coordinate conversion.
 
 6. **Optional: PLY round-trip**  
    If you want your extension to load/save from PLY as well:
@@ -184,7 +184,6 @@ Optional capabilities are separate interfaces, declared in `splat-extensions.h`,
 | `SpzFrameReadPlan` (a struct returned by the record's parser) | `type`, the extension `frames`, an optional uniqueness `key`, and two functions: `dataBytes(numPoints)` and `resolve(numPoints, data)` | Drops records sharing a key, validates the extension frames against the file and the decoded size before allocating, decompresses them in parallel with the core streams, and calls `resolve` with the concatenated data. A record that fails any step is dropped; the core data still loads. |
 | `SpzKeyedExtension` | `uniquenessKey()` | `saveSpz` fails if two records of the same type share a key; loading drops every record that does. |
 | `SpzCoordinateDependentExtension` | `withConvertedCoordinates(c)`: a converted copy, or `nullptr` if unaffected | Called whenever the cloud is converted between coordinate systems. Records are shared between clouds, so never modify `*this`. |
-| `SpzLengthDependentExtension` | `withScaledLengths(factor)`: a copy with its lengths multiplied by `factor` | Called whenever the cloud is converted between length units (`PackOptions::fromUnit`, `UnpackOptions::toUnit`, `convertUnits`). Records are shared between clouds, so never modify `*this`. |
 
 Extension frames exist only in version 4 files: `saveSpz` refuses older versions when a record has frame data.
 
@@ -265,7 +264,7 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
   ```
 
 
-- **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `extensions/cc/safe-orbit-camera-adobe.h` and `safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults. `safeOrbitRadiusMin` is a length, in the cloud's length unit, and scales with unit conversions (see `SPZ_ADOBE_units`); the elevations are angles.
+- **SPZ_ADOBE_safe_orbit_camera** (`0xADBE0002`) — Camera orbit limits (elevation min/max, radius min) for restricting the view. Implemented in `extensions/cc/safe-orbit-camera-adobe.h` and `safe-orbit-camera-adobe.cc`. See the main [README](../README.md) for attributes and defaults.
 
 - **SPZ_ADOBE_coordinate_system** (`0xADBE0003`) — Records the coordinate system in which the Gaussian data is physically stored in the file. Implemented in `extensions/cc/coordinate-system-adobe.h` and `coordinate-system-adobe.cc`.
 
@@ -286,39 +285,25 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
   # pack with from_coord=RUB → stored as RDF; load with to_coord=RUB → converted back automatically
   ```
 
-- **SPZ_ADOBE_units** (`0xADBE0006`) — Records the length unit in which the Gaussian data is stored in the file. Implemented in `extensions/cc/units-adobe.h` and `units-adobe.cc`. (`0xADBE0004` is unused.)
+- **SPZ_ADOBE_units** (`0xADBE0006`) — Records the length unit the positions and scales are written in. Implemented in `extensions/cc/units-adobe.h` and `units-adobe.cc`. (`0xADBE0004` is unused.)
 
-  **Payload:** one `uint32_t`, the `LengthUnit` value (4 bytes): 1 `MILLIMETER`, 2 `CENTIMETER`, 3 `METER`, 4 `KILOMETER`. Value 0 (`UNSPECIFIED`) is treated as absent (meters) and produces a warning. Readers drop a record with any other value, so the data then reads as meters; `saveSpz` refuses to write one.
+  **Payload:** one `uint32_t`, the `LengthUnit` value (4 bytes): 1 `MILLIMETER`, 2 `CENTIMETER`, 3 `METER`, 4 `KILOMETER`. `saveSpz` fails on any other value, including 0 (`UNSPECIFIED`). Readers drop a record with any other value with a warning; the core data still loads.
 
-  **Why:** positions have 12 fractional bits and log scales cover e^-10 to e^5.94, both in the stored unit. Storing in a smaller unit trades range for resolution:
+  **This extension is a label only.** The library never converts positions or scales based on it, and no other extension refers to it. The data loads exactly as stored; a client that wants another unit scales it itself, multiplying positions by the unit's size in meters (0.001 for millimeters) and adding the logarithm of that factor to the log scales. Without the record the unit is unspecified; by SPZ convention it is meters.
 
-  | Stored unit | Position grid | Position range | Scale range |
-  |---|---|---|---|
-  | `MILLIMETER` | 0.24 µm | ±2.048 m | 45 nm – 0.38 m |
-  | `CENTIMETER` | 2.4 µm | ±20.48 m | 0.45 µm – 3.8 m |
-  | `METER` (default) | 0.24 mm | ±2048 m | 45 µm – 379 m |
-  | `KILOMETER` | 0.24 m | ±2048 km | 4.5 cm – 379 km |
+  **Why:** positions have 12 fractional bits and log scales stop at e^-10, both in the written unit. In meters that is a 0.24 mm grid and a 45 µm minimum scale; in millimeters a 0.24 µm grid and 45 nm. The position range (±2048 units) and maximum scale (e^5.94 units) shrink by the same factor.
 
-  Scales outside the range clamp, as in meters; positions outside it wrap around, and `packGaussians` logs a warning.
+  **PLY:** no PLY form, like `SPZ_ADOBE_coordinate_system`; saving to PLY drops it.
 
-  **This extension is a descriptor, not an instruction**, like `SPZ_ADOBE_coordinate_system`. `unpackGaussians` uses it internally; scaling the loaded data again would apply the conversion twice.
-
-  **For writers:** attach this extension before saving. `packGaussians` converts `PackOptions::fromUnit` (default `METER`) to `extension.lengthUnit`: positions are multiplied by the unit factor and log scales get `ln(factor)` added. The library never creates this extension automatically.
-
-  **For readers:** `unpackGaussians` / `loadSpz` and the WASM loaders convert `extension.lengthUnit` to `UnpackOptions::toUnit`, which defaults to `METER`, so callers get meters with no code change. A file without this extension is in meters. `UNSPECIFIED` in either option disables the conversion, e.g. `toUnit = UNSPECIFIED` loads the stored values.
-
-  **Other lengths** convert with the data: `SPZ_ADOBE_safe_orbit_camera`'s `safeOrbitRadiusMin` and `SPZ_ADOBE_environment_map`'s `origin`. Angles, directions (`up`, `e1`, `e2`) and custom attributes don't: `SPATIAL` attributes are treated as directions, so scale any that hold lengths yourself. `SPZ_NIANTIC_georeference` is never scaled: its transform applies to RUB positions in meters, which is what loading with the default `toUnit` returns.
-
-  **PLY** has no form of this extension: PLY is always meters, as it is always RDF. `saveSplatToPly` converts `PackOptions::fromUnit` to meters and drops the record; `loadSplatFromPly` converts meters to `UnpackOptions::toUnit`.
-
-  **Compatibility note:** readers without this extension, including non-extension builds, skip it with the unknown-extension warning and read the stored values as meters (1000 times too large for millimeters). See "Builds without extension support" above.
+  **Compatibility note:** readers without this extension, including non-extension builds, skip it with the unknown-extension warning. They load the same values as readers that know it, since it doesn't change how data is packed.
 
   ```python
   ext = spz.SpzExtensionUnitsAdobe()
   ext.length_unit = spz.LengthUnit.MILLIMETER
-  cloud.extensions = [ext]
-  spz.save_spz(cloud, spz.PackOptions(), "scan.spz")  # cloud in meters, stored in millimeters
-  loaded = spz.load_spz("scan.spz")                    # back in meters; UnpackOptions.to_unit picks another unit
+  cloud.extensions = [ext]                 # cloud.positions and cloud.scales already in millimeters
+  spz.save_spz(cloud, spz.PackOptions(), "scan.spz")
+
+  loaded = spz.load_spz("scan.spz")        # millimeters, as stored
   ```
 
 - **SPZ_NIANTIC_georeference** (`0x4E530001`) — Records a similarity transform that places the asset in a geocentric CRS. Implemented in `extensions/cc/georeference-niantic.h` and `georeference-niantic.cc`.
@@ -364,7 +349,7 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
 
   **For writers:** attach this extension before saving, with the transform defined from RUB positions. The library never creates this extension automatically.
 
-  **For readers:** loaded positions are always local; the library never applies the transform. Load with `to_coord` = RUB and the default `to_unit` (meters) and apply the transform yourself in double precision.
+  **For readers:** loaded positions are always local; the library never applies the transform. Load with `to_coord` = RUB and apply the transform yourself in double precision.
 
   **Compatibility note:** a non-extension build skips this extension with a warning. The Gaussian data is unaffected; only the georeference is lost.
 
@@ -395,7 +380,7 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
   | Field | Meaning |
   |---|---|
   | `width`, `height` | Map size in pixels, both at least 1 |
-  | `origin` | Lookup origin; converted like positions by `PackOptions::from`, `UnpackOptions::to` and `convertCoordinates`, and scaled with them by length unit conversions |
+  | `origin` | Lookup origin; converted like positions by `PackOptions::from`, `UnpackOptions::to` and `convertCoordinates` |
   | `up`, `e1`, `e2` | Unit directions, converted the same way. Pixel column = azimuth about `up` measured from `e1` toward `e2`, -pi..pi → 0..width; pixel row = angle from `up`, 0..pi → 0..height. Because the frame follows the splats, lookups stay correct in any coordinate system |
   | `metadata` | Free-form UTF-8 (JSON by convention, e.g. renderer settings), never converted |
   | `pixels` | `height * width * 3` floats, row-major, RGB interleaved, linear-in-file values in the model's color space |

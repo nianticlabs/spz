@@ -26,27 +26,29 @@ SOFTWARE.
 #define SPZ_UNITS_ADOBE_H_
 
 #include "splat-extensions.h"
-#include "splat-types.h"
 
 namespace spz {
 
-// Records the length unit in which the Gaussian data is stored in the file, e.g. millimeters for a
-// finer position grid and smaller representable scales.
-//
-// Like SPZ_ADOBE_coordinate_system, this is a descriptor, not an instruction. packGaussians converts
-// PackOptions::fromUnit to lengthUnit (instead of the default meters), and unpackGaussians converts
-// lengthUnit to UnpackOptions::toUnit (meters by default). Consumers using those functions must not
-// scale the data again based on this extension.
-//
-// UNSPECIFIED is equivalent to the extension being absent: both mean meters, but a present
-// UNSPECIFIED value is likely a writer bug and will produce a warning.
+// A length unit recorded by SPZ_ADOBE_units.
+enum class LengthUnit : uint32_t {
+  UNSPECIFIED = 0,  // Not valid in a record
+  MILLIMETER = 1,
+  CENTIMETER = 2,
+  METER = 3,
+  KILOMETER = 4,
+};
+
+// Records the length unit the positions and scales are written in. A label only: the library never
+// converts the data, and other extensions don't refer to it. Clients that care scale the loaded
+// data themselves (by 0.001 for millimeters to meters). Without this record the unit is unspecified;
+// by SPZ convention, meters.
 struct SpzExtensionUnitsAdobe : public SpzExtensionBase {
   LengthUnit lengthUnit = LengthUnit::UNSPECIFIED;
 
   SpzExtensionUnitsAdobe();
   uint32_t payloadBytes() const override;
   void write(std::ostream& os) const override;
-  // False (after logging why) if lengthUnit is not a LengthUnit value.
+  // False (after logging why) unless lengthUnit is MILLIMETER, CENTIMETER, METER or KILOMETER.
   bool isValid() const override;
   SpzExtensionBase* copyAsRawData() const override;
   std::optional<std::shared_ptr<SpzExtensionBase>> tryReadFromPly(
@@ -55,10 +57,6 @@ struct SpzExtensionUnitsAdobe : public SpzExtensionBase {
   void writePlyData(std::ostream& out) const override;
   static std::optional<SpzExtensionBasePtr> read(std::istream& is);
   static SpzExtensionType type();
-
-  // Returns the storage length unit recorded by this extension.
-  // Returns METER and logs a warning if lengthUnit is UNSPECIFIED (likely a writer bug).
-  LengthUnit resolve() const;
 };
 
 }  // namespace spz

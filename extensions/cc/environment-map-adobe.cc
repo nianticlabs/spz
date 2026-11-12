@@ -116,12 +116,6 @@ SpzExtensionBasePtr SpzExtensionEnvironmentMapAdobe::withConvertedCoordinates(co
   return converted;
 }
 
-SpzExtensionBasePtr SpzExtensionEnvironmentMapAdobe::withScaledLengths(double factor) const {
-  auto scaled = std::make_shared<SpzExtensionEnvironmentMapAdobe>(*this);
-  for (float& v : scaled->origin) v = static_cast<float>(v * factor);
-  return scaled;
-}
-
 uint32_t SpzExtensionEnvironmentMapAdobe::payloadBytes() const { return 0; }
 
 void SpzExtensionEnvironmentMapAdobe::write(std::ostream& /*os*/) const {

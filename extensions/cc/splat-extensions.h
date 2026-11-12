@@ -50,7 +50,6 @@ namespace spz {
 struct PlyExtraElement;
 struct CoordinateConverter;
 enum class CoordinateSystem : uint32_t;
-enum class LengthUnit : uint32_t;
 enum class SpzExtensionType : uint32_t {
   SPZ_ADOBE_safe_orbit_camera = 0xADBE0002u,
   SPZ_ADOBE_coordinate_system = 0xADBE0003u,
@@ -150,15 +149,6 @@ struct SpzCoordinateDependentExtension {
   virtual SpzExtensionBasePtr withConvertedCoordinates(const CoordinateConverter& c) const = 0;
 };
 
-// Capability: the record holds lengths in the cloud's length unit (a position, a radius), which must
-// scale when the cloud changes units.
-struct SpzLengthDependentExtension {
-  virtual ~SpzLengthDependentExtension() = default;
-  // Returns a copy with its lengths multiplied by factor. Records are shared between clouds, so
-  // implementations must never modify *this.
-  virtual SpzExtensionBasePtr withScaledLengths(double factor) const = 0;
-};
-
 // Built-in extension types are declared in their own headers, e.g. safe-orbit-camera-adobe.h
 // Reads the records that need no frame data; framed records are dropped with an error, since only
 // NGSP (v4) files can carry their data.
@@ -179,10 +169,6 @@ bool isKnownPlyExtensionElement(const std::string& elementName);
 // Returns the coordinate system in which the Gaussian data is stored, as recorded by any
 // behavior-modifying extension. Falls back to RUB if no such extension is present.
 CoordinateSystem getPackedCoordinateSystem(const std::vector<SpzExtensionBasePtr>& extensions);
-
-// Returns the length unit in which the Gaussian data is stored, as recorded by SPZ_ADOBE_units.
-// Falls back to METER if no such extension is present.
-LengthUnit getPackedLengthUnit(const std::vector<SpzExtensionBasePtr>& extensions);
 
 // False if any extension reports isValid() == false; the extension logs the reason.
 bool allExtensionsValid(const std::vector<SpzExtensionBasePtr>& extensions);

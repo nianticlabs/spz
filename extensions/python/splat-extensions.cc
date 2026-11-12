@@ -89,10 +89,18 @@ void register_extensions(nb::module_& m) {
                 "Native coordinate system of the asset's Gaussian data")
         .def_static("type", &spz::SpzExtensionCoordinateSystemAdobe::type,
                     "Static method to get the extension type enum value");
-    nb::class_<spz::SpzExtensionUnitsAdobe, spz::SpzExtensionBase>(m, "SpzExtensionUnitsAdobe")
+    nb::enum_<spz::LengthUnit>(m, "LengthUnit", "Length unit recorded by SpzExtensionUnitsAdobe")
+        .value("UNSPECIFIED", spz::LengthUnit::UNSPECIFIED, "Not valid in a record")
+        .value("MILLIMETER", spz::LengthUnit::MILLIMETER)
+        .value("CENTIMETER", spz::LengthUnit::CENTIMETER)
+        .value("METER", spz::LengthUnit::METER)
+        .value("KILOMETER", spz::LengthUnit::KILOMETER);
+    nb::class_<spz::SpzExtensionUnitsAdobe, spz::SpzExtensionBase>(m, "SpzExtensionUnitsAdobe",
+        "Labels the length unit the positions and scales are written in. The library never converts; "
+        "scale the loaded data yourself if needed.")
         .def(nb::init<>())
         .def_rw("length_unit", &spz::SpzExtensionUnitsAdobe::lengthUnit,
-                "Length unit the Gaussian data is stored in; loading converts it to UnpackOptions.to_unit")
+                "Length unit of the positions and scales; saving fails unless MILLIMETER, CENTIMETER, METER or KILOMETER")
         .def_static("type", &spz::SpzExtensionUnitsAdobe::type,
                     "Static method to get the extension type enum value");
     nb::enum_<spz::SpzExtensionGeoreferenceNiantic::CrsEncoding>(

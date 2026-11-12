@@ -1,5 +1,6 @@
   SpzExtensionType: typeof SpzExtensionType;
   GeoreferenceCrsEncoding: typeof GeoreferenceCrsEncoding;
+  LengthUnit: typeof LengthUnit;
 
   // Extension classes
   SpzExtensionBase: typeof SpzExtensionBase;

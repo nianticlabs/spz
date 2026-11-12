@@ -139,8 +139,6 @@ struct PackOptions {
   uint32_t version = LATEST_SPZ_HEADER_VERSION;  // Version of the packed format
 
   CoordinateSystem from = CoordinateSystem::UNSPECIFIED;
-  // Length unit of the input; packGaussians converts it to meters, or to the SPZ_ADOBE_units unit.
-  LengthUnit fromUnit = LengthUnit::METER;
 
   // Quantization bits are only used during packing to reduce information entropy for g-zipping.
   // Unpacking doesn't need these values since g-unzipping already fills zero bits for quantized data.
@@ -151,8 +149,6 @@ struct PackOptions {
 // Options for loadSpz, or for loadSpzPacked followed by unpackGaussians.
 struct UnpackOptions {
   CoordinateSystem to = CoordinateSystem::UNSPECIFIED;
-  // Length unit of the output; converted from the file's (meters, or the SPZ_ADOBE_units unit).
-  LengthUnit toUnit = LengthUnit::METER;
 
   // Custom attributes to decode, by name; std::nullopt decodes all. None by default, since their
   // memory scales with point count. Use std::nullopt when loading to re-save, or they are lost.

@@ -71,35 +71,6 @@ enum class CoordinateSystem : uint32_t {
   RBU = 16, // Right Back Up
 };
 
-// Length unit of positions, scales and other lengths. SPZ data is in meters unless the
-// SPZ_ADOBE_units extension says otherwise. In PackOptions and UnpackOptions, UNSPECIFIED means no
-// unit conversion.
-enum class LengthUnit : uint32_t {
-  UNSPECIFIED = 0,
-  MILLIMETER = 1,
-  CENTIMETER = 2,
-  METER = 3,
-  KILOMETER = 4,
-};
-
-// The factor that converts a length in `from` to `to` (1000 for METER -> MILLIMETER), or 1 if either
-// is UNSPECIFIED.
-inline double lengthUnitFactor(LengthUnit from, LengthUnit to) {
-  if (from == LengthUnit::UNSPECIFIED || to == LengthUnit::UNSPECIFIED) return 1.0;
-  const auto log10Meters = [](LengthUnit u) {
-    switch (u) {
-      case LengthUnit::MILLIMETER: return -3;
-      case LengthUnit::CENTIMETER: return -2;
-      case LengthUnit::KILOMETER: return 3;
-      default: return 0;
-    }
-  };
-  const int exponent = log10Meters(from) - log10Meters(to);
-  // Dividing by an exact power of ten rounds once, so 0.001 is the double closest to 1/1000.
-  const double magnitude = std::pow(10.0, std::abs(exponent));
-  return exponent >= 0 ? magnitude : 1.0 / magnitude;
-}
-
 using AnalyticRotateShFn = void (*)(float*);
 
 enum class SplatAttribute : int32_t {
@@ -399,20 +370,6 @@ inline std::vector<SpzExtensionBasePtr> convertExtensionCoordinates(
   }
   return result;
 }
-
-// Returns the records with their lengths multiplied by factor. Records without lengths are shared
-// with the input, and input records are never modified.
-inline std::vector<SpzExtensionBasePtr> scaleExtensionLengths(
-  const std::vector<SpzExtensionBasePtr> &extensions, double factor) {
-  if (factor == 1.0) return extensions;
-  std::vector<SpzExtensionBasePtr> result;
-  result.reserve(extensions.size());
-  for (const auto &ext : extensions) {
-    const auto *dependent = dynamic_cast<const SpzLengthDependentExtension *>(ext.get());
-    result.push_back(dependent ? dependent->withScaledLengths(factor) : ext);
-  }
-  return result;
-}
 #endif
 
 // A point cloud composed of Gaussians. Each gaussian is represented by:
@@ -540,19 +497,6 @@ struct GaussianCloud {
   // Rotates the GaussianCloud by 180 degrees about the x axis (converts from RUB to RDF coordinates
   // and vice versa. This is performed in-place.
   void rotate180DegAboutX() { convertCoordinates(CoordinateSystem::RUB, CoordinateSystem::RDF); }
-
-  // Converts positions, log scales and the lengths in extensions between length units, in place.
-  // Directions, rotations and colors are unit-free and unchanged.
-  void convertUnits(LengthUnit from, LengthUnit to) {
-    const double factor = lengthUnitFactor(from, to);
-    if (factor == 1.0) return;
-    for (float &p : positions) p = static_cast<float>(p * factor);
-    const float logFactor = static_cast<float>(std::log(factor));
-    for (float &s : scales) s += logFactor;
-#ifdef SPZ_BUILD_EXTENSIONS
-    extensions = scaleExtensionLengths(extensions, factor);
-#endif
-  }
 
   float medianVolume() const {
     if (numPoints == 0) {

@@ -27,16 +27,11 @@ SOFTWARE.
 
 namespace spz {
 namespace {
-constexpr uint32_t kMaxLengthUnit = static_cast<uint32_t>(LengthUnit::KILOMETER);
-}  // namespace
-
-LengthUnit SpzExtensionUnitsAdobe::resolve() const {
-  if (lengthUnit == LengthUnit::UNSPECIFIED) {
-    SpzLog("[SPZ WARNING] UnitsAdobe: length unit is UNSPECIFIED — falling back to METER");
-    return LengthUnit::METER;
-  }
-  return lengthUnit;
+bool isKnownLengthUnit(uint32_t value) {
+  return value >= static_cast<uint32_t>(LengthUnit::MILLIMETER) &&
+         value <= static_cast<uint32_t>(LengthUnit::KILOMETER);
 }
+}  // namespace
 
 SpzExtensionUnitsAdobe::SpzExtensionUnitsAdobe()
     : SpzExtensionBase(SpzExtensionType::SPZ_ADOBE_units) {}
@@ -56,8 +51,9 @@ void SpzExtensionUnitsAdobe::write(std::ostream& os) const {
 }
 
 bool SpzExtensionUnitsAdobe::isValid() const {
-  if (static_cast<uint32_t>(lengthUnit) > kMaxLengthUnit) {
-    SpzLog("[SPZ ERROR] UnitsAdobe: unknown length unit value %u", static_cast<unsigned>(lengthUnit));
+  if (!isKnownLengthUnit(static_cast<uint32_t>(lengthUnit))) {
+    SpzLog("[SPZ ERROR] UnitsAdobe: length unit must be MILLIMETER, CENTIMETER, METER or KILOMETER, got %u",
+           static_cast<unsigned>(lengthUnit));
     return false;
   }
   return true;
@@ -66,11 +62,11 @@ bool SpzExtensionUnitsAdobe::isValid() const {
 std::optional<SpzExtensionBasePtr> SpzExtensionUnitsAdobe::read(std::istream& is) {
   uint32_t unitValue{};
   if (!detail::readExact(is, unitValue)) {
-    SpzLog("[SPZ ERROR] Failed to read UnitsAdobe payload");
+    SpzLog("[SPZ WARNING] UnitsAdobe: payload too short, record dropped");
     return std::nullopt;
   }
-  if (unitValue > kMaxLengthUnit) {
-    SpzLog("[SPZ ERROR] UnitsAdobe extension has unknown length unit value: %u", static_cast<unsigned>(unitValue));
+  if (!isKnownLengthUnit(unitValue)) {
+    SpzLog("[SPZ WARNING] UnitsAdobe: unknown length unit %u, record dropped", static_cast<unsigned>(unitValue));
     return std::nullopt;
   }
   auto rec = std::make_shared<SpzExtensionUnitsAdobe>();
@@ -87,7 +83,7 @@ SpzExtensionBase* SpzExtensionUnitsAdobe::copyAsRawData() const {
   return new SpzExtensionUnitsAdobe(*this);
 }
 
-// No PLY representation: PLY is always meters, as it is always RDF.
+// No PLY representation for this extension.
 std::optional<SpzExtensionBasePtr> SpzExtensionUnitsAdobe::tryReadFromPly(
     std::istream&, const std::vector<PlyExtraElement>&) const {
   return std::nullopt;
