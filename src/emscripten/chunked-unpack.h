@@ -36,7 +36,8 @@ namespace spz {
 // Must provide at least `pointCount * floatsPerPoint(attr, shDegree)` floats.
 // `coordFrom` is the coordinate system the data was packed in (usually resolved
 // from `packed.extensions` via `getPackedCoordinateSystem`); `coordTo` is the
-// caller's target frame.
+// caller's target frame. `lengthFactor` converts stored lengths to the caller's
+// unit (`lengthUnitFactor(getPackedLengthUnit(...), toUnit)`).
 //
 // Returns false on validation failure (range error, attribute already released,
 // null `out`). Not thread-safe on the same PackedGaussians.
@@ -46,6 +47,7 @@ bool unpackChunk(PackedGaussians &packed,
                  int32_t pointCount,
                  float *out,
                  CoordinateSystem coordFrom,
-                 CoordinateSystem coordTo);
+                 CoordinateSystem coordTo,
+                 double lengthFactor);
 
 }  // namespace spz

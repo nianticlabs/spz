@@ -29,6 +29,7 @@ SOFTWARE.
 #include "custom-attribute-niantic.h"
 #include "extension-frames.h"
 #include "environment-map-adobe.h"
+#include "units-adobe.h"
 #include "load-spz.h"
 
 #include <algorithm>
@@ -90,6 +91,16 @@ bool tryParseExtension(std::istream& is, std::vector<SpzParsedExtension>& out) {
         return false;
       std::istringstream iss(std::string(payload.data(), payload.size()));
       auto rec = SpzExtensionCoordinateSystemAdobe::read(iss);
+      if (rec)
+        out.push_back({std::move(*rec), std::nullopt});
+      return true;
+    }
+    case SpzExtensionType::SPZ_ADOBE_units: {
+      std::vector<char> payload(byteLength);
+      if (!is.read(payload.data(), static_cast<std::streamsize>(byteLength)))
+        return false;
+      std::istringstream iss(std::string(payload.data(), payload.size()));
+      auto rec = SpzExtensionUnitsAdobe::read(iss);
       if (rec)
         out.push_back({std::move(*rec), std::nullopt});
       return true;
@@ -180,6 +191,12 @@ CoordinateSystem getPackedCoordinateSystem(
     return coordExt->resolve();
   // Unrecognized extension types are already warned about in tryParseExtension.
   return CoordinateSystem::RUB;  // default: no known extension overrides the packed coordinate system
+}
+
+LengthUnit getPackedLengthUnit(const std::vector<SpzExtensionBasePtr>& extensions) {
+  if (auto unitsExt = findExtensionByType<SpzExtensionUnitsAdobe>(extensions))
+    return unitsExt->resolve();
+  return LengthUnit::METER;  // SPZ data without the extension is in meters
 }
 
 bool allExtensionsValid(const std::vector<SpzExtensionBasePtr>& extensions) {

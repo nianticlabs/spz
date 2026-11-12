@@ -29,10 +29,10 @@ SOFTWARE.
 
 namespace spz {
 
-struct SpzExtensionSafeOrbitCameraAdobe : public SpzExtensionBase {
+struct SpzExtensionSafeOrbitCameraAdobe : public SpzExtensionBase, public SpzLengthDependentExtension {
   float safeOrbitElevationMin = 0.0f;  // Minimum elevation for safe orbit (radians)
   float safeOrbitElevationMax = 0.0f;  // Maximum elevation for safe orbit (radians)
-  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit
+  float safeOrbitRadiusMin = 0.0f;     // Minimum radius for safe orbit, in the cloud's length unit
 
   static const std::unordered_set<std::string> kRequiredPlyElementNames;
 
@@ -46,6 +46,8 @@ struct SpzExtensionSafeOrbitCameraAdobe : public SpzExtensionBase {
   void writePlyData(std::ostream& out) const override;
   static std::optional<SpzExtensionBasePtr> read(std::istream& is);
   static SpzExtensionType type();
+  // A copy with safeOrbitRadiusMin scaled; the elevations are angles.
+  SpzExtensionBasePtr withScaledLengths(double factor) const override;
 };
 
 }  // namespace spz

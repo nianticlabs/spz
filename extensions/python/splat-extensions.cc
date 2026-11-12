@@ -20,6 +20,7 @@
 #include "extensions/cc/georeference-niantic.h"
 #include "extensions/cc/custom-attribute-niantic.h"
 #include "extensions/cc/environment-map-adobe.h"
+#include "extensions/cc/units-adobe.h"
 #include "extensions/python/splat-extensions.h"
 
 namespace nb = nanobind;
@@ -64,6 +65,8 @@ void register_extensions(nb::module_& m) {
                "Niantic custom attribute extension — a named per-point attribute")
         .value("SPZ_ADOBE_environment_map", spz::SpzExtensionType::SPZ_ADOBE_environment_map,
                "Adobe environment map extension — an equirectangular RGB map with its frame")
+        .value("SPZ_ADOBE_units", spz::SpzExtensionType::SPZ_ADOBE_units,
+               "Adobe units extension — records the length unit the Gaussian data is stored in")
         .export_values();
 
     nb::class_<spz::SpzExtensionBase>(m, "SpzExtensionBase")
@@ -85,6 +88,12 @@ void register_extensions(nb::module_& m) {
         .def_rw("coordinate_system", &spz::SpzExtensionCoordinateSystemAdobe::coordinateSystem,
                 "Native coordinate system of the asset's Gaussian data")
         .def_static("type", &spz::SpzExtensionCoordinateSystemAdobe::type,
+                    "Static method to get the extension type enum value");
+    nb::class_<spz::SpzExtensionUnitsAdobe, spz::SpzExtensionBase>(m, "SpzExtensionUnitsAdobe")
+        .def(nb::init<>())
+        .def_rw("length_unit", &spz::SpzExtensionUnitsAdobe::lengthUnit,
+                "Length unit the Gaussian data is stored in; loading converts it to UnpackOptions.to_unit")
+        .def_static("type", &spz::SpzExtensionUnitsAdobe::type,
                     "Static method to get the extension type enum value");
     nb::enum_<spz::SpzExtensionGeoreferenceNiantic::CrsEncoding>(
         m, "GeoreferenceCrsEncoding", "Serialization of SpzExtensionGeoreferenceNiantic.crs")

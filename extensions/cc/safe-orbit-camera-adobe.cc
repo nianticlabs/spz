@@ -79,6 +79,12 @@ SpzExtensionBase* SpzExtensionSafeOrbitCameraAdobe::copyAsRawData() const {
   return new SpzExtensionSafeOrbitCameraAdobe(*this);
 }
 
+SpzExtensionBasePtr SpzExtensionSafeOrbitCameraAdobe::withScaledLengths(double factor) const {
+  auto scaled = std::make_shared<SpzExtensionSafeOrbitCameraAdobe>(*this);
+  scaled->safeOrbitRadiusMin = static_cast<float>(safeOrbitRadiusMin * factor);
+  return scaled;
+}
+
 std::optional<SpzExtensionBasePtr> SpzExtensionSafeOrbitCameraAdobe::tryReadFromPly(
     std::istream& in, const std::vector<PlyExtraElement>& elements) const {
   for (const auto& name : kRequiredPlyElementNames) {

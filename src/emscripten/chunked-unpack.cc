@@ -26,6 +26,7 @@ SOFTWARE.
 #include "chunked-unpack.h"
 
 #include <array>
+#include <cmath>
 #include <vector>
 
 #include "splat-types.h"
@@ -37,7 +38,7 @@ namespace {
 
 void unpackPositions(const std::vector<uint8_t> &packed,
                      bool usesFloat16, int32_t fractionalBits,
-                     const CoordinateConverter &c,
+                     const CoordinateConverter &c, double lengthFactor,
                      int32_t pointOffset, int32_t pointCount, float *out) {
   const int32_t coordCount = pointCount * 3;
   if (usesFloat16) {
@@ -62,14 +63,25 @@ void unpackPositions(const std::vector<uint8_t> &packed,
       c.rotFlipPFunc(out + i * 3);
     }
   }
+  if (lengthFactor != 1.0) {
+    for (int32_t i = 0; i < coordCount; i++) {
+      out[i] = static_cast<float>(out[i] * lengthFactor);
+    }
+  }
 }
 
-void unpackScales(const std::vector<uint8_t> &packed,
+void unpackScales(const std::vector<uint8_t> &packed, double lengthFactor,
                   int32_t pointOffset, int32_t pointCount, float *out) {
   const int32_t coordCount = pointCount * 3;
   const uint8_t *src = packed.data() + static_cast<size_t>(pointOffset) * 3;
   for (int32_t i = 0; i < coordCount; i++) {
     out[i] = src[i] / 16.0f - 10.0f;
+  }
+  if (lengthFactor != 1.0) {
+    const float logFactor = static_cast<float>(std::log(lengthFactor));
+    for (int32_t i = 0; i < coordCount; i++) {
+      out[i] += logFactor;
+    }
   }
 }
 
@@ -160,7 +172,8 @@ bool unpackChunk(PackedGaussians &packed,
                  int32_t pointCount,
                  float *out,
                  CoordinateSystem coordFrom,
-                 CoordinateSystem coordTo) {
+                 CoordinateSystem coordTo,
+                 double lengthFactor) {
   if (pointOffset < 0 || pointCount < 0) return false;
   if (pointOffset + pointCount > packed.numPoints) return false;
   if (pointCount == 0) return true;
@@ -178,10 +191,10 @@ bool unpackChunk(PackedGaussians &packed,
   switch (attr) {
     case SplatAttribute::Positions:
       unpackPositions(buf, packed.usesFloat16(), packed.fractionalBits,
-                      c, pointOffset, pointCount, out);
+                      c, lengthFactor, pointOffset, pointCount, out);
       return true;
     case SplatAttribute::Scales:
-      unpackScales(buf, pointOffset, pointCount, out);
+      unpackScales(buf, lengthFactor, pointOffset, pointCount, out);
       return true;
     case SplatAttribute::Rotations:
       unpackRotations(buf, packed.usesQuaternionSmallestThree,

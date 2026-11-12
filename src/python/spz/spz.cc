@@ -172,6 +172,17 @@ NB_MODULE(spz, m) {
         .value("RBU",         spz::CoordinateSystem::RBU, "Right Back Up - rotated system (x=Right, y=Back, z=Up)")
         .export_values();
 
+    nb::enum_<spz::LengthUnit>(m, "LengthUnit", R"doc(
+        Length unit of positions and scales. SPZ files store meters unless the
+        SPZ_ADOBE_units extension records another unit; loading converts to
+        UnpackOptions.to_unit (meters by default). UNSPECIFIED in options means no conversion.
+    )doc")
+        .value("UNSPECIFIED", spz::LengthUnit::UNSPECIFIED, "No unit conversion")
+        .value("MILLIMETER",  spz::LengthUnit::MILLIMETER)
+        .value("CENTIMETER",  spz::LengthUnit::CENTIMETER)
+        .value("METER",       spz::LengthUnit::METER)
+        .value("KILOMETER",   spz::LengthUnit::KILOMETER);
+
     // -------------------------------------------------------------------------
     // Options structs
     // -------------------------------------------------------------------------
@@ -182,6 +193,8 @@ NB_MODULE(spz, m) {
                 "SPZ version of the input splat")
         .def_rw("from_coord", &spz::PackOptions::from,
                 "Coordinate system of the input splat")
+        .def_rw("from_unit", &spz::PackOptions::fromUnit,
+                "Length unit of the input splat (default METER)")
         .def_rw("sh1_bits", &spz::PackOptions::sh1Bits,
                 "Bits used for first-order spherical harmonics quantization")
         .def_rw("sh_rest_bits", &spz::PackOptions::shRestBits,
@@ -191,6 +204,8 @@ NB_MODULE(spz, m) {
         .def(nb::init<>())
         .def_rw("to_coord", &spz::UnpackOptions::to,
                 "Desired coordinate system of the output splat")
+        .def_rw("to_unit", &spz::UnpackOptions::toUnit,
+                "Desired length unit of the output splat (default METER)")
         .def_rw("custom_attributes", &spz::UnpackOptions::customAttributes,
                 "Custom attribute names to decode: [] (default) none, None all. Use None when "
                 "re-saving, or attributes are lost. Assign a new list; in-place edits don't stick.");
