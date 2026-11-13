@@ -28,8 +28,7 @@ SOFTWARE.
 namespace spz {
 namespace {
 bool isKnownLengthUnit(uint32_t value) {
-  return value >= static_cast<uint32_t>(LengthUnit::MILLIMETER) &&
-         value <= static_cast<uint32_t>(LengthUnit::KILOMETER);
+  return value <= static_cast<uint32_t>(LengthUnit::KILOMETER);
 }
 }  // namespace
 
@@ -52,8 +51,7 @@ void SpzExtensionUnitsAdobe::write(std::ostream& os) const {
 
 bool SpzExtensionUnitsAdobe::isValid() const {
   if (!isKnownLengthUnit(static_cast<uint32_t>(lengthUnit))) {
-    SpzLog("[SPZ ERROR] UnitsAdobe: length unit must be MILLIMETER, CENTIMETER, METER or KILOMETER, got %u",
-           static_cast<unsigned>(lengthUnit));
+    SpzLog("[SPZ ERROR] UnitsAdobe: unknown length unit %u", static_cast<unsigned>(lengthUnit));
     return false;
   }
   return true;

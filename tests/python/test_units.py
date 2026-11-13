@@ -1,6 +1,5 @@
 """Tests for the SPZ_ADOBE_units extension, a label of the length unit the data is written in."""
 
-import os
 import struct
 
 import numpy as np
@@ -43,7 +42,8 @@ def _assert_gaussians_equal(a, b):
         np.testing.assert_array_equal(getattr(a, attr), getattr(b, attr), err_msg=attr)
 
 
-@pytest.mark.parametrize("name,value", [("MILLIMETER", 1), ("CENTIMETER", 2), ("METER", 3), ("KILOMETER", 4)])
+@pytest.mark.parametrize("name,value", [
+    ("UNSPECIFIED", 0), ("MILLIMETER", 1), ("CENTIMETER", 2), ("METER", 3), ("KILOMETER", 4)])
 def test_record_round_trips(name, value):
     unit = getattr(spz.LengthUnit, name)
     cloud = _make_cloud()
@@ -65,18 +65,19 @@ def test_data_loads_exactly_as_stored():
     _assert_gaussians_equal(labeled, plain)
 
 
-def test_unspecified_fails_to_save(tmp_path):
+def test_default_record_round_trips_as_unspecified():
+    """A record attached without setting a unit saves and loads as UNSPECIFIED."""
     cloud = _make_cloud()
     cloud.extensions = [spz.SpzExtensionUnitsAdobe()]
-    assert cloud.extensions[0].length_unit == spz.LengthUnit.UNSPECIFIED
-    path = str(tmp_path / "unspecified.spz")
-    assert spz.save_spz(cloud, spz.PackOptions(), path) is False
-    assert not os.path.exists(path)
+    data = spz.save_spz_to_buffer(cloud, spz.PackOptions())
+
+    assert struct.unpack_from("<I", data, _UNIT_OFFSET) == (0,)
+    (record,) = _units_records(spz.load_spz_from_buffer(data))
+    assert record.length_unit == spz.LengthUnit.UNSPECIFIED
 
 
-@pytest.mark.parametrize("value", [0, 5, 0xFFFFFFFF])
-def test_invalid_unit_record_is_dropped(value):
-    """A record with an invalid unit is dropped on load; the core data and later records still load."""
+def _patched_unit(value):
+    """A file holding a units record with the given raw value, followed by a safe orbit record."""
     cloud = _make_cloud()
     orbit = spz.SpzExtensionSafeOrbitCameraAdobe()
     orbit.safe_orbit_radius_min = 0.3
@@ -84,12 +85,32 @@ def test_invalid_unit_record_is_dropped(value):
     data = bytearray(spz.save_spz_to_buffer(cloud, spz.PackOptions()))
     baseline = spz.load_spz_from_buffer(bytes(data))
     struct.pack_into("<I", data, _UNIT_OFFSET, value)
+    return spz.load_spz_from_buffer(bytes(data)), baseline
 
-    loaded = spz.load_spz_from_buffer(bytes(data))
 
+def test_unspecified_record_is_kept_on_load():
+    loaded, baseline = _patched_unit(0)
+    (record,) = _units_records(loaded)
+    assert record.length_unit == spz.LengthUnit.UNSPECIFIED
+    _assert_gaussians_equal(loaded, baseline)
+
+
+@pytest.mark.parametrize("value", [5, 0xFFFFFFFF])
+def test_unknown_unit_record_is_dropped(value):
+    """A record with an unknown unit is dropped on load; the core data and later records still load."""
+    loaded, baseline = _patched_unit(value)
     assert _units_records(loaded) == []
     assert [type(e) for e in loaded.extensions] == [spz.SpzExtensionSafeOrbitCameraAdobe]
     _assert_gaussians_equal(loaded, baseline)
+
+
+@pytest.mark.parametrize("value", [5, 0xFFFFFFFF])
+def test_unknown_unit_cannot_be_set(value):
+    """Python can't build a record that saveSpz would reject."""
+    with pytest.raises(ValueError):
+        spz.LengthUnit(value)
+    with pytest.raises(TypeError):
+        spz.SpzExtensionUnitsAdobe().length_unit = value
 
 
 def test_ply_drops_the_record(tmp_path):

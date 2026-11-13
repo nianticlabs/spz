@@ -30,7 +30,7 @@ export class SpzExtensionCoordinateSystemAdobe extends SpzExtensionBase {
   static type(): SpzExtensionType;
 }
 
-/** Length unit recorded by SpzExtensionUnitsAdobe. UNSPECIFIED is not valid in a record. */
+/** Length unit recorded by SpzExtensionUnitsAdobe. UNSPECIFIED (the default) leaves the units unstated. */
 export enum LengthUnit {
   UNSPECIFIED = 0,
   MILLIMETER = 1,
@@ -41,7 +41,7 @@ export enum LengthUnit {
 
 /**
  * Labels the length unit the positions and scales are written in. The library never converts;
- * scale the loaded data yourself if needed. Saving fails unless lengthUnit is MILLIMETER..KILOMETER.
+ * scale the loaded data yourself if needed. lengthUnit defaults to UNSPECIFIED.
  */
 export class SpzExtensionUnitsAdobe extends SpzExtensionBase {
   lengthUnit: LengthUnit;

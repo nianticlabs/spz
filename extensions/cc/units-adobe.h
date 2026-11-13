@@ -31,7 +31,7 @@ namespace spz {
 
 // A length unit recorded by SPZ_ADOBE_units.
 enum class LengthUnit : uint32_t {
-  UNSPECIFIED = 0,  // Not valid in a record
+  UNSPECIFIED = 0,  // Units not stated
   MILLIMETER = 1,
   CENTIMETER = 2,
   METER = 3,
@@ -40,15 +40,15 @@ enum class LengthUnit : uint32_t {
 
 // Records the length unit the positions and scales are written in. A label only: the library never
 // converts the data, and other extensions don't refer to it. Clients that care scale the loaded
-// data themselves (by 0.001 for millimeters to meters). Without this record the unit is unspecified;
-// by SPZ convention, meters.
+// data themselves (by 0.001 for millimeters to meters). UNSPECIFIED, like no record, leaves the unit
+// unstated; by SPZ convention, meters.
 struct SpzExtensionUnitsAdobe : public SpzExtensionBase {
   LengthUnit lengthUnit = LengthUnit::UNSPECIFIED;
 
   SpzExtensionUnitsAdobe();
   uint32_t payloadBytes() const override;
   void write(std::ostream& os) const override;
-  // False (after logging why) unless lengthUnit is MILLIMETER, CENTIMETER, METER or KILOMETER.
+  // False (after logging why) if lengthUnit is not a LengthUnit value.
   bool isValid() const override;
   SpzExtensionBase* copyAsRawData() const override;
   std::optional<std::shared_ptr<SpzExtensionBase>> tryReadFromPly(

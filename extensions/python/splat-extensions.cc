@@ -90,7 +90,7 @@ void register_extensions(nb::module_& m) {
         .def_static("type", &spz::SpzExtensionCoordinateSystemAdobe::type,
                     "Static method to get the extension type enum value");
     nb::enum_<spz::LengthUnit>(m, "LengthUnit", "Length unit recorded by SpzExtensionUnitsAdobe")
-        .value("UNSPECIFIED", spz::LengthUnit::UNSPECIFIED, "Not valid in a record")
+        .value("UNSPECIFIED", spz::LengthUnit::UNSPECIFIED, "Units not stated (the default)")
         .value("MILLIMETER", spz::LengthUnit::MILLIMETER)
         .value("CENTIMETER", spz::LengthUnit::CENTIMETER)
         .value("METER", spz::LengthUnit::METER)
@@ -100,7 +100,7 @@ void register_extensions(nb::module_& m) {
         "scale the loaded data yourself if needed.")
         .def(nb::init<>())
         .def_rw("length_unit", &spz::SpzExtensionUnitsAdobe::lengthUnit,
-                "Length unit of the positions and scales; saving fails unless MILLIMETER, CENTIMETER, METER or KILOMETER")
+                "Length unit of the positions and scales; UNSPECIFIED (the default) leaves them unstated")
         .def_static("type", &spz::SpzExtensionUnitsAdobe::type,
                     "Static method to get the extension type enum value");
     nb::enum_<spz::SpzExtensionGeoreferenceNiantic::CrsEncoding>(

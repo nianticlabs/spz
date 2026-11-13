@@ -287,9 +287,9 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
 
 - **SPZ_ADOBE_units** (`0xADBE0006`) — Records the length unit the positions and scales are written in. Implemented in `extensions/cc/units-adobe.h` and `units-adobe.cc`. (`0xADBE0004` is unused.)
 
-  **Payload:** one `uint32_t`, the `LengthUnit` value (4 bytes): 1 `MILLIMETER`, 2 `CENTIMETER`, 3 `METER`, 4 `KILOMETER`. `saveSpz` fails on any other value, including 0 (`UNSPECIFIED`). Readers drop a record with any other value with a warning; the core data still loads.
+  **Payload:** one `uint32_t`, the `LengthUnit` value (4 bytes): 0 `UNSPECIFIED` (the default), 1 `MILLIMETER`, 2 `CENTIMETER`, 3 `METER`, 4 `KILOMETER`. `UNSPECIFIED` means the writer doesn't state the units, the same as having no record. `saveSpz` fails on any other value, and readers drop such a record with a warning; the core data still loads.
 
-  **This extension is a label only.** The library never converts positions or scales based on it, and no other extension refers to it. The data loads exactly as stored; a client that wants another unit scales it itself, multiplying positions by the unit's size in meters (0.001 for millimeters) and adding the logarithm of that factor to the log scales. Without the record the unit is unspecified; by SPZ convention it is meters.
+  **This extension is a label only.** The library never converts positions or scales based on it, and no other extension refers to it. The data loads exactly as stored; a client that wants another unit scales it itself, multiplying positions by the unit's size in meters (0.001 for millimeters) and adding the logarithm of that factor to the log scales. With no record or an `UNSPECIFIED` one, the units are not stated; by SPZ convention they are meters, and clients decide.
 
   **Why:** positions have 12 fractional bits and log scales stop at e^-10, both in the written unit. In meters that is a 0.24 mm grid and a 45 µm minimum scale; in millimeters a 0.24 µm grid and 45 nm. The position range (±2048 units) and maximum scale (e^5.94 units) shrink by the same factor.
 
