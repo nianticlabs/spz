@@ -17,7 +17,7 @@ option(SPZ_BUILD_TOOLS "Build command line tools" ON)
 option(SPZ_BUILD_EXTENSIONS "Build SPZ extensions support" OFF)
 
 # --- WASM output directory ---
-set(SPZ_WASM_OUTPUT_DIR "${PROJECT_BINARY_DIR}/dist" CACHE PATH
+set(SPZ_WASM_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/dist" CACHE PATH
   "Directory that receives spz.js and its TypeScript declarations (WASM builds only)")
 
 # --- Emscripten guard ---

@@ -28,7 +28,3 @@ __pycache__/
 
 # JavaScript
 node_modules/
-
-# Claude Code
-.claude/worktrees/
-.claude/settings.local.json

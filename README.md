@@ -83,7 +83,7 @@ which is equivalent to
 emcmake cmake --preset wasm-ext
 cmake --build --preset wasm-ext
 ```
-`spz.js`, `spz.d.ts`, `spz-helpers.js` and `spz-helpers.d.ts` are written to `build/<preset>/dist/`. To write them somewhere else, configure with `-DSPZ_WASM_OUTPUT_DIR=<dir>`.
+With the presets, `spz.js`, `spz.d.ts`, `spz-helpers.js` and `spz-helpers.d.ts` are written to `build/<preset>/dist/`, so the extension and non-extension builds stay separate. A plain `emcmake cmake -B build-wasm .` build writes them to `dist/` at the repository root (where the npm package is published from). Either way, `-DSPZ_WASM_OUTPUT_DIR=<dir>` overrides the location.
 
 
 ## API
@@ -146,7 +146,7 @@ Loads a cloud of Gaussians from a file in `.spz` format.
 
 ### Typescript
 
-Check [src/emscripten/spz.d.ts.in](src/emscripten/spz.d.ts.in) (source) or `build/<preset>/dist/spz.d.ts` (after building with CMake) for the TypeScript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
+Check [src/emscripten/spz.d.ts.in](src/emscripten/spz.d.ts.in) (source) or `dist/spz.d.ts` / `build/<preset>/dist/spz.d.ts` (after building with CMake) for the TypeScript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
 
 ### PackOptions
 

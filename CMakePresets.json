@@ -37,7 +37,10 @@
       "name": "wasm",
       "displayName": "WASM (configure with: emcmake cmake --preset wasm)",
       "inherits": "base",
-      "cacheVariables": { "SPZ_REQUIRE_EMSCRIPTEN": "ON" }
+      "cacheVariables": {
+        "SPZ_REQUIRE_EMSCRIPTEN": "ON",
+        "SPZ_WASM_OUTPUT_DIR": "${sourceDir}/build/${presetName}/dist"
+      }
     },
     {
       "name": "wasm-ext",
@@ -62,13 +65,18 @@
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev" },
-    { "name": "dev-ext", "configurePreset": "dev-ext" },
-    { "name": "debug", "configurePreset": "debug" },
-    { "name": "wasm", "configurePreset": "wasm" },
-    { "name": "wasm-ext", "configurePreset": "wasm-ext" },
-    { "name": "android-arm64", "configurePreset": "android-arm64" },
-    { "name": "android-arm64-ext", "configurePreset": "android-arm64-ext" }
+    {
+      "name": "base",
+      "hidden": true,
+      "configuration": "RelWithDebInfo"
+    },
+    { "name": "dev", "inherits": "base", "configurePreset": "dev" },
+    { "name": "dev-ext", "inherits": "base", "configurePreset": "dev-ext" },
+    { "name": "debug", "inherits": "base", "configurePreset": "debug", "configuration": "Debug" },
+    { "name": "wasm", "inherits": "base", "configurePreset": "wasm" },
+    { "name": "wasm-ext", "inherits": "base", "configurePreset": "wasm-ext" },
+    { "name": "android-arm64", "inherits": "base", "configurePreset": "android-arm64" },
+    { "name": "android-arm64-ext", "inherits": "base", "configurePreset": "android-arm64-ext" }
   ],
   "testPresets": [
     {
@@ -79,6 +87,6 @@
     },
     { "name": "dev", "inherits": "base", "configurePreset": "dev" },
     { "name": "dev-ext", "inherits": "base", "configurePreset": "dev-ext" },
-    { "name": "debug", "configurePreset": "debug", "configuration": "Debug", "output": { "outputOnFailure": true } }
+    { "name": "debug", "inherits": "base", "configurePreset": "debug", "configuration": "Debug" }
   ]
 }
