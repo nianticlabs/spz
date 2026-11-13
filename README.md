@@ -38,19 +38,52 @@ A CMake build system is provided for convenience.
 
 **Note:** If `libz` or `libzstd` are not found on the system, the CMake build system will automatically download them using FetchContent. This ensures consistent builds across different environments.
 
+#### Building
+
+The repository ships [CMake presets](CMakePresets.json) (CMake 3.21+). Every preset builds into `build/<preset>/`:
+
+| Preset | What it builds |
+| --- | --- |
+| `dev` | Library + CLI tools, with CTest round-trip smoke tests (`scripts/test.sh`) |
+| `dev-ext` | Same as `dev`, with `SPZ_BUILD_EXTENSIONS=ON` |
+| `debug` | `dev-ext` in Debug |
+| `wasm`, `wasm-ext` | WASM module and TypeScript declarations (needs Emscripten) |
+| `android-arm64`, `android-arm64-ext` | Android arm64-v8a library (needs `ANDROID_NDK_HOME`) |
+
+The helper scripts check prerequisites, then configure and build (`build.sh`), or build and run CTest (`test.sh`):
+```
+scripts/build.sh            # dev
+scripts/build.sh dev-ext
+scripts/build.sh --list     # all presets
+scripts/build.sh dev -DBUILD_SHARED_LIBS=ON --fresh   # extra args go to configure
+
+scripts/test.sh             # build dev, then run its tests
+scripts/test.sh dev-ext -R roundtrip                  # extra args go to ctest
+```
+
+Or use CMake directly:
+```
+cmake --preset dev-ext
+cmake --build --preset dev-ext
+ctest --preset dev-ext
+```
+
+Machine-specific presets can go in an untracked `CMakeUserPresets.json`.
+
 ### Typescript
 
 To build the Typescript interface through Web-Assembly (WASM), an Emscripten environment needs to be setup before compilation. One may install the Emscripten SDK following the instructions [here](https://emscripten.org/docs/getting_started/downloads.html).
 
-Under an emscripten environment, the Makefile can be generated through:
+With `emcmake` on your `PATH`:
 ```
-emcmake cmake -B build-wasm .
+scripts/build.sh wasm-ext
 ```
-Then one can build through
+which is equivalent to
 ```
-cmake --build build-wasm
+emcmake cmake --preset wasm-ext
+cmake --build --preset wasm-ext
 ```
-The package will be built and installed into the `dist` folder.
+With the presets, `spz.js`, `spz.d.ts`, `spz-helpers.js` and `spz-helpers.d.ts` are written to `build/<preset>/dist/`, so the extension and non-extension builds stay separate. A plain `emcmake cmake -B build-wasm .` build writes them to `dist/` at the repository root (where the npm package is published from). Either way, `-DSPZ_WASM_OUTPUT_DIR=<dir>` overrides the location.
 
 
 ## API
@@ -113,7 +146,7 @@ Loads a cloud of Gaussians from a file in `.spz` format.
 
 ### Typescript
 
-Check [src/emscripten/spz.d.ts.in](src/emscripten/spz.d.ts.in) (source) or `dist/spz.d.ts` (after building with CMake) for the TypeScript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
+Check [src/emscripten/spz.d.ts.in](src/emscripten/spz.d.ts.in) (source) or `dist/spz.d.ts` / `build/<preset>/dist/spz.d.ts` (after building with CMake) for the TypeScript interface. Since the Emscripten and Javascript memory are separately handled, we only expose limited functionalities for the Typescript interface.
 
 ### PackOptions
 
@@ -296,6 +329,12 @@ The SPZ library provides Python bindings built with [nanobind](https://nanobind.
 git clone https://github.com/nianticlabs/spz.git
 cd spz
 pip install .
+```
+
+To build the bindings into a local `.venv/` and run the test suite:
+```bash
+scripts/test-python.sh          # without extensions
+scripts/test-python.sh --ext    # with SPZ_BUILD_EXTENSIONS=ON
 ```
 
 Please see src/python/README.md for more details and usage examples

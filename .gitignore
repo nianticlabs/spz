@@ -1,20 +1,30 @@
 .DS_Store
-*.pyc
 
-# CMake
+# Build output. CMake presets build into build/<preset>; build-*/ covers
+# hand-named build trees.
+/build/
+/build-*/
+/out/
+/dist/
+compile_commands.json
+.cache/
+
+# In-source CMake builds. Listed by name rather than *.cmake so that CMake
+# modules added under cmake/ are never silently ignored.
 CMakeCache.txt
 CMakeFiles/
 CMakeScripts/
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
 Testing/
-*.cmake
 
-# Build directories
-build/
-Build/
-BUILD/
-out/
-_build/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
 
-# CMake temporary files
-*.tmp
-*.cmake~
+# JavaScript
+node_modules/

@@ -29,47 +29,27 @@ jobs:
            environment-file: .github/environment.yml
            environment-name: "build"
 
-     - name: Setup
-       shell: bash -l {0}
-       run: |
-           mkdir build
-
-     - name: CMake
+     - name: Build
        shell: bash -l {0}
        env:
-        BUILD_SHARED_LIBS: ${{ matrix.shared }}
-        SPZ_BUILD_EXTENSIONS: ${{ matrix.extensions }}
-
+         CMAKE_GENERATOR: Ninja
        run: |
+         if [ "$RUNNER_OS" == "Windows" ]; then
+           export CC=cl.exe
+           export CXX=cl.exe
+         fi
+         scripts/build.sh ${{ matrix.extensions == 'ON' && 'dev-ext' || 'dev' }} \
+           -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
+           -DCMAKE_INSTALL_PREFIX="${CONDA_PREFIX}" \
+           -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON
 
-        if [ "$RUNNER_OS" == "Windows" ]; then
-        export CC=cl.exe
-        export CXX=cl.exe
-        fi
-
-        cmake   -G "Ninja"  \
-              -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-              -DBUILD_SHARED_LIBS=$BUILD_SHARED_LIBS \
-              -DSPZ_BUILD_EXTENSIONS=$SPZ_BUILD_EXTENSIONS \
-              -DBUILD_TESTING=ON \
-              -DCMAKE_INSTALL_PREFIX=${CONDA_PREFIX} \
-              -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON \
-              ..
-
-
-       working-directory: ./build
-
-     - name: Compile
+     - name: Test
        shell: bash -l {0}
-       run: |
-          ninja
-       working-directory: ./build
+       run: scripts/test.sh ${{ matrix.extensions == 'ON' && 'dev-ext' || 'dev' }}
 
      - name: Install
        shell: bash -l {0}
-       run: |
-          ninja install
-       working-directory: ./build
+       run: cmake --install build/${{ matrix.extensions == 'ON' && 'dev-ext' || 'dev' }}
 
   # macOS only for now. Linux and Windows fail to build the wheel due to
   # pre-existing issues in the project's CMake setup (Ubuntu's libzstd-dev is
@@ -89,14 +69,9 @@ jobs:
        with:
          python-version: "3.12"
 
-     - name: Install spz with extras and run pytest
+     - name: Build bindings and run pytest
        shell: bash
-       env:
-         SKBUILD_CMAKE_DEFINE: SPZ_BUILD_EXTENSIONS=${{ matrix.extensions }}
-       run: |
-         python -m pip install --upgrade pip
-         python -m pip install ".[tests]"
-         python -m pytest tests/python -v
+       run: scripts/test-python.sh ${{ matrix.extensions == 'ON' && '--ext' || '' }} -- -v
 
   # Ubuntu only: wasm output is platform-independent, so there is no value in
   # running on macOS or Windows.
@@ -108,26 +83,23 @@ jobs:
       matrix:
         extensions: [ON, OFF]
 
+    env:
+      PRESET: ${{ matrix.extensions == 'ON' && 'wasm-ext' || 'wasm' }}
+
     steps:
      - uses: actions/checkout@v4
      - uses: emscripten-core/setup-emsdk@v16
 
-     - name: Setup
-       run: mkdir build-wasm
-
-     - name: CMake
+     - name: Configure and build
        env:
-         SPZ_BUILD_EXTENSIONS: ${{ matrix.extensions }}
-       run: |
-         emcmake cmake -G "Ninja" \
-           -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-           -DSPZ_BUILD_EXTENSIONS=$SPZ_BUILD_EXTENSIONS \
-           ..
-       working-directory: ./build-wasm
+         CMAKE_GENERATOR: Ninja
+       run: scripts/build.sh ${{ env.PRESET }}
 
-     - name: Compile
-       run: ninja
-       working-directory: ./build-wasm
+     - name: Check artifacts
+       run: |
+         for f in spz.js spz.d.ts spz-helpers.js spz-helpers.d.ts; do
+           test -s "build/${{ env.PRESET }}/dist/$f" || { echo "missing dist/$f"; exit 1; }
+         done
 
   build-android:
     name: android ${{ matrix.abi }} SPZ_BUILD_EXTENSIONS=${{ matrix.extensions }}
@@ -149,19 +121,8 @@ jobs:
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
-      - name: CMake
+      - name: Configure and build
         env:
-          SPZ_BUILD_EXTENSIONS: ${{ matrix.extensions }}
-        run: |
-          cmake -G Ninja -B build-android \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=${{ matrix.abi }} \
-            -DANDROID_PLATFORM=android-24 \
-            -DSPZ_BUILD_EXTENSIONS=$SPZ_BUILD_EXTENSIONS \
-            -DSPZ_BUILD_TOOLS=OFF \
-            .
-
-      - name: Compile
-        run: cmake --build build-android
-
+          CMAKE_GENERATOR: Ninja
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: scripts/build.sh ${{ matrix.extensions == 'ON' && 'android-arm64-ext' || 'android-arm64' }}
