@@ -56,6 +56,7 @@ enum class SpzExtensionType : uint32_t {
   SPZ_NIANTIC_georeference = 0x4E530001u,
   SPZ_NIANTIC_custom_attribute = 0x4E530002u,
   SPZ_ADOBE_environment_map = 0xADBE0005u,
+  SPZ_ADOBE_units = 0xADBE0006u,
 };
 
 struct SpzExtensionBase {

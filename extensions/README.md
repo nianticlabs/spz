@@ -285,6 +285,27 @@ Extension frames exist only in version 4 files: `saveSpz` refuses older versions
   # pack with from_coord=RUB → stored as RDF; load with to_coord=RUB → converted back automatically
   ```
 
+- **SPZ_ADOBE_units** (`0xADBE0006`) — Records the length unit the positions and scales are written in. Implemented in `extensions/cc/units-adobe.h` and `units-adobe.cc`. (`0xADBE0004` is unused.)
+
+  **Payload:** one `uint32_t`, the `LengthUnit` value (4 bytes): 0 `UNSPECIFIED` (the default), 1 `MILLIMETER`, 2 `CENTIMETER`, 3 `METER`, 4 `KILOMETER`. `UNSPECIFIED` means the writer doesn't state the units, the same as having no record. `saveSpz` fails on any other value, and readers drop such a record with a warning; the core data still loads.
+
+  **This extension is a label only.** The library never converts positions or scales based on it, and no other extension refers to it. The data loads exactly as stored; a client that wants another unit scales it itself, multiplying positions by the unit's size in meters (0.001 for millimeters) and adding the logarithm of that factor to the log scales. With no record or an `UNSPECIFIED` one, the units are not stated; by SPZ convention they are meters, and clients decide.
+
+  **Why:** positions have 12 fractional bits and log scales stop at e^-10, both in the written unit. In meters that is a 0.24 mm grid and a 45 µm minimum scale; in millimeters a 0.24 µm grid and 45 nm. The position range (±2048 units) and maximum scale (e^5.94 units) shrink by the same factor.
+
+  **PLY:** no PLY form, like `SPZ_ADOBE_coordinate_system`; saving to PLY drops it.
+
+  **Compatibility note:** readers without this extension, including non-extension builds, skip it with the unknown-extension warning. They load the same values as readers that know it, since it doesn't change how data is packed.
+
+  ```python
+  ext = spz.SpzExtensionUnitsAdobe()
+  ext.length_unit = spz.LengthUnit.MILLIMETER
+  cloud.extensions = [ext]                 # cloud.positions and cloud.scales already in millimeters
+  spz.save_spz(cloud, spz.PackOptions(), "scan.spz")
+
+  loaded = spz.load_spz("scan.spz")        # millimeters, as stored
+  ```
+
 - **SPZ_NIANTIC_georeference** (`0x4E530001`) — Records a similarity transform that places the asset in a geocentric CRS. Implemented in `extensions/cc/georeference-niantic.h` and `georeference-niantic.cc`.
 
   **Payload** (little-endian, byte-packed, 76 bytes fixed + variable `crs`):

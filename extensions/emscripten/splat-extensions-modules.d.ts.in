@@ -1,10 +1,12 @@
   SpzExtensionType: typeof SpzExtensionType;
   GeoreferenceCrsEncoding: typeof GeoreferenceCrsEncoding;
+  LengthUnit: typeof LengthUnit;
 
   // Extension classes
   SpzExtensionBase: typeof SpzExtensionBase;
   SpzExtensionSafeOrbitCameraAdobe: typeof SpzExtensionSafeOrbitCameraAdobe;
   SpzExtensionCoordinateSystemAdobe: typeof SpzExtensionCoordinateSystemAdobe;
+  SpzExtensionUnitsAdobe: typeof SpzExtensionUnitsAdobe;
   SpzExtensionGeoreferenceNiantic: typeof SpzExtensionGeoreferenceNiantic;
   SpzExtensionCustomAttributeNiantic: typeof SpzExtensionCustomAttributeNiantic;
   SpzAttributeSemantic: typeof SpzAttributeSemantic;

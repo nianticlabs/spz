@@ -31,6 +31,7 @@ SOFTWARE.
 #include "extensions/cc/georeference-niantic.h"
 #include "extensions/cc/custom-attribute-niantic.h"
 #include "extensions/cc/environment-map-adobe.h"
+#include "extensions/cc/units-adobe.h"
 #include "extensions/emscripten/splat-extensions.h"
 #include "src/emscripten/utils.h"
 
@@ -52,6 +53,7 @@ void register_extensions() {
       .value("SPZ_ADOBE_safe_orbit_camera", spz::SpzExtensionType::SPZ_ADOBE_safe_orbit_camera)
       .value("SPZ_ADOBE_coordinate_system", spz::SpzExtensionType::SPZ_ADOBE_coordinate_system)
       .value("SPZ_ADOBE_environment_map", spz::SpzExtensionType::SPZ_ADOBE_environment_map)
+      .value("SPZ_ADOBE_units", spz::SpzExtensionType::SPZ_ADOBE_units)
       .value("SPZ_NIANTIC_georeference", spz::SpzExtensionType::SPZ_NIANTIC_georeference)
       .value("SPZ_NIANTIC_custom_attribute", spz::SpzExtensionType::SPZ_NIANTIC_custom_attribute);
 
@@ -77,6 +79,19 @@ void register_extensions() {
       .smart_ptr_constructor("SpzExtensionCoordinateSystemAdobePtr", &std::make_shared<spz::SpzExtensionCoordinateSystemAdobe>)
       .property("coordinateSystem", &spz::SpzExtensionCoordinateSystemAdobe::coordinateSystem)
       .class_function("type", &spz::SpzExtensionCoordinateSystemAdobe::type);
+
+  // Registered as `number`, like GeoreferenceCrsEncoding, to match the numeric enum in splat-extensions.d.ts.in.
+  ::emscripten::enum_<spz::LengthUnit>("LengthUnit", ::emscripten::enum_value_type::number)
+      .value("UNSPECIFIED", spz::LengthUnit::UNSPECIFIED)
+      .value("MILLIMETER", spz::LengthUnit::MILLIMETER)
+      .value("CENTIMETER", spz::LengthUnit::CENTIMETER)
+      .value("METER", spz::LengthUnit::METER)
+      .value("KILOMETER", spz::LengthUnit::KILOMETER);
+
+  ::emscripten::class_<spz::SpzExtensionUnitsAdobe, ::emscripten::base<spz::SpzExtensionBase>>("SpzExtensionUnitsAdobe")
+      .smart_ptr_constructor("SpzExtensionUnitsAdobePtr", &std::make_shared<spz::SpzExtensionUnitsAdobe>)
+      .property("lengthUnit", &spz::SpzExtensionUnitsAdobe::lengthUnit)
+      .class_function("type", &spz::SpzExtensionUnitsAdobe::type);
 
   // Registered as `number` (as SplatAttribute in spz-bindings.cc) so JS sees plain integers,
   // matching the numeric enum declared in splat-extensions.d.ts.in.

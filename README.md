@@ -291,6 +291,10 @@ With extension `SPZ_NIANTIC_georeference`, SPZ can store a similarity transform 
 
 With extension `SPZ_ADOBE_environment_map`, an SPZ or PLY file can carry one equirectangular RGB environment map (e.g. a baked reflection environment) together with its lookup frame and free-form JSON settings, so the file is a complete asset. In SPZ (version 4) the pixels are zstd-compressed float16 in [extension frames](#extension-frames) after the core streams; PLY stores them as float32. The frame follows coordinate conversions like positions. See [extensions/README.md](extensions/README.md#built-in-extensions).
 
+### Length Units
+
+With extension `SPZ_ADOBE_units`, a file can say which length unit its positions and scales are written in: millimeters, centimeters, meters or kilometers. Writers can then store small objects in millimeters, where the 12 fractional position bits give a 0.24 µm grid and the log-scale floor of e^-10 is 45 nm, instead of 0.24 mm and 45 µm in meters. The record is a label only: the library never converts the data, so clients scale it themselves if they need another unit. The record's unit defaults to `UNSPECIFIED`, which, like having no record, leaves the units unstated (meters by convention). See [extensions/README.md](extensions/README.md#built-in-extensions).
+
 
 ## Python Bindings
 
