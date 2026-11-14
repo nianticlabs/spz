@@ -189,6 +189,21 @@ struct membuf : std::streambuf {
     auto *p = reinterpret_cast<char *>(const_cast<uint8_t *>(data));
     setg(p, p, p + size);
   }
+
+  // Needed by tellg/seekg (e.g. the extension reader's bounds check).
+  pos_type seekoff(off_type off, std::ios_base::seekdir dir,
+                   std::ios_base::openmode which = std::ios_base::in) override {
+    const off_type base = dir == std::ios_base::beg ? 0
+                        : dir == std::ios_base::cur ? gptr() - eback()
+                        : egptr() - eback();
+    const off_type pos = base + off;
+    if (!(which & std::ios_base::in) || pos < 0 || pos > egptr() - eback()) return pos_type(off_type(-1));
+    setg(eback(), eback() + pos, egptr());
+    return pos_type(pos);
+  }
+  pos_type seekpos(pos_type pos, std::ios_base::openmode which = std::ios_base::in) override {
+    return seekoff(off_type(pos), std::ios_base::beg, which);
+  }
 };
 
 }  // namespace

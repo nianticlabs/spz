@@ -58,6 +58,32 @@ def test_safe_orbit_extension_round_trip():
 
 
 @pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
+@pytest.mark.parametrize("version", [2, 3])
+def test_extension_round_trip_legacy_gzip(version):
+    """Extensions survive a save/load round-trip in the legacy gzip formats."""
+    cloud = _make_cloud()
+    ext = spz.SpzExtensionSafeOrbitCameraAdobe()
+    ext.safe_orbit_elevation_min = -0.5
+    ext.safe_orbit_elevation_max = 1.2
+    ext.safe_orbit_radius_min = 0.3
+    cloud.extensions = [ext]
+
+    opts = spz.PackOptions()
+    opts.version = version
+    filename = os.path.join(tempfile.gettempdir(), f"ext_round_trip_v{version}.spz")
+    assert spz.save_spz(cloud, opts, filename) is True
+
+    loaded = spz.load_spz(filename, spz.UnpackOptions())
+    assert loaded.num_points == cloud.num_points
+    assert len(loaded.extensions) == 1
+    loaded_ext = loaded.extensions[0]
+    assert isinstance(loaded_ext, spz.SpzExtensionSafeOrbitCameraAdobe)
+    assert abs(loaded_ext.safe_orbit_elevation_min - ext.safe_orbit_elevation_min) < 1e-5
+    assert abs(loaded_ext.safe_orbit_elevation_max - ext.safe_orbit_elevation_max) < 1e-5
+    assert abs(loaded_ext.safe_orbit_radius_min - ext.safe_orbit_radius_min) < 1e-5
+
+
+@pytest.mark.skipif(not spz.has_extension_support(), reason="built without extension support")
 def test_no_extension_flag_when_no_extensions():
     """FlagHasExtensions must NOT be set when the cloud has no extensions."""
     cloud = _make_cloud()
