@@ -1,0 +1,92 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "extensions",
+      "hidden": true,
+      "cacheVariables": { "SPZ_BUILD_EXTENSIONS": "ON" }
+    },
+    {
+      "name": "dev",
+      "displayName": "Native library + CLI tools",
+      "inherits": "base",
+      "cacheVariables": { "BUILD_TESTING": "ON" }
+    },
+    {
+      "name": "dev-ext",
+      "displayName": "Native library + CLI tools, with extensions",
+      "inherits": ["extensions", "dev"]
+    },
+    {
+      "name": "debug",
+      "displayName": "Native debug build with extensions",
+      "inherits": "dev-ext",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "wasm",
+      "displayName": "WASM (configure with: emcmake cmake --preset wasm)",
+      "inherits": "base",
+      "cacheVariables": {
+        "SPZ_REQUIRE_EMSCRIPTEN": "ON",
+        "SPZ_WASM_OUTPUT_DIR": "${sourceDir}/build/${presetName}/dist"
+      }
+    },
+    {
+      "name": "wasm-ext",
+      "displayName": "WASM with extensions (configure with: emcmake cmake --preset wasm-ext)",
+      "inherits": ["extensions", "wasm"]
+    },
+    {
+      "name": "android-arm64",
+      "displayName": "Android arm64-v8a (requires ANDROID_NDK_HOME)",
+      "inherits": "base",
+      "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+      "cacheVariables": {
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-24",
+        "SPZ_BUILD_TOOLS": "OFF"
+      }
+    },
+    {
+      "name": "android-arm64-ext",
+      "displayName": "Android arm64-v8a with extensions (requires ANDROID_NDK_HOME)",
+      "inherits": ["extensions", "android-arm64"]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "configuration": "RelWithDebInfo"
+    },
+    { "name": "dev", "inherits": "base", "configurePreset": "dev" },
+    { "name": "dev-ext", "inherits": "base", "configurePreset": "dev-ext" },
+    { "name": "debug", "inherits": "base", "configurePreset": "debug", "configuration": "Debug" },
+    { "name": "wasm", "inherits": "base", "configurePreset": "wasm" },
+    { "name": "wasm-ext", "inherits": "base", "configurePreset": "wasm-ext" },
+    { "name": "android-arm64", "inherits": "base", "configurePreset": "android-arm64" },
+    { "name": "android-arm64-ext", "inherits": "base", "configurePreset": "android-arm64-ext" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "configuration": "RelWithDebInfo",
+      "output": { "outputOnFailure": true }
+    },
+    { "name": "dev", "inherits": "base", "configurePreset": "dev" },
+    { "name": "dev-ext", "inherits": "base", "configurePreset": "dev-ext" },
+    { "name": "debug", "inherits": "base", "configurePreset": "debug", "configuration": "Debug" }
+  ]
+}
